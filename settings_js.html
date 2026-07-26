@@ -646,11 +646,26 @@
       };
 
       console.log("[DEPT-07] calling App.API.createDepartment with payload:", JSON.stringify(deptData));
+      
+      // Button Loading State Feedback UI
+      const saveBtn = document.getElementById('btnSaveDept');
+      let originalBtnText = "Save Department";
+      if (saveBtn) {
+        originalBtnText = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving & Reactivating Department...';
+      }
+
       App.LoadingManager.show();
       const apiCall = mode === 'add' ? App.API.createDepartment(deptData) : App.API.updateDepartment(id, deptData);
       apiCall.then(res => {
         console.log("[DEPT-14] backend response received by frontend promise:", res);
         App.LoadingManager.hide();
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalBtnText;
+        }
+
         if (res && res.success === false) {
           console.error("[DEPT-14a] Backend returned error status:", res.message);
           App.UI.showError(res.message || "Failed to save department.");
@@ -670,12 +685,20 @@
           document.body.classList.remove('modal-open');
         }
         
-        const msg = (res && res.message) ? res.message : (mode === 'add' ? "Department created and HOD credentials dispatched!" : "Department updated.");
+        var isReactivated = res && res.message && res.message.indexOf("reactivated") !== -1;
+        var msg = (res && res.message) ? res.message : (mode === 'add' ? "Department created and HOD credentials dispatched!" : "Department updated.");
+        if (isReactivated) {
+          msg = "🔄 Department Restored & Backed Up Successfully! (Code: " + deptData.department_code + ")";
+        }
         App.UI.showSuccess(msg);
         this.loadDepartments();
       }).catch(err => {
         console.error("[DEPT-14b] frontend error handler caught promise rejection:", err);
         App.LoadingManager.hide();
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalBtnText;
+        }
         App.UI.showError("Failed to save department: " + (err.message || err));
       });
     },
