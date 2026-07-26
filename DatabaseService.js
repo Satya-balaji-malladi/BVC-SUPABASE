@@ -388,8 +388,9 @@ const DatabaseService = {
       const now = new Date().toISOString();
       const formattedRecords = records.map(function(record) {
         // Generate ID if missing
-        if (idCol && !record[idCol]) {
-          record[idCol] = DatabaseService.generateNextId(logicalKey);
+        const existingId = record[idCol] || record.department_id || record.user_id || record.event_id || record.id;
+        if (idCol && !existingId) {
+          record[idCol] = IdService.generateDepartmentId ? IdService.generateDepartmentId() : DatabaseService.generateNextId(logicalKey);
         }
         
         // Populate standard audit fields
@@ -519,20 +520,14 @@ const DatabaseService = {
     const idCol = CONFIG.ID_COLUMNS[logicalKey];
     if (!cfg || !idCol) throw new Error('Missing ID format/column config for ' + logicalKey);
 
-    if (this._nextIdCounters[logicalKey] !== undefined) {
-      this._nextIdCounters[logicalKey]++;
-      return cfg.prefix + this._nextIdCounters[logicalKey].toString().padStart(cfg.digits, '0');
-    }
-
     const records = this.readAllRows(logicalKey);
     const ids = records.map(function(r) {
-        const raw = r[idCol];
+        const raw = r[idCol] || r.department_id || r.user_id || r.event_id || r.attendance_id || r.id;
         return (raw === undefined || raw === null || raw === '') ? NaN : parseInt(String(raw).replace(cfg.prefix, ''), 10);
       }).filter(function(n) { return !isNaN(n); });
 
     const maxId = Math.max.apply(null, [0].concat(ids));
-    this._nextIdCounters[logicalKey] = maxId + 1;
-    return cfg.prefix + this._nextIdCounters[logicalKey].toString().padStart(cfg.digits, '0');
+    return cfg.prefix + String(maxId + 1).padStart(cfg.digits, '0');
   },
 
   onInsert: function(s, d) { Logger.log('Audit: Insert ' + s); },
