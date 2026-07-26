@@ -1071,10 +1071,52 @@ const CoordinatorService = {
       });
     }
 
-    // Save additional fields if provided by Coordinator
-    if (additionalData && typeof additionalData === 'object') {
-      var student = StudentService.getStudentByRollNumber(normRoll);
-      if (student && (additionalData.studentName || additionalData.phone || additionalData.email)) {
+    // Save or create student details if provided or missing
+    var student = StudentService.getStudentByRollNumber(normRoll);
+    if (!student) {
+      var sName = (additionalData && (additionalData.studentName || additionalData.name) ? (additionalData.studentName || additionalData.name) : 'Participant').trim();
+      var sBranch = (additionalData && (additionalData.branch || additionalData.department) ? (additionalData.branch || additionalData.department) : 'CSE').trim().toUpperCase();
+      var sCollege = (additionalData && (additionalData.college || additionalData.collegeName) ? (additionalData.college || additionalData.collegeName) : 'BVC Engineering College').trim();
+      var isBvc = !sCollege || sCollege.toLowerCase().includes('bvc') || sCollege.toLowerCase().includes('bonam');
+
+      if (isBvc) {
+        var studentPayload = {};
+        studentPayload[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
+        studentPayload[CONFIG.COLUMNS.STUDENT_NAME] = sName;
+        studentPayload[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = sBranch;
+        studentPayload[CONFIG.COLUMNS.STUDENT_YEAR] = additionalData?.year || '1';
+        studentPayload[CONFIG.COLUMNS.STUDENT_SECTION] = additionalData?.section || 'A';
+        studentPayload[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
+        studentPayload["College"] = sCollege;
+        StudentService.createStudent(studentPayload, 'Coordinator');
+      } else {
+        var otherStudentPayload = {
+          id: 'OCS' + Date.now(),
+          roll_number: normRoll,
+          student_name: sName,
+          college_name: sCollege,
+          department: sBranch,
+          year: String(additionalData?.year || '1'),
+          section: String(additionalData?.section || 'A'),
+          status: 'Active',
+          created_by: 'Coordinator',
+          created_at: new Date().toISOString()
+        };
+        try { DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload); } catch(e) {}
+        try {
+          var mainStudentStub = {};
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_NAME] = sName;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = sBranch;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_YEAR] = additionalData?.year || '1';
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_SECTION] = additionalData?.section || 'A';
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
+          mainStudentStub["College"] = sCollege;
+          StudentService.createStudent(mainStudentStub, 'Coordinator');
+        } catch(e) {}
+      }
+    } else if (additionalData && typeof additionalData === 'object') {
+      if (additionalData.studentName || additionalData.phone || additionalData.email) {
         var studentUpdates = {};
         if (additionalData.studentName) studentUpdates[CONFIG.COLUMNS.STUDENT_NAME] = additionalData.studentName;
         if (additionalData.phone) studentUpdates['Phone'] = additionalData.phone;
