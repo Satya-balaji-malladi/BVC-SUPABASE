@@ -1080,9 +1080,16 @@ const CoordinatorService = {
     var student = StudentService.getStudentByRollNumber(normRoll);
     if (!student) {
       var sName = (additionalData && (additionalData.studentName || additionalData.name) ? (additionalData.studentName || additionalData.name) : 'Participant').trim();
-      var sBranch = this._getValidDepartmentId(additionalData ? (additionalData.branch || additionalData.department) : null);
       var sCollege = (additionalData && (additionalData.college || additionalData.collegeName) ? (additionalData.college || additionalData.collegeName) : 'BVC Engineering College').trim();
       var isBvc = !sCollege || sCollege.toLowerCase().includes('bvc') || sCollege.toLowerCase().includes('bonam');
+
+      var confirmDeptId = 'DEP001';
+      try {
+        var depts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+        if (depts && depts.length > 0) {
+          confirmDeptId = depts[0]['Department ID'] || depts[0].department_id || 'DEP001';
+        }
+      } catch(e) {}
 
       if (!isBvc) {
         var otherStudentPayload = {
@@ -1090,7 +1097,7 @@ const CoordinatorService = {
           roll_number: normRoll,
           student_name: sName,
           college_name: sCollege,
-          department: sBranch,
+          department: confirmDeptId,
           year: String(additionalData?.year || '1'),
           section: String(additionalData?.section || 'A'),
           status: 'Active',
@@ -1103,17 +1110,13 @@ const CoordinatorService = {
       try {
         var studentPayload = {
           student_id: 'STU_CONFIRM_' + Date.now(),
-          'Roll Number': normRoll,
-          'roll_number': normRoll,
-          'Student Name': sName,
-          'student_name': sName,
-          'Department ID': sBranch,
-          'department_id': sBranch,
-          'Year': String(additionalData?.year || '1'),
-          'year': String(additionalData?.year || '1'),
-          'Section': String(additionalData?.section || 'A'),
-          'Status': 'Active',
-          'College': sCollege
+          roll_number: normRoll,
+          student_name: sName,
+          department_id: confirmDeptId,
+          year: String(additionalData?.year || '1'),
+          section: String(additionalData?.section || 'A'),
+          status: 'Active',
+          college: sCollege
         };
         DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, studentPayload);
       } catch(e) {
