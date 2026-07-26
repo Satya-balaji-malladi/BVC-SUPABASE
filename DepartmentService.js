@@ -48,7 +48,7 @@ const DepartmentService = {
     const name = data[CONFIG.COLUMNS.DEPARTMENT_NAME] || data.department_name || '';
     const code = data[CONFIG.COLUMNS.DEPARTMENT_CODE] || data.department_code || '';
     const hod = data['HOD Name'] || data.hod_name || '';
-    const empId = data['HOD Emp ID'] || data.hod_emp_id || '';
+    const empId = data['HOD Emp ID'] || data.hod_emp_id || data.hod_employee_id || '';
     const email = data['HOD Email'] || data.hod_email || '';
     const status = data[CONFIG.COLUMNS.STATUS] || data.status || CONFIG.DEPARTMENT_STATUS.ACTIVE;
 
@@ -57,8 +57,11 @@ const DepartmentService = {
       [CONFIG.COLUMNS.DEPARTMENT_NAME]: name,
       [CONFIG.COLUMNS.DEPARTMENT_CODE]: code,
       'HOD Name': hod,
+      'hod_name': hod,
       'HOD Emp ID': empId,
+      'hod_employee_id': empId,
       'HOD Email': email,
+      'remarks': email,
       [CONFIG.COLUMNS.DESCRIPTION]: data[CONFIG.COLUMNS.DESCRIPTION] || '',
       [CONFIG.COLUMNS.STATUS]: status,
       [CONFIG.COLUMNS.DELETION_FLAG]: false,

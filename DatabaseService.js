@@ -78,6 +78,10 @@ const DatabaseService = {
           dbKey = 'last_login_timestamp';
         } else if (dbTable === 'users' && dbKey === 'profile_photo') {
           dbKey = 'profile_picture_url';
+        } else if (dbTable === 'departments' && dbKey === 'hod_emp_id') {
+          dbKey = 'hod_employee_id';
+        } else if (dbTable === 'departments' && (dbKey === 'hod_email' || dbKey === 'hod_contact_email')) {
+          dbKey = 'remarks';
         } else {
           continue; // Skip fields not present in Supabase table
         }
