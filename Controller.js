@@ -1317,7 +1317,27 @@ const Controller = {
               created_by: creatorName,
               created_at: new Date().toISOString()
             };
-            DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload);
+            try {
+              DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload);
+            } catch (ocsErr) {
+              Logger.log('Warning saving to other_college_students: ' + ocsErr.message);
+            }
+
+            // Also create a stub entry in main 'students' table to satisfy strict foreign keys if present
+            try {
+              var mainStudentStub = {};
+              mainStudentStub[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normalizedRoll;
+              mainStudentStub[CONFIG.COLUMNS.STUDENT_NAME] = (studentName || 'Guest Student').trim();
+              mainStudentStub[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = (departmentId || 'GUEST').trim().toUpperCase();
+              mainStudentStub[CONFIG.COLUMNS.STUDENT_YEAR] = year || '1';
+              mainStudentStub[CONFIG.COLUMNS.STUDENT_SECTION] = section || 'G';
+              mainStudentStub[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
+              mainStudentStub["College"] = targetCollege;
+              StudentService.createStudent(mainStudentStub, creatorName);
+            } catch (stubErr) {
+              Logger.log('Stub student creation fallback warning: ' + stubErr.message);
+            }
+
             student = otherStudentPayload;
           }
         }
