@@ -448,6 +448,12 @@
 
                         if (setupRes && setupRes.success) {
                           firstLoginModal.hide();
+                          // Ensure modal backdrop overlay is fully removed and body unblocked
+                          document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+                          document.body.classList.remove('modal-open');
+                          document.body.style.removeProperty('overflow');
+                          document.body.style.removeProperty('padding-right');
+
                           if (App.State.currentUser) {
                             App.State.currentUser.first_login = false;
                             App.State.currentUser.profile_completed = true;
