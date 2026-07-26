@@ -1196,10 +1196,11 @@ body {
 .d-none { display: none !important; }
 </style>
   <script>
-    // Inject session token from backend template parameter to bypass iframe query limitations
-    window.SESSION_TOKEN_FROM_BACKEND = "<?= token ?>";
+    // Note: SESSION_TOKEN_FROM_BACKEND is set by GAS template when served via Apps Script.
+    // On Netlify (static hosting), the token is read from the URL ?token= parameter instead.
     window.DEBUG_MODE = true;
   </script>
+
 </head>
 
 <body>
