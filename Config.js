@@ -336,6 +336,7 @@ const CONFIG = {
   ROLES: {
     SUPER_ADMIN: 'Super Admin',
     ADMIN: 'Admin',
+    EVENT_ADMIN: 'Event Admin',
     HOD: 'HOD',
     COORDINATOR: 'Coordinator'
   },
