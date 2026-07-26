@@ -965,7 +965,6 @@ const CoordinatorUI = (() => {
           playTone('warning');
           setScannerStatus('Already Marked', 'status-warn');
           showToast('warning', `Participation was already recorded for ${rawInput}.`);
-          showAlreadyMarkedModal(stateData);
           clearInput();
           focusInput();
           return;
@@ -975,7 +974,6 @@ const CoordinatorUI = (() => {
           playTone('error');
           setScannerStatus('Spot Reg Disabled', 'status-error');
           showToast('error', res.message || 'Participant is not registered for this event and spot registration is not available.');
-          showSpotDisabledModal(stateData);
           clearInput();
           focusInput();
           return;
@@ -984,7 +982,8 @@ const CoordinatorUI = (() => {
         if (stateType === 'SPOT_REGISTRATION_REQUIRED') {
           playTone('info');
           setScannerStatus('Spot Registration Available', 'status-warn');
-          showSpotPromptModal(stateData);
+          const spotRoll = (stateData && stateData.studentData && stateData.studentData.rollNumber) ? stateData.studentData.rollNumber : rawInput;
+          openSpotModal(spotRoll);
           clearInput();
           focusInput();
           return;
