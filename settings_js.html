@@ -83,7 +83,7 @@
         this.openDeptModal('add');
       });
 
-      // Department form submit handler with trace markers
+      // Department form submit & button click handlers with trace markers
       const addDeptForm = document.getElementById('departmentForm');
       if (addDeptForm) {
         addDeptForm.addEventListener('submit', (e) => {
@@ -92,6 +92,18 @@
           this.saveDepartment();
         });
       }
+
+      document.getElementById('btnSaveDept')?.addEventListener('click', (e) => {
+        console.log("[DEPT-03] btnSaveDept clicked directly");
+        const form = document.getElementById('departmentForm');
+        if (form && form.checkValidity()) {
+          e.preventDefault();
+          this.saveDepartment();
+        } else if (form) {
+          form.classList.add('was-validated');
+          console.warn("[DEPT-03a] Form HTML validation failed on click");
+        }
+      });
 
       // Table row actions (Edit/Delete)
       const deptsTableBody = document.getElementById('departmentsTableBody');

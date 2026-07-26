@@ -57,7 +57,21 @@ const IdService = {
       }
 
       var nextSequence = maxSequence + 1;
-      return resolvedPrefix + Utils.padNumber(nextSequence, cfg.digits);
+      var candidateId = resolvedPrefix + Utils.padNumber(nextSequence, cfg.digits);
+      
+      // Ensure candidateId is strictly unique against existing DB records
+      var existsInDb = records.some(function(r) {
+        var existing = r[CONFIG.ID_COLUMNS[logicalKey]] || r.department_id || r.departmentId;
+        return String(existing).trim() === String(candidateId).trim();
+      });
+
+      if (existsInDb) {
+        // Fallback to high sequence or timestamp suffix to prevent 409 duplicate key violations
+        var timestampNum = Math.floor(Date.now() / 1000) % 1000;
+        candidateId = resolvedPrefix + Utils.padNumber(maxSequence + 1 + timestampNum, cfg.digits);
+      }
+
+      return candidateId;
     } catch (e) {
       Logger.log('IdService._generateNextIdWithLock error: ' + (e && e.message ? e.message : e));
       // Safe fallback: generate a UUID-like token; still unique enough.
