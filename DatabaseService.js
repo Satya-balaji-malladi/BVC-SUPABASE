@@ -281,6 +281,21 @@ const DatabaseService = {
     }
   },
 
+  /**
+   * Reads ALL records from Supabase table INCLUDING soft-deleted rows (deletion_flag=true).
+   * Use this for reactivation checks and ID generation where deleted rows must be visible.
+   */
+  readAllRowsIncludingDeleted: function(sheetName) {
+    try {
+      const dbTable = this._getDbTableName(sheetName);
+      const dbRecords = this._request(dbTable, 'GET', null, '');
+      return dbRecords.map(this._mapToAppRecord.bind(this));
+    } catch (e) {
+      Logger.log('DatabaseService.readAllRowsIncludingDeleted error [' + sheetName + ']: ' + e.message);
+      return [];
+    }
+  },
+
   getRows: function(sheetName, limit, offset) {
     try {
       const dbTable = this._getDbTableName(sheetName);

@@ -134,7 +134,7 @@ const DepartmentService = {
 
     // Soft-Delete Reactivation Check:
     // If a deleted department exists with the same department code, reactivate it instead of failing or throwing primary key conflict 23505!
-    const allRecords = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+    const allRecords = DatabaseService.readAllRowsIncludingDeleted(CONFIG.SHEETS.DEPARTMENTS) || [];
     const existingDeleted = allRecords.find(d => {
       const isDel = d[CONFIG.COLUMNS.DELETION_FLAG] === true || d[CONFIG.COLUMNS.DELETION_FLAG] === 'true' || d.deletion_flag === true || d.deletion_flag === 'true';
       const c = String(d[CONFIG.COLUMNS.DEPARTMENT_CODE] || d.department_code || '').trim().toUpperCase();
@@ -240,7 +240,7 @@ const DepartmentService = {
           if (attempt >= maxRetries) throw insertErr;
           
           // Regenerate fresh ID guaranteed not in DB by querying full table including soft-deleted rows
-          var allDbDepts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+          var allDbDepts = DatabaseService.readAllRowsIncludingDeleted(CONFIG.SHEETS.DEPARTMENTS) || [];
           var maxSeq = 0;
           allDbDepts.forEach(d => {
             var existingId = String(d[CONFIG.COLUMNS.DEPARTMENT_ID] || d.department_id || '');

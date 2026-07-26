@@ -43,7 +43,7 @@ const IdService = {
       if (!sheetName) throw new Error('Missing CONFIG.SHEETS mapping for ' + logicalKey);
 
       const resolvedPrefix = typeof prefixResolver === 'function' ? prefixResolver() : cfg.prefix;
-      const records = DatabaseService.readAllRows(sheetLogical) || [];
+      const records = (DatabaseService.readAllRowsIncludingDeleted ? DatabaseService.readAllRowsIncludingDeleted(sheetLogical) : DatabaseService.readAllRows(sheetLogical)) || [];
 
       // Determine maximum sequence for IDs that match the resolved prefix.
       var maxSequence = 0;
