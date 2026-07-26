@@ -93,6 +93,20 @@
         });
       }
 
+      // Diagnostic runner button
+      document.getElementById('btnRunDeptDiagnostic')?.addEventListener('click', () => {
+        App.LoadingManager.show();
+        App.API.runDiagnosticTest().then(res => {
+          App.LoadingManager.hide();
+          const logText = (res && res.data && res.data.log) ? res.data.log : (res ? JSON.stringify(res) : "No log output");
+          alert(logText);
+          this.loadDepartments();
+        }).catch(err => {
+          App.LoadingManager.hide();
+          alert("❌ Diagnostic Runner Error:\n" + (err.message || err));
+        });
+      });
+
       document.getElementById('btnSaveDept')?.addEventListener('click', (e) => {
         console.log("[DEPT-03] btnSaveDept clicked directly");
         const form = document.getElementById('departmentForm');

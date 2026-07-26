@@ -401,6 +401,20 @@ function getActiveDepartments(sessionToken) {
 
 
 /**
+ * Runs end-to-end diagnostic test for Department creation flow.
+ * @param {string} sessionToken
+ * @returns {object} Response object with diagnostic log output.
+ */
+function runDiagnosticTest(sessionToken) {
+  try {
+    const logOutput = testDepartmentCreationDiagnostic();
+    return { success: true, message: "Diagnostic completed", data: { log: logOutput } };
+  } catch (e) {
+    return { success: false, message: e.message || String(e) };
+  }
+}
+
+/**
  * Updates an existing department.
  * @param {string} sessionToken - Request session token.
  * @param {string} departmentId - Target Department ID.
