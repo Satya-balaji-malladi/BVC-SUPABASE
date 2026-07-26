@@ -256,11 +256,17 @@ const AttendanceService = {
    * @param {string} rollNumber
    * @returns {boolean} True if attendance exists.
    */
-  checkAttendanceExists: function(eventId, rollNumber) {
-    return this._tryWrap('checkAttendanceExists', () => {
-      if (!eventId || !rollNumber) return false;
-      const rolls = this._getEventScannedRolls(eventId);
-      return rolls.indexOf(String(rollNumber).trim().toUpperCase()) !== -1;
+  checkAttendanceExists: function (eventId, rollNumber) {
+    return this.hasStudentAttended(eventId, rollNumber);
+  },
+
+  hasStudentAttended: function (eventId, rollNumber) {
+    if (!eventId || !rollNumber) return false;
+    var cleanRoll = String(rollNumber).trim().toUpperCase();
+    var records = this.getAttendanceByEvent(eventId) || [];
+    return records.some(function (r) {
+      var rRoll = r['Roll Number'] || r.roll_number || '';
+      return String(rRoll).trim().toUpperCase() === cleanRoll && !r['Deletion Flag'] && !r.deletion_flag;
     });
   },
 

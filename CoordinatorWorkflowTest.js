@@ -44,89 +44,145 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // Setup Test Fixtures (Dedicated TEST_AUTO records)
-  const testSessionToken = 'TEST_SESSION_' + Date.now();
-  const testUserId = 'USER_TEST_COORD_' + Date.now();
-  const eventNoRegId = 'EVT_NO_REG_' + Date.now();
-  const eventRegId = 'EVT_REG_' + Date.now();
-  const testRollBvc = '23A91A05' + String(Math.floor(Math.random()*899 + 100));
-  const testRollExt = '23EXT99' + String(Math.floor(Math.random()*899 + 100));
-  const testRollUnk = '23UNK88' + String(Math.floor(Math.random()*899 + 100));
+  const randNum = Math.floor(Math.random() * 899000 + 100000);
+  const testSessionToken = 'TEST_SESSION_' + randNum;
+  const testUserId = 'USER_TEST_' + randNum;
+  const eventNoRegId = 'EVT_NO_REG_' + randNum;
+  const eventRegId = 'EVT_REG_' + randNum;
+  const testRollBvc = '23A91A05' + String(Math.floor(Math.random()*89 + 10));
+  const testRollExt = '23EXT99' + String(Math.floor(Math.random()*89 + 10));
+  const testRollUnk = '23UNK88' + String(Math.floor(Math.random()*89 + 10));
+  const nowDateStr = new Date().toISOString().split('T')[0];
 
   try {
-    // 1. Seed Test User & Coordinator Assignment
+    // 0. Ensure Department CSE exists
+    try {
+      DatabaseService.insertRow(CONFIG.SHEETS.DEPARTMENTS, {
+        'Department ID': 'CSE',
+        'Department Code': 'CSE',
+        'Department Name': 'Computer Science and Engineering',
+        'Status': 'Active'
+      });
+    } catch(e) {}
+
+    // 1. Seed Test User with all mandatory Supabase PostgreSQL fields
     const testUserObj = {
       'User ID': testUserId,
-      'Username': 'testcoordinator',
+      'user_id': testUserId,
+      'employee_id': 'EMP_' + randNum,
+      'first_name': 'Test',
+      'last_name': 'Coordinator',
+      'email_address': 'coord_' + randNum + '@bvc.edu.in',
+      'username': 'coord_' + randNum,
+      'password_hash': 'test_hash_123',
       'Role': 'Coordinator',
-      'Status': 'Active'
+      'role': 'Coordinator',
+      'Status': 'Active',
+      'status': 'Active'
     };
     DatabaseService.insertRow(CONFIG.SHEETS.USERS, testUserObj);
 
     // Create session record in sessions table
     const sessionRecord = {
-      'Session ID': 'SESS_' + Date.now(),
+      'Session ID': 'SESS_' + randNum,
       'User ID': testUserId,
-      'Username': 'testcoordinator',
+      'user_id': testUserId,
+      'username': 'coord_' + randNum,
       'Session Token': testSessionToken,
+      'session_token': testSessionToken,
+      'session_status': 'Active',
       'Session Status': 'Active',
-      'Login Timestamp': new Date().toISOString(),
-      'Last Activity Timestamp': new Date().toISOString(),
-      'Expiry Time': new Date(Date.now() + 3600000).toISOString()
+      'login_timestamp': new Date().toISOString(),
+      'last_activity_timestamp': new Date().toISOString(),
+      'expiry_time': new Date(Date.now() + 3600000).toISOString()
     };
     DatabaseService.insertRow(CONFIG.SHEETS.SESSIONS, sessionRecord);
 
-    // Seed Events
+    // Seed Events with mandatory dates
     const noRegEvent = {
       'Event ID': eventNoRegId,
+      'event_id': eventNoRegId,
       'Event Name': 'Test No Reg Event',
+      'event_name': 'Test No Reg Event',
+      'start_date': nowDateStr,
+      'end_date': nowDateStr,
+      'start_time': '09:00:00',
+      'end_time': '17:00:00',
       'Event Status': 'Active',
+      'event_status': 'Active',
       'Enable Registration': 'false',
+      'enable_registration': false,
       'Allow Spot Registration': 'true',
+      'allow_spot_registration': true,
       'Registration Fields': JSON.stringify([{ name: 'Phone', required: true }])
     };
     DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, noRegEvent);
 
     const regEvent = {
       'Event ID': eventRegId,
+      'event_id': eventRegId,
       'Event Name': 'Test Reg Event',
+      'event_name': 'Test Reg Event',
+      'start_date': nowDateStr,
+      'end_date': nowDateStr,
+      'start_time': '09:00:00',
+      'end_time': '17:00:00',
       'Event Status': 'Active',
+      'event_status': 'Active',
       'Enable Registration': 'true',
+      'enable_registration': true,
       'Allow Spot Registration': 'true',
+      'allow_spot_registration': true,
       'Maximum Seats': 100,
+      'maximum_seats': 100,
       'Registered Count': 0,
+      'registered_count': 0,
       'Registration Fields': JSON.stringify([{ name: 'College', required: true }])
     };
     DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, regEvent);
 
     // Seed Coordinator assignments
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
-      'Assignment ID': 'ASSIGN_1_' + Date.now(),
+      'Assignment ID': 'ASSIGN_1_' + randNum,
+      'assignment_id': 'ASSIGN_1_' + randNum,
       'Event ID': eventNoRegId,
+      'event_id': eventNoRegId,
       'User ID': testUserId,
+      'user_id': testUserId,
       'Assignment Role': 'Coordinator',
-      'Assignment Status': 'Active'
+      'Assignment Status': 'Active',
+      'assignment_status': 'Active'
     });
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
-      'Assignment ID': 'ASSIGN_2_' + Date.now(),
+      'Assignment ID': 'ASSIGN_2_' + randNum,
+      'assignment_id': 'ASSIGN_2_' + randNum,
       'Event ID': eventRegId,
+      'event_id': eventRegId,
       'User ID': testUserId,
+      'user_id': testUserId,
       'Assignment Role': 'Coordinator',
-      'Assignment Status': 'Active'
+      'Assignment Status': 'Active',
+      'assignment_status': 'Active'
     });
 
-    // Seed Students
+    // Seed Students with student_id, roll_number, year, name
     DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, {
+      'student_id': 'STU_BVC_' + randNum,
       'Roll Number': testRollBvc,
+      'roll_number': testRollBvc,
       'Student Name': 'Test BVC Student',
+      'student_name': 'Test BVC Student',
       'Department ID': 'CSE',
+      'department_id': 'CSE',
       'Year': '2',
+      'year': 2,
       'Section': 'A',
       'Status': 'Active',
       'College': 'BVC Engineering College'
     });
 
     DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, {
-      'id': 'OCS_' + Date.now(),
+      'id': 'OCS_' + randNum,
       'roll_number': testRollExt,
       'student_name': 'Test External Student',
       'college_name': 'XYZ Engineering College',
@@ -226,8 +282,7 @@ function runCoordinatorParticipantWorkflowTests() {
 
   // TC-COORD-NR-008: Cancel -> Verify NO attendance created
   try {
-    const cancelRoll = '23CANCEL' + String(Math.floor(Math.random()*899 + 100));
-    // Simulate process but NO confirm click
+    const cancelRoll = '23CANCEL' + String(Math.floor(Math.random()*89 + 10));
     const res8 = CoordinatorService.processParticipantForEvent(testSessionToken, eventNoRegId, cancelRoll);
     const dbCheck8 = AttendanceService.hasStudentAttended(eventNoRegId, cancelRoll);
     recordResult('TC-COORD-NR-008', 'Cancel action leaves DB clean (No attendance)', !dbCheck8, 'NO_REG', {
@@ -264,23 +319,32 @@ function runCoordinatorParticipantWorkflowTests() {
   // ==========================================================================
   Logger.log('\n--- REGISTRATION EVENT TESTS ---');
 
-  const registeredBvcRoll = '23REGBVC' + String(Math.floor(Math.random()*899 + 100));
+  const registeredBvcRoll = '23REGBVC' + String(Math.floor(Math.random()*89 + 10));
   // Seed registration
   try {
     DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, {
+      'student_id': 'STU_REG_' + randNum,
       'Roll Number': registeredBvcRoll,
+      'roll_number': registeredBvcRoll,
       'Student Name': 'Registered BVC Student',
+      'student_name': 'Registered BVC Student',
       'Department ID': 'CSE',
+      'department_id': 'CSE',
       'Year': '3',
+      'year': 3,
       'Section': 'A',
       'College': 'BVC Engineering College'
     });
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, {
-      'Participant ID': 'PART_' + Date.now(),
+      'Participant ID': 'PART_' + randNum,
+      'participant_id': 'PART_' + randNum,
       'Event ID': eventRegId,
+      'event_id': eventRegId,
       'Roll Number': registeredBvcRoll,
+      'roll_number': registeredBvcRoll,
       'Registration Type': 'Online',
-      'Registration Status': 'Active'
+      'Registration Status': 'Active',
+      'registration_status': 'Active'
     });
   } catch(e) {}
 
@@ -296,20 +360,24 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-002: Registered external student
-  const registeredExtRoll = '23REGEXT' + String(Math.floor(Math.random()*899 + 100));
+  const registeredExtRoll = '23REGEXT' + String(Math.floor(Math.random()*89 + 10));
   try {
     DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, {
-      'id': 'OCS_R_' + Date.now(),
+      'id': 'OCS_R_' + randNum,
       'roll_number': registeredExtRoll,
       'student_name': 'Registered External Student',
       'college_name': 'ABC College'
     });
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, {
-      'Participant ID': 'PART_EXT_' + Date.now(),
+      'Participant ID': 'PART_EXT_' + randNum,
+      'participant_id': 'PART_EXT_' + randNum,
       'Event ID': eventRegId,
+      'event_id': eventRegId,
       'Roll Number': registeredExtRoll,
+      'roll_number': registeredExtRoll,
       'Registration Type': 'Online',
-      'Registration Status': 'Active'
+      'Registration Status': 'Active',
+      'registration_status': 'Active'
     });
 
     const resR2 = CoordinatorService.processParticipantForEvent(testSessionToken, eventRegId, registeredExtRoll);
@@ -334,12 +402,16 @@ function runCoordinatorParticipantWorkflowTests() {
 
   // TC-COORD-R-004: Registered participant -> Cancel
   try {
-    const cancelRegRoll = '23CANCELREG' + String(Math.floor(Math.random()*899 + 100));
+    const cancelRegRoll = '23CANCELREG' + String(Math.floor(Math.random()*89 + 10));
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, {
-      'Participant ID': 'PART_C_' + Date.now(),
+      'Participant ID': 'PART_C_' + randNum,
+      'participant_id': 'PART_C_' + randNum,
       'Event ID': eventRegId,
+      'event_id': eventRegId,
       'Roll Number': cancelRegRoll,
-      'Registration Status': 'Active'
+      'roll_number': cancelRegRoll,
+      'Registration Status': 'Active',
+      'registration_status': 'Active'
     });
     CoordinatorService.processParticipantForEvent(testSessionToken, eventRegId, cancelRegRoll);
     const dbCheckR4 = AttendanceService.hasStudentAttended(eventRegId, cancelRegRoll);
@@ -351,7 +423,7 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-005: Unregistered student + Spot Registration allowed
-  const unregRoll = '23UNREG' + String(Math.floor(Math.random()*899 + 100));
+  const unregRoll = '23UNREG' + String(Math.floor(Math.random()*89 + 10));
   try {
     const resR5 = CoordinatorService.processParticipantForEvent(testSessionToken, eventRegId, unregRoll);
     const passR5 = resR5.success && resR5.state === 'SPOT_REGISTRATION_REQUIRED';
@@ -389,10 +461,10 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-008: Spot Registration -> unknown student -> manual details
-  const spotUnkRoll = '23SPOTUNK' + String(Math.floor(Math.random()*899 + 100));
+  const spotUnkRoll = '23SPOTUNK' + String(Math.floor(Math.random()*89 + 10));
   try {
     const resR8 = CoordinatorService.spotRegisterParticipant(testSessionToken, eventRegId, spotUnkRoll, {
-      studentName: 'Spot Unknown Student', branch: 'EEE', college: 'GVP College'
+      studentName: 'Spot Unknown Student', branch: 'ECE', college: 'GVP College'
     });
     const passR8 = resR8.success;
     recordResult('TC-COORD-R-008', 'Spot Registration -> unknown student -> manual details', passR8, 'REG', {
@@ -437,20 +509,33 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-012: Unregistered + Spot Registration disabled
-  const disabledSpotEventId = 'EVT_NO_SPOT_' + Date.now();
+  const disabledSpotEventId = 'EVT_NO_SPOT_' + randNum;
   try {
     DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, {
       'Event ID': disabledSpotEventId,
+      'event_id': disabledSpotEventId,
       'Event Name': 'Disabled Spot Event',
+      'event_name': 'Disabled Spot Event',
+      'start_date': nowDateStr,
+      'end_date': nowDateStr,
+      'start_time': '09:00:00',
+      'end_time': '17:00:00',
       'Event Status': 'Active',
+      'event_status': 'Active',
       'Enable Registration': 'true',
-      'Allow Spot Registration': 'false'
+      'enable_registration': true,
+      'Allow Spot Registration': 'false',
+      'allow_spot_registration': false
     });
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
-      'Assignment ID': 'ASSIGN_3_' + Date.now(),
+      'Assignment ID': 'ASSIGN_3_' + randNum,
+      'assignment_id': 'ASSIGN_3_' + randNum,
       'Event ID': disabledSpotEventId,
+      'event_id': disabledSpotEventId,
       'User ID': testUserId,
-      'Assignment Status': 'Active'
+      'user_id': testUserId,
+      'Assignment Status': 'Active',
+      'assignment_status': 'Active'
     });
 
     const resR12 = CoordinatorService.processParticipantForEvent(testSessionToken, disabledSpotEventId, unregRoll);
@@ -477,22 +562,37 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-014: Maximum seats reached
-  const fullCapEventId = 'EVT_FULL_CAP_' + Date.now();
+  const fullCapEventId = 'EVT_FULL_CAP_' + randNum;
   try {
     DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, {
       'Event ID': fullCapEventId,
+      'event_id': fullCapEventId,
       'Event Name': 'Full Capacity Event',
+      'event_name': 'Full Capacity Event',
+      'start_date': nowDateStr,
+      'end_date': nowDateStr,
+      'start_time': '09:00:00',
+      'end_time': '17:00:00',
       'Event Status': 'Active',
+      'event_status': 'Active',
       'Enable Registration': 'true',
+      'enable_registration': true,
       'Allow Spot Registration': 'true',
+      'allow_spot_registration': true,
       'Maximum Seats': 1,
-      'Registered Count': 1
+      'maximum_seats': 1,
+      'Registered Count': 1,
+      'registered_count': 1
     });
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
-      'Assignment ID': 'ASSIGN_4_' + Date.now(),
+      'Assignment ID': 'ASSIGN_4_' + randNum,
+      'assignment_id': 'ASSIGN_4_' + randNum,
       'Event ID': fullCapEventId,
+      'event_id': fullCapEventId,
       'User ID': testUserId,
-      'Assignment Status': 'Active'
+      'user_id': testUserId,
+      'Assignment Status': 'Active',
+      'assignment_status': 'Active'
     });
 
     const resR14 = CoordinatorService.spotRegisterParticipant(testSessionToken, fullCapEventId, unregRoll, {
