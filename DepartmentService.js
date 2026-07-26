@@ -132,6 +132,70 @@ const DepartmentService = {
       return Utils.buildResponse(false, errors.join(" "));
     }
 
+    // Soft-Delete Reactivation Check:
+    // If a deleted department exists with the same department code, reactivate it instead of failing or throwing primary key conflict 23505!
+    const allRecords = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+    const existingDeleted = allRecords.find(d => {
+      const isDel = d[CONFIG.COLUMNS.DELETION_FLAG] === true || d[CONFIG.COLUMNS.DELETION_FLAG] === 'true' || d.deletion_flag === true || d.deletion_flag === 'true';
+      const c = String(d[CONFIG.COLUMNS.DEPARTMENT_CODE] || d.department_code || '').trim().toUpperCase();
+      return isDel && c === deptCode.trim().toUpperCase();
+    });
+
+    if (existingDeleted) {
+      const restoreId = existingDeleted[CONFIG.COLUMNS.DEPARTMENT_ID] || existingDeleted.department_id;
+      const restoreUpdates = {
+        [CONFIG.COLUMNS.DEPARTMENT_NAME]: deptName,
+        [CONFIG.COLUMNS.DEPARTMENT_CODE]: deptCode,
+        'HOD Name': departmentData['HOD Name'] || departmentData.hod_name || '',
+        'hod_name': departmentData['HOD Name'] || departmentData.hod_name || '',
+        'HOD Emp ID': departmentData['HOD Emp ID'] || departmentData.hod_emp_id || '',
+        'hod_employee_id': departmentData['HOD Emp ID'] || departmentData.hod_emp_id || '',
+        'HOD Email': departmentData['HOD Email'] || departmentData.hod_email || '',
+        'remarks': departmentData['HOD Email'] || departmentData.hod_email || '',
+        [CONFIG.COLUMNS.STATUS]: CONFIG.DEPARTMENT_STATUS.ACTIVE,
+        [CONFIG.COLUMNS.DELETION_FLAG]: false,
+        [CONFIG.COLUMNS.UPDATED_BY]: createdBy || 'System',
+        [CONFIG.COLUMNS.UPDATED_AT]: Utils.getCurrentTimestamp()
+      };
+
+      DatabaseService.updateRow(CONFIG.SHEETS.DEPARTMENTS, CONFIG.COLUMNS.DEPARTMENT_ID, restoreId, restoreUpdates);
+      Logger.log("Reactivated soft-deleted department with ID: " + restoreId + " (" + deptCode + ")");
+
+      var responseDeptRestored = Object.assign({}, existingDeleted, restoreUpdates);
+      
+      // Auto-create HOD user if provided
+      var hodEmailR = departmentData['HOD Email'] || departmentData.hod_email || '';
+      var hodEmpIdR = departmentData['HOD Emp ID'] || departmentData.hod_emp_id || '';
+      var hodNameR = departmentData['HOD Name'] || departmentData.hod_name || '';
+      if (hodEmailR && hodEmpIdR) {
+        try {
+          var namePartsR = hodNameR.trim().split(" ");
+          var hodUserDataR = {
+            username: String(hodEmpIdR).toLowerCase(),
+            password: "BVC@" + String(hodEmpIdR).toUpperCase(),
+            email_address: hodEmailR,
+            first_name: namePartsR[0] || hodNameR,
+            last_name: namePartsR.slice(1).join(" ") || "",
+            employee_id: hodEmpIdR,
+            role: "HOD",
+            department: deptCode,
+            title_designation: "Head of Department (" + deptCode + ")",
+            status: "Active"
+          };
+          var adminContextR = (createdBy && typeof createdBy === 'object') ? createdBy : { isSuperAdmin: true, role: 'Super Admin', username: 'SuperAdmin' };
+          UserService.createUser(hodUserDataR, adminContextR);
+        } catch (uErr) {
+          Logger.log("HOD Auto-Creation note on restore: " + uErr.message);
+        }
+      }
+
+      return Utils.buildResponse(
+        true,
+        "Department (" + deptCode + ") reactivated successfully!",
+        { department: Utils.sanitizeDepartment(responseDeptRestored) }
+      );
+    }
+
     // Check Department Name
     if (!this._isDepartmentNameAvailable(deptName)) {
       return Utils.buildResponse(
