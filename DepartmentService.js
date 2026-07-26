@@ -239,8 +239,17 @@ const DepartmentService = {
           attempt++;
           if (attempt >= maxRetries) throw insertErr;
           
-          // Regenerate fresh ID guaranteed not in DB and retry
-          var retryId = IdService.generateDepartmentId();
+          // Regenerate fresh ID guaranteed not in DB by querying full table including soft-deleted rows
+          var allDbDepts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+          var maxSeq = 0;
+          allDbDepts.forEach(d => {
+            var existingId = String(d[CONFIG.COLUMNS.DEPARTMENT_ID] || d.department_id || '');
+            if (existingId.indexOf('DEP') === 0) {
+              var seqNum = parseInt(existingId.substring(3), 10);
+              if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
+            }
+          });
+          var retryId = 'DEP' + Utils.padNumber(maxSeq + attempt + 1, 3);
           newDepartment[CONFIG.COLUMNS.DEPARTMENT_ID] = retryId;
           newDepartment['department_id'] = retryId;
           Logger.log("DepartmentService 23505 collision detected. Retrying with fresh ID: " + retryId);
