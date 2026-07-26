@@ -263,16 +263,16 @@
         const currentUserRole = String(storedRole).toUpperCase().trim();
         const superAdminOpt = roleSelect.querySelector('option[value="Super Admin"]');
         const adminOpt = roleSelect.querySelector('option[value="Admin"]');
-        const hodOpt = roleSelect.querySelector('option[value="HOD"]');
-        const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN' || currentUserRole === 'ADMIN');
+        const eventAdminOpt = roleSelect.querySelector('option[value="Event Admin"]');
+        const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN');
         const isHOD = (currentUserRole === 'HOD');
 
         const deptContainer = document.getElementById('userDepartmentContainer');
 
         if (isEventAdmin) {
-          // Event Admin logged in: lock role option strictly to Coordinator & hide department dropdown
           if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
           if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
+          if (eventAdminOpt) { eventAdminOpt.disabled = true; eventAdminOpt.hidden = true; eventAdminOpt.style.display = 'none'; }
           if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
           roleSelect.value = 'Coordinator';
           roleSelect.dispatchEvent(new Event('change'));
@@ -286,13 +286,13 @@
         } else if (isHOD) {
           if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
           if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
-          if (roleSelect.value === 'Super Admin' || roleSelect.value === 'Admin') {
-            roleSelect.value = 'Coordinator';
-          }
+          if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
+          if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
           if (deptContainer) deptContainer.classList.remove('d-none');
         } else {
           if (superAdminOpt) { superAdminOpt.disabled = false; superAdminOpt.hidden = false; superAdminOpt.style.display = ''; }
           if (adminOpt) { adminOpt.disabled = false; adminOpt.hidden = false; adminOpt.style.display = ''; }
+          if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
           if (hodOpt) { hodOpt.disabled = false; hodOpt.hidden = false; hodOpt.style.display = ''; }
           if (deptContainer) deptContainer.classList.remove('d-none');
         }
