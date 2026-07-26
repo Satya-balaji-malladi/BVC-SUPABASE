@@ -232,20 +232,23 @@ const SessionService = {
 
       var activeStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.ACTIVE) ? CONFIG.SESSION_STATUS.ACTIVE : 'Active';
       
+      var statusVal = session['Session Status'] || session['session_status'] || session[statusCol];
+      
       Logger.log("Validation Step 1");
       Logger.log("Status Column Name: " + statusCol);
-      Logger.log("Status Value: " + session[statusCol]);
+      Logger.log("Status Value: " + statusVal);
       Logger.log("Expected Active Status: " + activeStatus);
       
-      if (String(session[statusCol]) !== String(activeStatus)) {
-        Logger.log("Validation FAILED because: Status mismatch (Expected Active, got: " + session[statusCol] + ")");
+      if (String(statusVal).toLowerCase() !== String(activeStatus).toLowerCase()) {
+        Logger.log("Validation FAILED because: Status mismatch (Expected Active, got: " + statusVal + ")");
         Logger.log("=== EXIT _validateSessionRecord() ===");
         return false;
       }
 
       var currentTime = new Date().getTime();
-      var rawExpiry = session[expiryCol];
+      var rawExpiry = session['Expiry Time'] || session['expiry_time'] || session[expiryCol];
       var expiryTime = this._getTimestamp(rawExpiry);
+
 
       Logger.log("Validation Step 2");
       Logger.log("Expiry Column Name: " + expiryCol);
@@ -592,11 +595,12 @@ const SessionService = {
       }
 
       var userIdCol = this._col('USER_ID', 'User ID', 'USER_ID');
-      var finalUserId = session[userIdCol];
+      var finalUserId = session['User ID'] || session['user_id'] || session['userId'] || session[userIdCol];
       Logger.log("Returned User ID: " + finalUserId);
       Logger.log("EXIT getCurrentUser()");
       Logger.log("---------------------");
       return finalUserId;
+
     } catch (error) {
       Logger.log('SessionService.getCurrentUser error: ' + (error && error.message ? error.message : error));
       Logger.log("EXIT getCurrentUser() with error");
