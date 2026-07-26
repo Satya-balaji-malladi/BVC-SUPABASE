@@ -105,6 +105,12 @@ const DepartmentService = {
       );
     }
 
+    // Normalize payload keys for backward compatibility
+    var deptName = departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] || departmentData.department_name || '';
+    var deptCode = departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] || departmentData.department_code || '';
+    departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] = deptName;
+    departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] = deptCode;
+
     // Validate department data
     var validationResult = ValidationService.validateDepartment(departmentData);
 
@@ -115,12 +121,6 @@ const DepartmentService = {
 
       return Utils.buildResponse(false, errors.join(" "));
     }
-
-    // Normalize payload keys for backward compatibility
-    const deptName = departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] || departmentData.department_name || '';
-    const deptCode = departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] || departmentData.department_code || '';
-    departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] = deptName;
-    departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] = deptCode;
 
     // Check Department Name
     if (!this._isDepartmentNameAvailable(deptName)) {

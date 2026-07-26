@@ -521,26 +521,26 @@ Logger.log(JSON.stringify(studentData, null, 2));
       return this._buildResult(['Department data is missing.']);
     }
 
-    var nameKey = CONFIG.COLUMNS.DEPARTMENT_NAME;
-    var codeKey = CONFIG.COLUMNS.DEPARTMENT_CODE;
+    var nameVal = departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] || departmentData.department_name || '';
+    var codeVal = departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] || departmentData.department_code || '';
 
     var err;
 
     err = this.validateRequired(
-      departmentData[nameKey],
+      nameVal,
       'Department Name'
     );
     if (err) errors.push(err);
 
     err = this.validateRequired(
-      departmentData[codeKey],
+      codeVal,
       'Department Code'
     );
     if (err) errors.push(err);
 
-    if (departmentData[nameKey]) {
+    if (nameVal) {
       err = this.validateLength(
-        departmentData[nameKey],
+        nameVal,
         2,
         100,
         'Department Name'
