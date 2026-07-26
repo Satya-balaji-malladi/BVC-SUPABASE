@@ -622,10 +622,12 @@ const CoordinatorService = {
         return Utils.buildResponse(false, 'User not found.');
       }
 
-      // 3. Check if Role == COORDINATOR
-      const userRole = user.Role || user.role || user['Role'];
-      if (String(userRole).toUpperCase() !== 'COORDINATOR') {
-        Logger.log('[OUTPUT] CoordinatorService.validateCoordinatorSession -> User is not authorized as a coordinator.');
+      // 3. Check if Role allows coordinator terminal access
+      // Allow 'Coordinator', 'Event Admin', 'SuperAdmin', 'Admin' roles
+      const userRole = String(user.Role || user.role || user['Role'] || '').toUpperCase();
+      const allowedRoles = ['COORDINATOR', 'EVENT ADMIN', 'SUPERADMIN', 'ADMIN'];
+      if (!allowedRoles.includes(userRole)) {
+        Logger.log('[OUTPUT] CoordinatorService.validateCoordinatorSession -> User is not authorized as a coordinator. Role: ' + userRole);
         return Utils.buildResponse(false, 'User is not authorized as a coordinator.');
       }
 
@@ -634,10 +636,13 @@ const CoordinatorService = {
       const allAssignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
       Logger.log('[DATABASE RESULT] Assignment rows gathered.');
 
-      const hasActiveAssignment = allAssignments.some(row => 
-        this._normId(row['User ID']) === this._normId(userId) &&
-        String(row['Assignment Status']).trim() === 'Active'
-      );
+      const hasActiveAssignment = allAssignments.some(row => {
+        // Handle both snake_case (Supabase) and Title Case field names
+        const rowUserId = row['User ID'] || row['user_id'] || '';
+        const rowStatus = row['Assignment Status'] || row['assignment_status'] || '';
+        return this._normId(rowUserId) === this._normId(userId) &&
+               String(rowStatus).trim().toLowerCase() === 'active';
+      });
 
       if (!hasActiveAssignment) {
         Logger.log('[OUTPUT] CoordinatorService.validateCoordinatorSession -> No active event assignment found.');
