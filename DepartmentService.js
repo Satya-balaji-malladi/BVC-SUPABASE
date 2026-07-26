@@ -9,13 +9,14 @@ const DepartmentService = {
   _isDepartmentNameAvailable: function(name, excludeId) {
     try {
       const records = this._getDepartments();
-      return !records.some(dept =>
-        dept[CONFIG.COLUMNS.DEPARTMENT_NAME] === name &&
-        dept[CONFIG.COLUMNS.DEPARTMENT_ID] !== excludeId
-      );
+      const targetName = String(name).trim().toLowerCase();
+      return !records.some(dept => {
+        const dName = String(dept[CONFIG.COLUMNS.DEPARTMENT_NAME] || dept.department_name || '').trim().toLowerCase();
+        const dId = dept[CONFIG.COLUMNS.DEPARTMENT_ID] || dept.department_id;
+        return dName === targetName && String(dId) !== String(excludeId);
+      });
     } catch (error) {
       Logger.log('DepartmentService._isDepartmentNameAvailable error: ' + (error && error.message ? error.message : error));
-      // safest backward-compatible behavior: treat as not available
       return false;
     }
   },
@@ -23,10 +24,12 @@ const DepartmentService = {
   _isDepartmentCodeAvailable: function(code, excludeId) {
     try {
       const records = this._getDepartments();
-      return !records.some(dept =>
-        dept[CONFIG.COLUMNS.DEPARTMENT_CODE] === code &&
-        dept[CONFIG.COLUMNS.DEPARTMENT_ID] !== excludeId
-      );
+      const targetCode = String(code).trim().toLowerCase();
+      return !records.some(dept => {
+        const dCode = String(dept[CONFIG.COLUMNS.DEPARTMENT_CODE] || dept.department_code || '').trim().toLowerCase();
+        const dId = dept[CONFIG.COLUMNS.DEPARTMENT_ID] || dept.department_id;
+        return dCode === targetCode && String(dId) !== String(excludeId);
+      });
     } catch (error) {
       Logger.log('DepartmentService._isDepartmentCodeAvailable error: ' + (error && error.message ? error.message : error));
       return false;
