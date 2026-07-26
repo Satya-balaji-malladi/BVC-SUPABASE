@@ -398,20 +398,7 @@ function getActiveDepartments(sessionToken) {
   }
 }
 
-/**
- * Creates a new department.
- * @param {string} sessionToken - Request session token.
- * @param {object} departmentData - Department data object.
- * @returns {object} Response object.
- */
-function createDepartment(sessionToken, departmentData) {
-  try {
-    const res = Controller.Department.createDepartment(sessionToken, departmentData);
-    return JSON.parse(JSON.stringify(res || {}));
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
+
 
 /**
  * Updates an existing department.

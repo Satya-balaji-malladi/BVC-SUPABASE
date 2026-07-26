@@ -619,16 +619,29 @@
       const apiCall = mode === 'add' ? App.API.createDepartment(deptData) : App.API.updateDepartment(id, deptData);
       apiCall.then(res => {
         App.LoadingManager.hide();
-        const modalEl = document.getElementById('departmentModal');
-        if (modalEl && typeof bootstrap !== 'undefined') {
-          const modal = bootstrap.Modal.getInstance(modalEl);
-          if (modal) modal.hide();
+        if (res && res.success === false) {
+          App.UI.showError(res.message || "Failed to save department.");
+          return;
         }
-        App.UI.showSuccess(mode === 'add' ? "Department created and HOD credentials dispatched!" : "Department updated.");
+        
+        const modalEl = document.getElementById('departmentModal');
+        if (modalEl) {
+          if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+          }
+          modalEl.classList.remove('show');
+          modalEl.style.display = 'none';
+          document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+          document.body.classList.remove('modal-open');
+        }
+        
+        const msg = (res && res.message) ? res.message : (mode === 'add' ? "Department created and HOD credentials dispatched!" : "Department updated.");
+        App.UI.showSuccess(msg);
         this.loadDepartments();
       }).catch(err => {
         App.LoadingManager.hide();
-        App.UI.showError("Failed to save department: " + err.message);
+        App.UI.showError("Failed to save department: " + (err.message || err));
       });
     },
 
