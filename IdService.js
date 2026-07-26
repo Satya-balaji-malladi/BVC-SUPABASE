@@ -47,8 +47,10 @@ const IdService = {
 
       // Determine maximum sequence for IDs that match the resolved prefix.
       var maxSequence = 0;
+      var idHeader = CONFIG.ID_COLUMNS[logicalKey];
       for (var i = 0; i < records.length; i++) {
-        var currentId = records[i][CONFIG.ID_COLUMNS[logicalKey]];
+        var r = records[i];
+        var currentId = r[idHeader] || r.department_id || r.user_id || r.event_id || r.attendance_id || r.id;
         if (currentId && typeof currentId === 'string' && currentId.indexOf(resolvedPrefix) === 0) {
           var sequenceStr = currentId.substring(resolvedPrefix.length);
           var sequenceNum = parseInt(sequenceStr, 10);
@@ -61,14 +63,20 @@ const IdService = {
       
       // Ensure candidateId is strictly unique against existing DB records
       var existsInDb = records.some(function(r) {
-        var existing = r[CONFIG.ID_COLUMNS[logicalKey]] || r.department_id || r.departmentId;
+        var existing = r[idHeader] || r.department_id || r.user_id || r.event_id || r.attendance_id || r.id;
         return String(existing).trim() === String(candidateId).trim();
       });
 
       if (existsInDb) {
-        // Fallback to high sequence or timestamp suffix to prevent 409 duplicate key violations
-        var timestampNum = Math.floor(Date.now() / 1000) % 1000;
-        candidateId = resolvedPrefix + Utils.padNumber(maxSequence + 1 + timestampNum, cfg.digits);
+        // Increment sequence until an unused ID is found
+        while (existsInDb) {
+          nextSequence++;
+          candidateId = resolvedPrefix + Utils.padNumber(nextSequence, cfg.digits);
+          existsInDb = records.some(function(r) {
+            var existing = r[idHeader] || r.department_id || r.user_id || r.event_id || r.attendance_id || r.id;
+            return String(existing).trim() === String(candidateId).trim();
+          });
+        }
       }
 
       return candidateId;
