@@ -548,9 +548,9 @@ Logger.log(JSON.stringify(studentData, null, 2));
       if (err) errors.push(err);
     }
 
-    if (departmentData[codeKey]) {
+    if (codeVal) {
       err = this.validateLength(
-        departmentData[codeKey],
+        codeVal,
         2,
         20,
         'Department Code'
