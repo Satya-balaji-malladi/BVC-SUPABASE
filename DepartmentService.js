@@ -45,16 +45,26 @@ const DepartmentService = {
 
   _buildDepartmentObject: function(data, createdBy) {
     const now = Utils.getCurrentTimestamp();
+    const name = data[CONFIG.COLUMNS.DEPARTMENT_NAME] || data.department_name || '';
+    const code = data[CONFIG.COLUMNS.DEPARTMENT_CODE] || data.department_code || '';
+    const hod = data['HOD Name'] || data.hod_name || '';
+    const empId = data['HOD Emp ID'] || data.hod_emp_id || '';
+    const email = data['HOD Email'] || data.hod_email || '';
+    const status = data[CONFIG.COLUMNS.STATUS] || data.status || CONFIG.DEPARTMENT_STATUS.ACTIVE;
+
     return {
       [CONFIG.COLUMNS.DEPARTMENT_ID]: IdService.generateDepartmentId(),
-      [CONFIG.COLUMNS.DEPARTMENT_NAME]: data[CONFIG.COLUMNS.DEPARTMENT_NAME],
-      [CONFIG.COLUMNS.DEPARTMENT_CODE]: data[CONFIG.COLUMNS.DEPARTMENT_CODE],
-      [CONFIG.COLUMNS.DESCRIPTION]: data[CONFIG.COLUMNS.DESCRIPTION],
-      [CONFIG.COLUMNS.STATUS]: CONFIG.DEPARTMENT_STATUS.ACTIVE,
+      [CONFIG.COLUMNS.DEPARTMENT_NAME]: name,
+      [CONFIG.COLUMNS.DEPARTMENT_CODE]: code,
+      'HOD Name': hod,
+      'HOD Emp ID': empId,
+      'HOD Email': email,
+      [CONFIG.COLUMNS.DESCRIPTION]: data[CONFIG.COLUMNS.DESCRIPTION] || '',
+      [CONFIG.COLUMNS.STATUS]: status,
       [CONFIG.COLUMNS.DELETION_FLAG]: false,
-      [CONFIG.COLUMNS.CREATED_BY]: createdBy,
+      [CONFIG.COLUMNS.CREATED_BY]: createdBy || 'System',
       [CONFIG.COLUMNS.CREATED_AT]: now,
-      [CONFIG.COLUMNS.UPDATED_BY]: createdBy,
+      [CONFIG.COLUMNS.UPDATED_BY]: createdBy || 'System',
       [CONFIG.COLUMNS.UPDATED_AT]: now
     };
   },
@@ -106,23 +116,25 @@ const DepartmentService = {
       return Utils.buildResponse(false, errors.join(" "));
     }
 
+    // Normalize payload keys for backward compatibility
+    const deptName = departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] || departmentData.department_name || '';
+    const deptCode = departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] || departmentData.department_code || '';
+    departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME] = deptName;
+    departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE] = deptCode;
+
     // Check Department Name
-    if (!this._isDepartmentNameAvailable(
-      departmentData[CONFIG.COLUMNS.DEPARTMENT_NAME]
-    )) {
+    if (!this._isDepartmentNameAvailable(deptName)) {
       return Utils.buildResponse(
         false,
-        CONFIG.MESSAGES.DEPARTMENT_NAME_EXISTS
+        CONFIG.MESSAGES.DEPARTMENT_NAME_EXISTS || "Department name already exists."
       );
     }
 
     // Check Department Code
-    if (!this._isDepartmentCodeAvailable(
-      departmentData[CONFIG.COLUMNS.DEPARTMENT_CODE]
-    )) {
+    if (!this._isDepartmentCodeAvailable(deptCode)) {
       return Utils.buildResponse(
         false,
-        CONFIG.MESSAGES.DEPARTMENT_CODE_EXISTS
+        CONFIG.MESSAGES.DEPARTMENT_CODE_EXISTS || "Department code already exists."
       );
     }
 
