@@ -606,8 +606,17 @@ const Utils = {
     try {
       if (!department) return null;
       const safeDepartment = this.deepClone(department);
-      // If specific department fields are sensitive, add them to CONFIG 
-      // or filter them here if they are universally sensitive.
+      const hod = department['HOD Name'] || department.hod_name || '';
+      const empId = department['HOD Emp ID'] || department.hod_emp_id || department.hod_employee_id || '';
+      const email = department['HOD Email'] || department.hod_email || department.remarks || '';
+
+      safeDepartment['HOD Name'] = hod;
+      safeDepartment['hod_name'] = hod;
+      safeDepartment['HOD Emp ID'] = empId;
+      safeDepartment['hod_emp_id'] = empId;
+      safeDepartment['hod_employee_id'] = empId;
+      safeDepartment['HOD Email'] = email;
+      safeDepartment['hod_email'] = email;
       return safeDepartment;
     } catch (e) {
       Logger.log('Utils.sanitizeDepartment error: ' + (e && e.message ? e.message : e));

@@ -563,8 +563,8 @@
         const code = d['Department Code'] || d.department_code || '';
         const name = d['Department Name'] || d.department_name || '';
         const hod = d['HOD Name'] || d.hod_name || '--';
-        const empId = d['HOD Emp ID'] || d.hod_emp_id || '--';
-        const email = d['HOD Email'] || d.hod_email || '--';
+        const empId = d['HOD Emp ID'] || d.hod_emp_id || d.hod_employee_id || '--';
+        const email = d['HOD Email'] || d.hod_email || d.remarks || '--';
         const status = d['Status'] || d.status || 'Active';
         const badgeClass = status.toLowerCase() === 'active' ? 'bg-success' : 'bg-secondary';
 
