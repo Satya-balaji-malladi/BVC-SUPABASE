@@ -307,19 +307,19 @@ const UserService = {
         var requestedRole = String(userData[roleCol] || userData.role || '').trim().toUpperCase();
         if (callerUserContext.isSuperAdmin) {
           // Super Admin has full privilege
-        } else if (callerUserContext.isAdmin && !callerUserContext.isSuperAdmin) {
-          // Admin can only create Coordinator
+        } else if (callerUserContext.isEventAdmin || (callerUserContext.isAdmin && !callerUserContext.isSuperAdmin)) {
+          // Event Admin can create Coordinator accounts
           if (requestedRole !== 'COORDINATOR') {
-            return Utils.buildResponse(false, 'Unauthorized: Admins can only create Coordinator accounts.');
+            return Utils.buildResponse(false, 'Unauthorized: Event Admins can only create Coordinator accounts.');
           }
         } else if (callerUserContext.isHOD) {
-          // HOD can create Admin and Coordinator
-          if (requestedRole !== 'COORDINATOR' && requestedRole !== 'ADMIN') {
-            return Utils.buildResponse(false, 'Unauthorized: HODs can only create Admin and Coordinator accounts.');
+          // HOD can create Event Admin and Coordinator accounts
+          if (requestedRole !== 'COORDINATOR' && requestedRole !== 'ADMIN' && requestedRole !== 'EVENT ADMIN' && requestedRole !== 'EVENT_ADMIN') {
+            return Utils.buildResponse(false, 'Unauthorized: HODs can only create Event Admin and Coordinator accounts.');
           }
         } else {
           // Coordinator or other roles cannot create users
-          return Utils.buildResponse(false, 'Unauthorized: Only Super Admin, Admin, and HOD can create user accounts.');
+          return Utils.buildResponse(false, 'Unauthorized: Only Super Admin, HOD, and Event Admin can create user accounts.');
         }
       }
 
