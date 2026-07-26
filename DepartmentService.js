@@ -145,17 +145,43 @@ const DepartmentService = {
       );
     }
 
-    // Build Department Object
+    // Build Department Object with fresh ID
+    var freshId = IdService.generateDepartmentId();
+    departmentData.department_id = freshId;
+    departmentData[CONFIG.COLUMNS.DEPARTMENT_ID] = freshId;
+
     var newDepartment = this._buildDepartmentObject(
       departmentData,
       createdBy
     );
 
-    // Insert into Database
-    var inserted = DatabaseService.insertRow(
-      CONFIG.SHEETS.DEPARTMENTS,
-      newDepartment
-    );
+    // Insert into Database with bounded collision retry for 23505 errors
+    var inserted = null;
+    var maxRetries = 3;
+    var attempt = 0;
+    while (attempt < maxRetries) {
+      try {
+        inserted = DatabaseService.insertRow(
+          CONFIG.SHEETS.DEPARTMENTS,
+          newDepartment
+        );
+        break; // Insert succeeded
+      } catch (insertErr) {
+        var errStr = String(insertErr && insertErr.message ? insertErr.message : insertErr);
+        if (errStr.indexOf("23505") !== -1 || errStr.indexOf("duplicate key") !== -1) {
+          attempt++;
+          if (attempt >= maxRetries) throw insertErr;
+          
+          // Regenerate fresh ID guaranteed not in DB and retry
+          var retryId = IdService.generateDepartmentId();
+          newDepartment[CONFIG.COLUMNS.DEPARTMENT_ID] = retryId;
+          newDepartment['department_id'] = retryId;
+          Logger.log("DepartmentService 23505 collision detected. Retrying with fresh ID: " + retryId);
+        } else {
+          throw insertErr;
+        }
+      }
+    }
 
     if (!inserted) {
       return Utils.buildResponse(
