@@ -157,6 +157,57 @@ const DepartmentService = {
       );
     }
 
+    // Automatically create HOD user account in users table if HOD details are provided
+    var hodEmail = departmentData['HOD Email'] || departmentData.hod_email || '';
+    var hodEmpId = departmentData['HOD Emp ID'] || departmentData.hod_emp_id || '';
+    var hodName = departmentData['HOD Name'] || departmentData.hod_name || '';
+
+    if (hodEmail && hodEmpId) {
+      try {
+        var existingUser = UserService.getUserByEmployeeId ? UserService.getUserByEmployeeId(hodEmpId) : null;
+        if (!existingUser) {
+          // Create new HOD User Account
+          var nameParts = hodName.trim().split(" ");
+          var firstName = nameParts[0] || hodName;
+          var lastName = nameParts.slice(1).join(" ") || "";
+          var initialPassword = "BVC@" + String(hodEmpId).toUpperCase();
+
+          var hodUserData = {
+            username: String(hodEmpId).toLowerCase(),
+            password: initialPassword,
+            email_address: hodEmail,
+            first_name: firstName,
+            last_name: lastName,
+            employee_id: hodEmpId,
+            role: "HOD",
+            department: deptCode,
+            title_designation: "Head of Department (" + deptCode + ")",
+            status: "Active"
+          };
+          
+          UserService.createUser(hodUserData, createdBy || 'SuperAdmin');
+          
+          // Send email notification with login credentials
+          try {
+            if (typeof MailApp !== 'undefined' && MailApp.sendEmail) {
+              var emailBody = "Dear " + hodName + ",\n\n" +
+                              "Your HOD Account for the " + deptName + " (" + deptCode + ") has been created successfully on the BVC Event Attendance Portal.\n\n" +
+                              "LOGIN CREDENTIALS:\n" +
+                              "Username / Employee ID: " + hodEmpId + "\n" +
+                              "Temporary Password: " + initialPassword + "\n\n" +
+                              "Please log in and update your password upon first sign-in.\n\n" +
+                              "Regards,\nBVC System Administration";
+              MailApp.sendEmail(hodEmail, "BVC Attendance Portal - HOD Account Credentials", emailBody);
+            }
+          } catch(eMailErr) {
+            Logger.log("Failed to send HOD credentials email: " + eMailErr.message);
+          }
+        }
+      } catch (userCreateErr) {
+        Logger.log("HOD User Auto-Creation note: " + userCreateErr.message);
+      }
+    }
+
     // Audit Log
     try {
       AuditService.logAction(
@@ -165,7 +216,7 @@ const DepartmentService = {
         "CREATE_DEPARTMENT",
         newDepartment[CONFIG.COLUMNS.DEPARTMENT_ID],
         "Department",
-        "Department created",
+        "Department created with HOD: " + hodName,
         "",
         "SUCCESS",
         createdBy || ""
@@ -176,7 +227,7 @@ const DepartmentService = {
 
     return Utils.buildResponse(
       true,
-      CONFIG.MESSAGES.DEPARTMENT_CREATED,
+      "Department created and HOD account (" + hodEmpId + ") successfully configured!",
       {
         department: Utils.sanitizeDepartment(
           inserted === true ? newDepartment : inserted
