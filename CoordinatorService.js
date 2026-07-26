@@ -963,14 +963,12 @@ const CoordinatorService = {
         studentPayload[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
         studentPayload[CONFIG.COLUMNS.STUDENT_NAME] = studentName;
         studentPayload[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = branch;
-        studentPayload[CONFIG.COLUMNS.STUDENT_YEAR] = yearVal;
-        studentPayload[CONFIG.COLUMNS.STUDENT_SECTION] = sectionVal;
-        studentPayload[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
-        studentPayload["College"] = collegeName;
-        StudentService.createStudent(studentPayload, 'Coordinator');
-      } else {
+    // Create or update Student entity
+    var existingStudent = StudentService.getStudentByRollNumber(normRoll);
+    if (!existingStudent) {
+      if (studentType.includes('OTHER') || !collegeName.toLowerCase().includes('bvc')) {
         var otherStudentPayload = {
-          id: 'OCS' + Date.now(),
+          id: 'OCS_' + Date.now(),
           roll_number: normRoll,
           student_name: studentName,
           college_name: collegeName,
@@ -982,19 +980,27 @@ const CoordinatorService = {
           created_at: new Date().toISOString()
         };
         try { DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload); } catch(e) {}
-        
-        // Also stub in main students table for foreign key safety
-        try {
-          var mainStudentStub = {};
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_NAME] = studentName;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = branch;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_YEAR] = yearVal;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_SECTION] = sectionVal;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
-          mainStudentStub["College"] = collegeName;
-          StudentService.createStudent(mainStudentStub, 'Coordinator');
-        } catch(e) {}
+      }
+
+      // Ensure main student stub for foreign key constraint
+      try {
+        var mainStudentPayload = {
+          student_id: 'STU_SPOT_' + Date.now(),
+          'Roll Number': normRoll,
+          'roll_number': normRoll,
+          'Student Name': studentName,
+          'student_name': studentName,
+          'Department ID': branch,
+          'department_id': branch,
+          'Year': yearVal,
+          'year': yearVal,
+          'Section': sectionVal,
+          'Status': 'Active',
+          'College': collegeName
+        };
+        DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, mainStudentPayload);
+      } catch(e) {
+        Logger.log('[spotRegisterParticipant] Stub creation warning: ' + e.message);
       }
     }
 
@@ -1005,17 +1011,29 @@ const CoordinatorService = {
 
     var participantRecord = {
       'Participant ID': participantId,
+      'participant_id': participantId,
       'Event ID': eventId,
+      'event_id': eventId,
       'Roll Number': normRoll,
+      'roll_number': normRoll,
       'Registration Type': 'Spot',
+      'registration_type': 'Spot',
       'Registration Status': 'Active',
+      'registration_status': 'Active',
       'Attendance Status': 'Absent',
+      'attendance_status': 'Absent',
       'Approval Status': 'Approved',
+      'approval_status': 'Approved',
       'Registration Date': nowDate,
+      'registration_date': nowDate,
       'Registration Timestamp': nowIso,
+      'registration_timestamp': nowIso,
       'Custom Fields Data': JSON.stringify(spotData.customFields || {}),
+      'custom_fields_data': JSON.stringify(spotData.customFields || {}),
       'Created By': 'Coordinator',
-      'Created At': nowIso
+      'created_by': 'Coordinator',
+      'Created At': nowIso,
+      'created_at': nowIso
     };
 
     var insertOk = DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, participantRecord);
@@ -1077,23 +1095,13 @@ const CoordinatorService = {
     var student = StudentService.getStudentByRollNumber(normRoll);
     if (!student) {
       var sName = (additionalData && (additionalData.studentName || additionalData.name) ? (additionalData.studentName || additionalData.name) : 'Participant').trim();
-      var sBranch = (additionalData && (additionalData.branch || additionalData.department) ? (additionalData.branch || additionalData.department) : 'CSE').trim().toUpperCase();
+      var sBranch = this._getValidDepartmentId(additionalData ? (additionalData.branch || additionalData.department) : null);
       var sCollege = (additionalData && (additionalData.college || additionalData.collegeName) ? (additionalData.college || additionalData.collegeName) : 'BVC Engineering College').trim();
       var isBvc = !sCollege || sCollege.toLowerCase().includes('bvc') || sCollege.toLowerCase().includes('bonam');
 
-      if (isBvc) {
-        var studentPayload = {};
-        studentPayload[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
-        studentPayload[CONFIG.COLUMNS.STUDENT_NAME] = sName;
-        studentPayload[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = sBranch;
-        studentPayload[CONFIG.COLUMNS.STUDENT_YEAR] = additionalData?.year || '1';
-        studentPayload[CONFIG.COLUMNS.STUDENT_SECTION] = additionalData?.section || 'A';
-        studentPayload[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
-        studentPayload["College"] = sCollege;
-        StudentService.createStudent(studentPayload, 'Coordinator');
-      } else {
+      if (!isBvc) {
         var otherStudentPayload = {
-          id: 'OCS' + Date.now(),
+          id: 'OCS_' + Date.now(),
           roll_number: normRoll,
           student_name: sName,
           college_name: sCollege,
@@ -1105,17 +1113,26 @@ const CoordinatorService = {
           created_at: new Date().toISOString()
         };
         try { DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload); } catch(e) {}
-        try {
-          var mainStudentStub = {};
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_NAME] = sName;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = sBranch;
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_YEAR] = additionalData?.year || '1';
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_SECTION] = additionalData?.section || 'A';
-          mainStudentStub[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
-          mainStudentStub["College"] = sCollege;
-          StudentService.createStudent(mainStudentStub, 'Coordinator');
-        } catch(e) {}
+      }
+
+      try {
+        var studentPayload = {
+          student_id: 'STU_CONFIRM_' + Date.now(),
+          'Roll Number': normRoll,
+          'roll_number': normRoll,
+          'Student Name': sName,
+          'student_name': sName,
+          'Department ID': sBranch,
+          'department_id': sBranch,
+          'Year': String(additionalData?.year || '1'),
+          'year': String(additionalData?.year || '1'),
+          'Section': String(additionalData?.section || 'A'),
+          'Status': 'Active',
+          'College': sCollege
+        };
+        DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, studentPayload);
+      } catch(e) {
+        Logger.log('[confirmMarkParticipation] Student stub creation warning: ' + e.message);
       }
     } else if (additionalData && typeof additionalData === 'object') {
       if (additionalData.studentName || additionalData.phone || additionalData.email) {
