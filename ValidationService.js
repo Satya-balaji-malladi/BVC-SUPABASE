@@ -336,9 +336,12 @@ Logger.log(JSON.stringify(studentData, null, 2));
     ];
 
     requiredFields.forEach(function(field) {
-
+      var val = studentData[field.key] || studentData[field.name.toLowerCase().replace(/ /g, '_')] || studentData[field.name.toLowerCase().replace(/ /g, '')];
+      if (field.name === "Department") {
+        val = val || studentData.department || studentData.department_id || studentData['Department ID'];
+      }
       var err = ValidationService.validateRequired(
-        studentData[field.key],
+        val,
         field.name
       );
 
@@ -445,32 +448,17 @@ Logger.log(JSON.stringify(studentData, null, 2));
         var errors = [];
         if (!eventData) return this._buildResult(['Event data is missing.']);
 
-        // Relax validation for draft events to support simplified event creation
-        var isDraft = String(eventData.status || '').toLowerCase() === 'draft';
-        var requiredKeys = isDraft ? ['eventName', 'status'] : ['eventName', 'startDate', 'endDate', 'startTime', 'endTime', 'venueId', 'status'];
-        
-        requiredKeys.forEach(function(k) {
-          var err = ValidationService.validateRequired(eventData[k], k);
-          if (err) errors.push(err);
-        });
+        var name = eventData.eventName || eventData.event_name || eventData['Event Name'];
+        var startDate = eventData.startDate || eventData.start_date || eventData['Start Date'];
+        var endDate = eventData.endDate || eventData.end_date || eventData['End Date'];
+        var startTime = eventData.startTime || eventData.start_time || '09:00';
+        var endTime = eventData.endTime || eventData.end_time || '17:00';
+        var venue = eventData.venueId || eventData.venue || eventData['Venue'];
+        var status = eventData.status || eventData['Event Status'] || 'Active';
 
-        var rangeErr = this.validateDateRange(eventData.startDate, eventData.endDate);
-        if (rangeErr) errors.push(rangeErr);
-
-        var stErr = this.validateStatus(eventData.status);
-        if (stErr) errors.push(stErr);
-
-        var startDateErr = this.validateDate(eventData.startDate, 'Start Date');
-        if (startDateErr) errors.push(startDateErr);
-
-        var endDateErr = this.validateDate(eventData.endDate, 'End Date');
-        if (endDateErr) errors.push(endDateErr);
-
-        var startTimeErr = this.validateTime(eventData.startTime, 'Start Time');
-        if (startTimeErr) errors.push(startTimeErr);
-
-        var endTimeErr = this.validateTime(eventData.endTime, 'End Time');
-        if (endTimeErr) errors.push(endTimeErr);
+        if (!name) errors.push('eventName is required.');
+        if (!startDate) errors.push('startDate is required.');
+        if (!endDate) errors.push('endDate is required.');
 
         return this._buildResult(errors);
       } catch (e) {
