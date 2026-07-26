@@ -106,15 +106,24 @@
     },
 
     enforceRoleVisibility: function() {
-      const user = App.Auth.currentUser || {};
-      const role = user.role || user.Role || 'Coordinator';
+      const user = (App.State && App.State.currentUser) || App.Auth.currentUser || {};
+      const rawRole = String(user.role || user.Role || localStorage.getItem('userRole') || 'Coordinator').toUpperCase().trim();
+      const isSuperAdmin = (rawRole === 'SUPER ADMIN' || rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN');
+      const isHOD = (rawRole === 'HOD');
 
-      if (role === 'Admin') {
+      const hodContainer = document.getElementById('hod-structure-container');
+      const superadminContainer = document.getElementById('superadmin-depts-container');
+
+      if (isSuperAdmin) {
         document.getElementById('tab-maintenance-wrapper')?.classList.remove('d-none');
         document.getElementById('tab-audit-wrapper')?.classList.remove('d-none');
+        if (hodContainer) hodContainer.classList.add('d-none');
+        if (superadminContainer) superadminContainer.classList.remove('d-none');
       } else {
         document.getElementById('tab-maintenance-wrapper')?.classList.add('d-none');
         document.getElementById('tab-audit-wrapper')?.classList.add('d-none');
+        if (hodContainer) hodContainer.classList.remove('d-none');
+        if (superadminContainer) superadminContainer.classList.add('d-none');
       }
     },
 
@@ -517,7 +526,7 @@
       tbody.innerHTML = '';
 
       if (this.departmentsData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No departments found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No departments created yet. Click "Create Department" to add one.</td></tr>';
         return;
       }
 
@@ -526,6 +535,8 @@
         const code = d['Department Code'] || d.department_code || '';
         const name = d['Department Name'] || d.department_name || '';
         const hod = d['HOD Name'] || d.hod_name || '--';
+        const empId = d['HOD Emp ID'] || d.hod_emp_id || '--';
+        const email = d['HOD Email'] || d.hod_email || '--';
         const status = d['Status'] || d.status || 'Active';
         const badgeClass = status.toLowerCase() === 'active' ? 'bg-success' : 'bg-secondary';
 
@@ -534,6 +545,8 @@
             <td class="fw-bold">${App.Utils.escapeHtml(code)}</td>
             <td>${App.Utils.escapeHtml(name)}</td>
             <td>${App.Utils.escapeHtml(hod)}</td>
+            <td><span class="font-monospace small text-secondary">${App.Utils.escapeHtml(empId)}</span></td>
+            <td><a href="mailto:${App.Utils.escapeHtml(email)}" class="text-decoration-none small">${App.Utils.escapeHtml(email)}</a></td>
             <td><span class="badge ${badgeClass} rounded-pill">${status}</span></td>
             <td class="text-end">
               <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-dept" data-id="${id}" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -552,26 +565,31 @@
 
       document.getElementById('deptFormMode').value = mode;
       document.getElementById('deptFormId').value = id || '';
-      document.getElementById('departmentModalLabel').innerText = mode === 'add' ? 'Add Department' : 'Edit Department';
+      document.getElementById('departmentModalLabel').innerText = mode === 'add' ? 'Create Department & Setup HOD' : 'Edit Department';
 
       if (mode === 'edit') {
         const d = this.departmentsData.find(x => String(x['Department ID'] || x.department_id) === String(id));
         if (d) {
-          document.getElementById('deptCode').value = d['Department Code'] || d.department_code || '';
-          document.getElementById('deptName').value = d['Department Name'] || d.department_name || '';
-          document.getElementById('deptHOD').value = d['HOD Name'] || d.hod_name || '';
-          document.getElementById('deptStatus').value = d['Status'] || d.status || 'Active';
+          if (document.getElementById('deptCode')) document.getElementById('deptCode').value = d['Department Code'] || d.department_code || '';
+          if (document.getElementById('deptName')) document.getElementById('deptName').value = d['Department Name'] || d.department_name || '';
+          if (document.getElementById('deptHOD')) document.getElementById('deptHOD').value = d['HOD Name'] || d.hod_name || '';
+          if (document.getElementById('deptHODEmpId')) document.getElementById('deptHODEmpId').value = d['HOD Emp ID'] || d.hod_emp_id || '';
+          if (document.getElementById('deptHODEmail')) document.getElementById('deptHODEmail').value = d['HOD Email'] || d.hod_email || '';
+          if (document.getElementById('deptStatus')) document.getElementById('deptStatus').value = d['Status'] || d.status || 'Active';
         }
       }
 
-      if (!this.deptModalInstance) {
-        this.deptModalInstance = new bootstrap.Modal(document.getElementById('departmentModal'));
+      const modalEl = document.getElementById('departmentModal');
+      if (modalEl && typeof bootstrap !== 'undefined') {
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.show();
       }
-      this.deptModalInstance.show();
     },
 
     saveDepartment: function() {
       const form = document.getElementById('departmentForm');
+      if (!form) return;
+
       if (!form.checkValidity()) {
         form.classList.add('was-validated');
         return;
@@ -579,22 +597,25 @@
 
       const mode = document.getElementById('deptFormMode').value;
       const id = document.getElementById('deptFormId').value;
-      const payload = {
-        'Department Code': document.getElementById('deptCode').value.trim(),
-        'Department Name': document.getElementById('deptName').value.trim(),
-        'HOD Name': document.getElementById('deptHOD').value.trim(),
-        'Status': document.getElementById('deptStatus').value
+      const deptData = {
+        department_name: document.getElementById('deptName').value.trim(),
+        department_code: document.getElementById('deptCode').value.trim(),
+        hod_name: document.getElementById('deptHOD').value.trim(),
+        hod_emp_id: document.getElementById('deptHODEmpId').value.trim(),
+        hod_email: document.getElementById('deptHODEmail').value.trim(),
+        status: document.getElementById('deptStatus').value
       };
 
       App.LoadingManager.show();
-      const promise = mode === 'add' 
-        ? App.API.createDepartment(payload) 
-        : App.API.updateDepartment(id, payload);
-
-      promise.then(res => {
+      const apiCall = mode === 'add' ? App.API.createDepartment(deptData) : App.API.updateDepartment(id, deptData);
+      apiCall.then(res => {
         App.LoadingManager.hide();
-        if (this.deptModalInstance) this.deptModalInstance.hide();
-        App.UI.showSuccess(mode === 'add' ? "Department created successfully." : "Department updated successfully.");
+        const modalEl = document.getElementById('departmentModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+          const modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) modal.hide();
+        }
+        App.UI.showSuccess(mode === 'add' ? "Department created and HOD credentials dispatched!" : "Department updated.");
         this.loadDepartments();
       }).catch(err => {
         App.LoadingManager.hide();
