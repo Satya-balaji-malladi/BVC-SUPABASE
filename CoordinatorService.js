@@ -487,11 +487,22 @@ const CoordinatorService = {
       const allRows = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
       Logger.log('[DATABASE RESULT] Fetched ' + allRows.length + ' rows.');
 
-      const eventIds = allRows
+      const assignedEventIds = allRows
         .filter(row => this._normId(row['User ID']) === this._normId(userId) && String(row['Assignment Status']).trim() === 'Active')
         .map(row => String(row['Event ID']).trim());
 
-      const activeEventIds = eventIds.filter(id => {
+      // Fallback: Also check EVENTS sheet for events where user is primary coordinator_id or creator
+      const allEvents = EventService.getAllEvents() || [];
+      const primaryEvents = allEvents.filter(ev => {
+        const cId = this._normId(ev.coordinator_id || ev['Coordinator ID'] || ev.Organizer);
+        const crId = this._normId(ev.created_by || ev['Created By']);
+        const uId = this._normId(userId);
+        return (cId === uId || crId === uId);
+      }).map(ev => String(ev.event_id || ev['Event ID']).trim());
+
+      const combinedIds = Array.from(new Set(assignedEventIds.concat(primaryEvents)));
+
+      const activeEventIds = combinedIds.filter(id => {
         const event = EventService.getEventById(id);
         if (!event) return false;
         const status = (event.status || event['Event Status'] || '').toUpperCase();

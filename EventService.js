@@ -96,8 +96,9 @@ const EventService = {
         return eventRecord;
       }
 
-      // 2. If explicitly stopped by admin, respect that
-      if (statusKey && (eventRecord[statusKey] === stopped || eventRecord[statusKey] === 'Stopped')) {
+      // 2. If explicitly Draft or Stopped by admin, respect that status (do not auto-evaluate to Completed/Active)
+      var currentEvtStatus = eventRecord['Event Status'] !== undefined ? eventRecord['Event Status'] : (eventRecord.event_status || eventRecord.status || (statusKey ? eventRecord[statusKey] : null));
+      if (currentEvtStatus === draft || currentEvtStatus === 'Draft' || currentEvtStatus === stopped || currentEvtStatus === 'Stopped') {
         return eventRecord;
       }
 
@@ -230,12 +231,15 @@ const EventService = {
     }
   },
 
-  _invalidateCaches_: function() {
+  _invalidateCaches_: function(eventId) {
     try {
       delete this._allActiveSanitizedEvents_;
       delete this._activeEventsForDedup_;
       if (typeof CacheManager !== 'undefined') {
         CacheManager.clearByPrefix("event_by_id");
+        if (eventId) {
+          CacheManager.remove("event_by_id_" + eventId);
+        }
       }
     } catch (e) {
       Logger.log('EventService._invalidateCaches_ error: ' + (e && e.message ? e.message : e));
@@ -376,8 +380,8 @@ const EventService = {
         const coordinator = UserService.getUserById(coordinatorId);
         const coordStatus = coordinator ? String(coordinator[CONFIG.COLUMNS.USER_STATUS] || coordinator['Status'] || coordinator.status || '').trim() : '';
         const coordRole   = coordinator ? String(coordinator[CONFIG.COLUMNS.USER_ROLE]   || coordinator['Role']   || coordinator.role   || '').trim() : '';
-        const allowedRoles = [CONFIG.ROLES.COORDINATOR, CONFIG.ROLES.HOD, CONFIG.ROLES.ADMIN, CONFIG.ROLES.SUPER_ADMIN];
-        if (!coordinator || coordStatus !== CONFIG.USER_STATUS.ACTIVE || !allowedRoles.includes(coordRole)) {
+        const allowedRoles = [CONFIG.ROLES.COORDINATOR, CONFIG.ROLES.HOD, CONFIG.ROLES.ADMIN, CONFIG.ROLES.SUPER_ADMIN, CONFIG.ROLES.EVENT_ADMIN, 'Event Admin', 'EVENT ADMIN', 'EVENT_ADMIN'];
+        if (!coordinator || coordStatus.toLowerCase() !== CONFIG.USER_STATUS.ACTIVE.toLowerCase() || !allowedRoles.map(r => String(r).toUpperCase()).includes(coordRole.toUpperCase())) {
           return Utils.buildResponse(false, CONFIG.MESSAGES.INVALID_COORDINATOR);
         }
       }
@@ -386,12 +390,31 @@ const EventService = {
       const timezone = CONFIG.DATE_TIME.TIMEZONE || 'Asia/Kolkata';
       const todayStr = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
       
-      if (!eventData[CONFIG.COLUMNS.START_DATE]) {
-        eventData[CONFIG.COLUMNS.START_DATE] = todayStr;
-        eventData[CONFIG.COLUMNS.END_DATE] = todayStr;
-        eventData[CONFIG.COLUMNS.START_TIME] = '09:00';
-        eventData[CONFIG.COLUMNS.END_TIME] = '17:00';
-        eventData[CONFIG.COLUMNS.VENUE] = 'TBD';
+      const startDateKey = CONFIG.COLUMNS.START_DATE;
+      const endDateKey = CONFIG.COLUMNS.END_DATE;
+      const startTimeKey = CONFIG.COLUMNS.START_TIME;
+      const endTimeKey = CONFIG.COLUMNS.END_TIME;
+      const venueKey = CONFIG.COLUMNS.VENUE;
+
+      if (!eventData[startDateKey] && !eventData.start_date && !eventData.startDate) {
+        eventData[startDateKey] = todayStr;
+        eventData.start_date = todayStr;
+      }
+      if (!eventData[endDateKey] && !eventData.end_date && !eventData.endDate) {
+        eventData[endDateKey] = todayStr;
+        eventData.end_date = todayStr;
+      }
+      if (!eventData[startTimeKey] && !eventData.start_time && !eventData.startTime) {
+        eventData[startTimeKey] = '09:00';
+        eventData.start_time = '09:00';
+      }
+      if (!eventData[endTimeKey] && !eventData.end_time && !eventData.endTime) {
+        eventData[endTimeKey] = '17:00';
+        eventData.end_time = '17:00';
+      }
+      if (!eventData[venueKey] && !eventData.venue && !eventData.venueId) {
+        eventData[venueKey] = 'TBD';
+        eventData.venue = 'TBD';
       }
 
       // Map incoming sheet-style payload to what ValidationService.validateEvent expects.
@@ -518,6 +541,7 @@ const EventService = {
 
   updateEvent: function(eventId, eventData, updaterId) {
     try {
+      const eventsSheet = CONFIG.SHEETS.EVENTS;
       this._ensureRegistrationHeaders();
       this._ensureParticipantHeaders();
 
@@ -530,14 +554,23 @@ const EventService = {
         return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_NOT_FOUND);
       }
 
-      // 1. Identity Lock: Only the original creator can edit Event Name or Description
+      // 1. Identity Lock: Creator or Assigned Event Admin / Admin can edit Event Name or Description
       const creatorId = existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by;
+      const assignedAdminId = existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id;
       const isChangingIdentity = 
         (eventData[CONFIG.COLUMNS.EVENT_NAME] !== undefined && eventData[CONFIG.COLUMNS.EVENT_NAME] !== existingEvent[CONFIG.COLUMNS.EVENT_NAME]) ||
         (eventData[CONFIG.COLUMNS.DESCRIPTION] !== undefined && eventData[CONFIG.COLUMNS.DESCRIPTION] !== existingEvent[CONFIG.COLUMNS.DESCRIPTION]);
       
-      if (isChangingIdentity && updaterId && String(updaterId).trim() !== String(creatorId).trim()) {
-        return Utils.buildResponse(false, 'Unauthorized: Only the original event creator can modify the Event Name or Description.');
+      if (isChangingIdentity && updaterId) {
+        const updaterUser = UserService.getUserById(updaterId);
+        const updaterRole = String(updaterUser ? (updaterUser.role || updaterUser['Role'] || '') : '').toUpperCase().trim();
+        const isCreator = String(updaterId).trim() === String(creatorId).trim();
+        const isAssignedAdmin = String(updaterId).trim() === String(assignedAdminId).trim();
+        const isSuperOrAdminOrHOD = updaterRole === 'SUPER ADMIN' || updaterRole === 'SUPER_ADMIN' || updaterRole === 'ADMIN' || updaterRole === 'EVENT ADMIN' || updaterRole === 'EVENT_ADMIN' || updaterRole === 'HOD';
+
+        if (!isCreator && !isAssignedAdmin && !isSuperOrAdminOrHOD) {
+          return Utils.buildResponse(false, 'Unauthorized: Only the creator or assigned Event Admin can modify the Event Name or Description.');
+        }
       }
 
       // Authorization and Closed Registration Verification for settings changes
@@ -556,21 +589,21 @@ const EventService = {
           return Utils.buildResponse(false, 'Unauthorized: User not found.');
         }
 
-        const role = updaterUser[CONFIG.COLUMNS.USER_ROLE] || updaterUser.role || updaterUser.Role;
-        const allowedRoles = [CONFIG.ROLES.SUPER_ADMIN, CONFIG.ROLES.ADMIN, CONFIG.ROLES.HOD];
-        if (!allowedRoles.includes(role)) {
+        const roleStr = String(updaterUser[CONFIG.COLUMNS.USER_ROLE] || updaterUser.role || updaterUser.Role || '').trim().toUpperCase();
+        const allowedRoles = ['SUPER ADMIN', 'SUPER_ADMIN', 'ADMIN', 'EVENT ADMIN', 'EVENT_ADMIN', 'HOD'];
+        if (!allowedRoles.includes(roleStr)) {
           return Utils.buildResponse(false, 'Unauthorized: Only Event Owners (Admin/HOD) and Super Admins can modify registration settings.');
         }
 
         // Verify if user is HOD/Admin and owns/created the event
-        if (role !== CONFIG.ROLES.SUPER_ADMIN) {
+        if (roleStr !== 'SUPER ADMIN' && roleStr !== 'SUPER_ADMIN') {
           const userId = updaterUser[CONFIG.COLUMNS.USER_ID] || updaterUser.user_id;
           const creatorId = existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by;
           const coordId = existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id;
           
           let isOwner = (userId === creatorId || userId === coordId);
           
-          if (!isOwner && role === CONFIG.ROLES.HOD) {
+          if (!isOwner && roleStr === 'HOD') {
             // Check HOD department matching organizer
             const organizerDeptId = existingEvent['Organizer'] || existingEvent.organizer;
             if (organizerDeptId) {
@@ -610,12 +643,13 @@ const EventService = {
         updatedEvent[CONFIG.COLUMNS.EVENT_REGISTRATION_URL] = getScriptUrl() ? (getScriptUrl() + "?page=Register&eventId=" + eventId) : "";
       }
 
-      // Ensure status is written to the correct physical sheet column
-      if (eventData[CONFIG.COLUMNS.STATUS] !== undefined) {
-        updatedEvent[CONFIG.COLUMNS.EVENT_STATUS] = eventData[CONFIG.COLUMNS.STATUS];
-      }
-      if (eventData[CONFIG.COLUMNS.EVENT_STATUS] !== undefined) {
-        updatedEvent[CONFIG.COLUMNS.EVENT_STATUS] = eventData[CONFIG.COLUMNS.EVENT_STATUS];
+      // Ensure status is written to the correct physical sheet column and all alias properties
+      if (eventData[CONFIG.COLUMNS.STATUS] !== undefined || eventData[CONFIG.COLUMNS.EVENT_STATUS] !== undefined || eventData.status !== undefined || eventData.event_status !== undefined) {
+        const targetStatus = eventData[CONFIG.COLUMNS.EVENT_STATUS] || eventData[CONFIG.COLUMNS.STATUS] || eventData.status || eventData.event_status;
+        updatedEvent[CONFIG.COLUMNS.EVENT_STATUS] = targetStatus;
+        updatedEvent.status = targetStatus;
+        updatedEvent.Status = targetStatus;
+        updatedEvent.event_status = targetStatus;
       }
 
       // Check for Completed status transition to populate completed_at
@@ -667,7 +701,7 @@ const EventService = {
 
       const success = DatabaseService.updateRow(eventsSheet, CONFIG.COLUMNS.EVENT_ID, eventId, updatedEvent);
       if (success) {
-        this._invalidateCaches_();
+        this._invalidateCaches_(eventId);
         const resp = Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_UPDATED, { event: Utils.sanitizeEvent(updatedEvent) });
 
         // Handle coordinator change in assignments sheet

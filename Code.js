@@ -71,10 +71,10 @@ function doGet(e) {
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   
-  // Default fallback to Login
-  return HtmlService.createTemplateFromFile('Login')
+  // Default fallback: Serve Index page container (client-side JS will check sessionToken)
+  return HtmlService.createTemplateFromFile('Index')
       .evaluate()
-      .setTitle('Login - BVC System')
+      .setTitle('BVC Event Attendance System')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

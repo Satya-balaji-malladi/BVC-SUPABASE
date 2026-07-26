@@ -655,6 +655,7 @@ const SessionService = {
         active: status.toLowerCase() === 'active',
         isSuperAdmin: role.toUpperCase() === superAdminRole.toUpperCase() || role.toUpperCase() === 'SUPER ADMIN',
         isAdmin: role.toUpperCase() === adminRole.toUpperCase() || role.toUpperCase() === superAdminRole.toUpperCase() || role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'SUPER ADMIN',
+        isEventAdmin: role.toUpperCase() === 'EVENT ADMIN' || role.toUpperCase() === 'EVENT_ADMIN' || role.toUpperCase() === 'ADMIN',
         isHOD: role.toUpperCase() === hodRole.toUpperCase() || role.toUpperCase() === 'HOD',
         isCoordinator: role.toUpperCase() === coordRole.toUpperCase() || role.toUpperCase() === 'COORDINATOR'
       };

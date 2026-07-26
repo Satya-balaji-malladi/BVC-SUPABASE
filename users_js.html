@@ -200,7 +200,7 @@
       document.getElementById('viewUserEmail').textContent = user.email || '--';
       document.getElementById('viewUserPhone').textContent = user.phone || '--';
       document.getElementById('viewUserDepartment').textContent = user.department || '--';
-      
+
       const statusEl = document.getElementById('viewUserStatus');
       statusEl.textContent = user.status || '--';
       statusEl.className = (user.status || '').toLowerCase() === 'active' ? 'fw-semibold text-success' : 'fw-semibold text-danger';
@@ -257,47 +257,59 @@
         }
 
         // Enforce role creation permission: Admin can only create HOD and Coordinator accounts. Super Admin gets all options.
-      const roleSelect = document.getElementById('userRole');
-      if (roleSelect) {
-        const storedRole = localStorage.getItem('userRole') || (App.User && App.User.role) || '';
-        const currentUserRole = String(storedRole).toUpperCase().trim();
-        const superAdminOpt = roleSelect.querySelector('option[value="Super Admin"]');
-        const adminOpt = roleSelect.querySelector('option[value="Admin"]');
-        const eventAdminOpt = roleSelect.querySelector('option[value="Event Admin"]');
-        const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN');
-        const isHOD = (currentUserRole === 'HOD');
+        const roleSelect = document.getElementById('userRole');
+        if (roleSelect) {
+          const storedRole = localStorage.getItem('userRole') || (App.User && App.User.role) || '';
+          const currentUserRole = String(storedRole).toUpperCase().trim();
+          const superAdminOpt = roleSelect.querySelector('option[value="Super Admin"]');//added by human
+          const adminOpt = roleSelect.querySelector('option[value="Admin"]');
+          const eventAdminOpt = roleSelect.querySelector('option[value="Event Admin"]');
+          const hodOpt = roleSelect.querySelector('option[value="HOD"]');
+          const isSuperAdmin = (currentUserRole === 'SUPER ADMIN' || currentUserRole === 'SUPER_ADMIN');
+          const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN');
+          const isHOD = (currentUserRole === 'HOD');
 
-        const deptContainer = document.getElementById('userDepartmentContainer');
+          const deptContainer = document.getElementById('userDepartmentContainer');
 
-        if (isEventAdmin) {
-          if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
-          if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
-          if (eventAdminOpt) { eventAdminOpt.disabled = true; eventAdminOpt.hidden = true; eventAdminOpt.style.display = 'none'; }
-          if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
-          roleSelect.value = 'Coordinator';
-          roleSelect.dispatchEvent(new Event('change'));
+          if (isEventAdmin) {
+            if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
+            if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
+            if (eventAdminOpt) { eventAdminOpt.disabled = true; eventAdminOpt.hidden = true; eventAdminOpt.style.display = 'none'; }
+            if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
+            roleSelect.value = 'Coordinator';
+            roleSelect.dispatchEvent(new Event('change'));
 
-          if (deptContainer) {
-            deptContainer.classList.add('d-none');
-            const currentUser = App.State && App.State.currentUser;
-            const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || 'CSE DEPARTMENT');
-            document.getElementById('userDepartment').value = userDept;
+            if (deptContainer) {
+              deptContainer.classList.add('d-none');
+              const currentUser = App.State && App.State.currentUser;
+              const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || 'CSE DEPARTMENT');
+              document.getElementById('userDepartment').value = userDept;
+            }
+          } else if (isSuperAdmin) {
+            if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
+            if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
+            if (hodOpt) { hodOpt.disabled = false; hodOpt.hidden = false; hodOpt.style.display = ''; }
+            if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
+            /* if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }*/
+            if (deptContainer) deptContainer.classList.remove('d-none');
           }
-        } else if (isHOD) {
-          if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
-          if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
-          if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
-          if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
-          if (deptContainer) deptContainer.classList.remove('d-none');
-        } else {
-          if (superAdminOpt) { superAdminOpt.disabled = false; superAdminOpt.hidden = false; superAdminOpt.style.display = ''; }
-          if (adminOpt) { adminOpt.disabled = false; adminOpt.hidden = false; adminOpt.style.display = ''; }
-          if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
-          if (hodOpt) { hodOpt.disabled = false; hodOpt.hidden = false; hodOpt.style.display = ''; }
-          if (deptContainer) deptContainer.classList.remove('d-none');
+
+          else if (isHOD) {
+            if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
+            if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
+            if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
+            if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
+            if (deptContainer) deptContainer.classList.remove('d-none');
+          }
+          else {
+            if (superAdminOpt) { superAdminOpt.disabled = false; superAdminOpt.hidden = false; superAdminOpt.style.display = ''; }
+            if (adminOpt) { adminOpt.disabled = false; adminOpt.hidden = false; adminOpt.style.display = ''; }
+            if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
+            if (hodOpt) { hodOpt.disabled = false; hodOpt.hidden = false; hodOpt.style.display = ''; }
+            if (deptContainer) deptContainer.classList.remove('d-none');
+          }
         }
       }
-    }
 
       const errorAlert = document.getElementById('userModalError');
       if (errorAlert) errorAlert.classList.add('d-none');
@@ -699,6 +711,11 @@
       const deptFilter = document.getElementById('users-dept-filter');
       const statusFilter = document.getElementById('users-status-filter');
 
+      const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+      const roleVal = roleFilter ? roleFilter.value.toLowerCase().trim() : '';
+      const deptVal = deptFilter ? deptFilter.value.toLowerCase().trim() : '';
+      const statusVal = statusFilter ? statusFilter.value.toLowerCase().trim() : '';
+
       const currentUser = App.State && App.State.currentUser;
       const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
       const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
@@ -918,10 +935,10 @@
       }
     },
 
-    handleRoleChange: function(userId, newRole) {
+    handleRoleChange: function (userId, newRole) {
       const user = this.usersData.find(u => String(u.user_id).trim() === String(userId).trim());
       if (!user) return;
-      
+
       user.role = newRole;
       App.LoadingManager.show();
       App.API.updateUser(user)

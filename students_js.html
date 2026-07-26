@@ -407,8 +407,31 @@
       const tbody = document.getElementById('students-table-body');
       if (!tbody) return;
 
+      const currentUser = App.State && App.State.currentUser;
+      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
+      const isSuperAdmin = (userRole === 'SUPER ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPERADMIN');
+
+      const actionsHeader = document.getElementById('students-actions-header');
+      if (actionsHeader) {
+        if (isSuperAdmin) {
+          actionsHeader.classList.remove('d-none');
+        } else {
+          actionsHeader.classList.add('d-none');
+        }
+      }
+
+      const addBtn = document.getElementById('students-add-btn');
+      if (addBtn) {
+        if (isSuperAdmin) {
+          addBtn.classList.remove('d-none');
+        } else {
+          addBtn.classList.add('d-none');
+        }
+      }
+
       if (this.filteredData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-5"><i class="bi bi-info-circle me-2"></i>No Students Found</td></tr>';
+        const colSpan = isSuperAdmin ? 11 : 10;
+        tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-5"><i class="bi bi-info-circle me-2"></i>No Students Found</td></tr>`;
         this.renderPagination(0);
         return;
       }
@@ -427,6 +450,13 @@
         const deptDisplay = deptObj ? (deptObj['Department Code'] || deptObj['Short Name']) : student.department;
         const pBadge = `<span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle fw-bold px-2.5 py-1">${student.participation_count || 0} Event${(student.participation_count || 0) === 1 ? '' : 's'}</span>`;
 
+        const actionsTd = isSuperAdmin ? `
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-light text-primary me-1" data-action="view-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="View"><i class="bi bi-eye"></i></button>
+            <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-light text-danger" data-action="delete-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="Delete"><i class="bi bi-trash"></i></button>
+          </td>` : '';
+
         html += `
         <tr>
           <td class="fw-medium text-dark font-monospace">${App.Utils.escapeHtml(student.roll_number)}</td>
@@ -439,11 +469,7 @@
           <td>${App.Utils.escapeHtml(student.mobile)}</td>
           <td>${pBadge}</td>
           <td>${statusBadge}</td>
-          <td class="text-end text-nowrap">
-            <button class="btn btn-sm btn-light text-primary me-1" data-action="view-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="View"><i class="bi bi-eye"></i></button>
-            <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-sm btn-light text-danger" data-action="delete-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="Delete"><i class="bi bi-trash"></i></button>
-          </td>
+          ${actionsTd}
         </tr>
       `;
       });

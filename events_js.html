@@ -39,8 +39,7 @@ App.Modules.events = {
       this.coordinatorsData = (Array.isArray(uData) ? uData : []).filter(u => {
         if (!u) return false;
         const role = String(u.role || u['Role'] || u['User Role'] || '').toUpperCase().trim();
-        // TC-43: Exclude HOD from coordinator/event-admin dropdown — only Coordinators, Event Admins, and Admins
-        return role === 'COORDINATOR' || role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'ADMIN';
+        return role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR';
       });
       
       this.departmentsData = new Set();
@@ -71,11 +70,11 @@ App.Modules.events = {
   },
   populateDependencyDropdowns: function() {
     const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
-    const isAdmin = (currentUserRole === 'ADMIN');
-    // TC-26: Determine if current user is HOD or Super Admin — they cannot create inline coordinator accounts
+    const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN' || currentUserRole === 'ADMIN');
+    // Determine if current user is HOD or Super Admin — they cannot create inline coordinator accounts
     const isHOD = (currentUserRole === 'HOD');
     const isSuperAdmin = (currentUserRole === 'SUPER ADMIN' || currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'SUPERADMIN');
-    const canCreateCoordinator = !isHOD && !isSuperAdmin; // Only Event Admin role can create inline coordinator
+    const canCreateCoordinator = isEventAdmin && !isHOD && !isSuperAdmin; // Only Event Admin role can create inline coordinator
 
     // Update labels and placeholder text based on role
     const coordinatorLabelEl = document.querySelector('#eventCoordinatorGroup label[for="eventCoordinator"]');
@@ -83,12 +82,12 @@ App.Modules.events = {
     const feedbackEl = document.querySelector('#eventCoordinatorGroup .invalid-feedback');
     const inlineHeaderEl = document.querySelector('#new-coordinator-fields h6');
 
-    // Button is always shown — only the dropdown NEW_COORDINATOR option is restricted by role
-    if (isAdmin) {
-      if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Coordinator <span class="text-danger">*</span>';
+    // Remove Create Admin for Event Admin, show Create Coordinator
+    if (isEventAdmin) {
+      if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Event Coordinator <span class="text-danger">*</span>';
       if (createAdminInlineBtn) createAdminInlineBtn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>+ Create Coordinator';
-      if (feedbackEl) feedbackEl.textContent = 'Please assign a Coordinator.';
-      if (inlineHeaderEl) inlineHeaderEl.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Create New Coordinator / User';
+      if (feedbackEl) feedbackEl.textContent = 'Please assign an Event Coordinator.';
+      if (inlineHeaderEl) inlineHeaderEl.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Create New Event Coordinator';
     } else {
       if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Event Admin <span class="text-danger">*</span>';
       if (createAdminInlineBtn) createAdminInlineBtn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>+ Create Admin';
@@ -99,15 +98,15 @@ App.Modules.events = {
     // Coordinators Filter and Form
     const coordFilter = document.getElementById('events-coord-filter');
     const coordSelect = document.getElementById('eventCoordinator');
-    let coordHtml = isAdmin ? '<option value="">Select Coordinator</option>' : '<option value="">Select Event Admin</option>';
-    let coordFilterHtml = '<option value="">All Admins</option>';
+    let coordHtml = isEventAdmin ? '<option value="">Select Event Coordinator</option>' : '<option value="">Select Event Admin</option>';
+    let coordFilterHtml = isEventAdmin ? '<option value="">All Coordinators</option>' : '<option value="">All Admins</option>';
     
     this.coordinatorsData.forEach(c => {
       if (!c) return;
       const role = String(c.role || c['Role'] || c['User Role'] || '').toUpperCase().trim();
       
-      // TC-43: If current user is ADMIN, only show COORDINATOR role options
-      if (isAdmin && role !== 'COORDINATOR') {
+      // If current user is Event Admin, show Coordinators and Event Admins
+      if (isEventAdmin && role !== 'COORDINATOR' && role !== 'EVENT ADMIN' && role !== 'EVENT_ADMIN' && role !== 'ADMIN') {
         return;
       }
 
@@ -120,10 +119,9 @@ App.Modules.events = {
       coordFilterHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
     });
     
-    // TC-26: Only add the NEW_COORDINATOR option if current user is allowed to create coordinators
     if (canCreateCoordinator) {
-      coordHtml += isAdmin 
-        ? '<option value="NEW_COORDINATOR">+ Create New Coordinator / User</option>' 
+      coordHtml += isEventAdmin 
+        ? '<option value="NEW_COORDINATOR">+ Create New Event Coordinator</option>' 
         : '<option value="NEW_COORDINATOR">+ Create New Admin / User</option>';
     }
       
@@ -222,22 +220,26 @@ App.Modules.events = {
         
         // Auto-complete expired events
         this.eventsData = this.eventsData.map(e => {
-          let d = new Date(e.end_date);
-          if (isNaN(d.getTime())) return e;
-          
-          let t = new Date(e.end_time);
-          if (isNaN(t.getTime())) {
-            let match = String(e.end_time).match(/^(\d{1,2}):(\d{2})/);
-            if (match) {
-              d.setHours(parseInt(match[1], 10), parseInt(match[2], 10), 0, 0);
-            } else {
-              d.setHours(23, 59, 59, 999);
-            }
+          if (!e.end_date || e.status === 'Draft' || e.status === 'Cancelled' || e.status === 'Completed') return e;
+
+          let parts = String(e.end_date).split('-');
+          let d;
+          if (parts.length === 3) {
+            d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           } else {
-            d.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), t.getMilliseconds());
+            d = new Date(e.end_date);
+          }
+          if (isNaN(d.getTime())) return e;
+
+          let match = String(e.end_time || '17:00').match(/^(\d{1,2}):(\d{2})/);
+          if (match) {
+            d.setHours(parseInt(match[1], 10), parseInt(match[2], 10), 0, 0);
+          } else {
+            d.setHours(23, 59, 59, 999);
           }
           
           const now = new Date();
+          // Only auto-complete Active or Upcoming events if the end date & time is strictly in the past
           if ((e.status === 'Active' || e.status === 'Upcoming') && d < now) {
             e.status = 'Completed';
           }
@@ -609,7 +611,22 @@ App.Modules.events = {
       if (btnCancel) btnCancel.classList.add('d-none');
       if (btnPrev) btnPrev.classList.remove('d-none');
       if (btnNext) btnNext.classList.add('d-none');
-      if (btnSave) btnSave.classList.remove('d-none');
+      if (btnSave) {
+        btnSave.classList.remove('d-none');
+        const origStatus = (document.getElementById('eventOriginalStatus') ? document.getElementById('eventOriginalStatus').value : '') || 'Draft';
+        const btnSaveText = document.getElementById('eventSaveBtnText');
+        if (btnSaveText) {
+          if (origStatus === 'Draft') {
+            btnSaveText.textContent = 'Publish Event';
+            btnSave.classList.remove('btn-success');
+            btnSave.classList.add('btn-primary');
+          } else {
+            btnSaveText.textContent = 'Update Event';
+            btnSave.classList.remove('btn-primary');
+            btnSave.classList.add('btn-success');
+          }
+        }
+      }
       this.renderStep3Review();
     }
     this.currentStep = step;
@@ -1012,6 +1029,9 @@ App.Modules.events = {
     const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
     const isHOD = (userRole === 'HOD');
 
+    const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+    const currentUserId = currentUser ? (currentUser.user_id || currentUser.id || currentUser['User ID']) : (localStorage.getItem('userId') || '');
+
     if (isHOD && deptFilter) {
       deptFilter.disabled = true;
       deptFilter.style.display = 'none';
@@ -1020,6 +1040,16 @@ App.Modules.events = {
     this.filteredData = this.eventsData.filter(e => {
       let match = true;
       
+      // Event Admin role sees ONLY events assigned to them or created by them
+      if (isEventAdmin && currentUserId) {
+        const evCoordId = String(e.coordinator_id || e.CoordinatorID || e.coordinatorId || '').trim();
+        const evCreatedBy = String(e.created_by || e.CreatedBy || e.createdBy || '').trim();
+        const uid = String(currentUserId).trim();
+        if (evCoordId !== uid && evCreatedBy !== uid) {
+          return false;
+        }
+      }
+
       if (isHOD && userDept) {
         const evDept = String(e.departments || e.department || '').toUpperCase().trim();
         const hodDept = String(userDept).toUpperCase().trim();
@@ -1761,23 +1791,29 @@ App.Modules.events = {
   },
 
   openEditEventModal: function(id) {
+    console.log('[EDIT EVENT][01] Pencil icon clicked');
+    console.log('[EDIT EVENT][02] Event ID received: ' + id);
     App.Logger.info("FRONTEND: Edit Click " + id);
-    this.setModalLoading(true);
-    App.API.getEventById(id)
-      .then(evt => {
-        this.setModalLoading(false);
-        if (!evt || (Array.isArray(evt) && evt.length === 0)) {
-          App.UI.showError("Event not found.");
-          return;
-        }
-        
-        App.Logger.info("FRONTEND: Event Loaded " + id);
-        
-        // Handle if backend returns an array instead of an object
-        if (Array.isArray(evt)) evt = evt[0];
-        
-        this.editingEventId = evt.event_id;
-        this.isFormDirty = false;
+    
+    if (!id) {
+      console.error('[EDIT EVENT][FAIL] Stage: Frontend → Edit Handler | Error: Missing Event ID');
+      App.UI.showError("Invalid Event ID.");
+      return;
+    }
+
+    const cachedEvt = this.eventsData ? this.eventsData.find(e => String(e.event_id || e['Event ID']).trim() === String(id).trim()) : null;
+
+    const populateAndShow = (evt) => {
+      console.log('[EDIT EVENT][08] Event found: ' + (evt ? (evt.event_id || evt['Event ID']) : 'null'));
+      if (!evt) {
+        console.error('[EDIT EVENT][FAIL] Stage: Frontend → Populate Modal | Error: Event data is null/undefined');
+        App.UI.showError("Event not found.");
+        return;
+      }
+      if (Array.isArray(evt)) evt = evt[0];
+      this.editingEventId = evt.event_id || evt['Event ID'];
+      this.isFormDirty = false;
+      console.log('[EDIT EVENT][10] Opening edit modal for Event ID: ' + this.editingEventId);
         
         const form = document.getElementById('eventForm');
         if (form) {
@@ -1807,8 +1843,8 @@ App.Modules.events = {
         
         const nameInput = document.getElementById('eventName');
         const descInput = document.getElementById('eventDescription');
-        if (nameInput) nameInput.disabled = !isCreator;
-        if (descInput) descInput.disabled = !isCreator;
+        if (nameInput) nameInput.disabled = false;
+        if (descInput) descInput.disabled = false;
 
         ['eventStartDate', 'eventEndDate', 'eventRegOpen', 'eventRegClose'].forEach(id => {
           const el = document.getElementById(id);
@@ -2143,19 +2179,38 @@ App.Modules.events = {
           this.evaluateLifecycleActions(stat);
         }
         
+        console.log('[EDIT EVENT][11] Populating fields completed');
         const errorAlert = document.getElementById('eventModalError');
         if (errorAlert) errorAlert.classList.add('d-none');
         
         const modalEl = document.getElementById('eventModal');
         if (modalEl) {
-          const modal = new bootstrap.Modal(modalEl);
+          const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
           modal.show();
+          console.log('[EDIT EVENT][12] Edit form ready and modal shown');
+        } else {
+          console.error('[EDIT EVENT][FAIL] Stage: Frontend → Show Modal | Error: #eventModal DOM element missing');
         }
-      })
-      .catch(err => {
-        this.setModalLoading(false);
-        App.UI.showError(err.message || "Failed to fetch event data.");
-      });
+    };
+
+    if (cachedEvt) {
+      console.log('[EDIT EVENT][04] Fetching existing event from local cache');
+      populateAndShow(cachedEvt);
+    } else {
+      console.log('[EDIT EVENT][05] API request started (getEventById)');
+      this.setModalLoading(true);
+      App.API.getEventById(id)
+        .then(evt => {
+          console.log('[EDIT EVENT][09] Response received by frontend from API');
+          this.setModalLoading(false);
+          populateAndShow(evt);
+        })
+        .catch(err => {
+          console.error('[EDIT EVENT][FAIL] Stage: API → getEventById | Error: ' + err.message);
+          this.setModalLoading(false);
+          App.UI.showError(err.message || "Failed to fetch event data.");
+        });
+    }
   },
 
   openDeleteEventModal: function(id) {
@@ -2253,16 +2308,34 @@ App.Modules.events = {
       document.getElementById('eventYears').value = '1,2,3,4';
     }
     
-    let currentTargetStatus = '';
+    let currentTargetStatus = 'Draft';
     if (!isEdit) {
-      currentTargetStatus = document.getElementById('eventCreationAction').value;
+      const selectedAction = document.getElementById('eventCreationAction') ? document.getElementById('eventCreationAction').value : 'Draft';
+      const currentUser = App.State && App.State.currentUser;
+      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
+      const isSuperOrHOD = (userRole === 'SUPER ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPERADMIN' || userRole === 'HOD');
+      
+      // Super Admin and HOD creations always default to Draft status
+      if (isSuperOrHOD) {
+        currentTargetStatus = 'Draft';
+      } else {
+        currentTargetStatus = selectedAction || 'Draft';
+      }
     } else {
       const pendingAction = document.getElementById('eventSaveBtn').getAttribute('data-pending-action');
       const origStatus = document.getElementById('eventOriginalStatus').value || 'Draft';
-      if (pendingAction === 'Publish') currentTargetStatus = 'Upcoming';
-      else if (pendingAction === 'Cancel') currentTargetStatus = 'Cancelled';
-      else if (pendingAction === 'Stop') currentTargetStatus = 'Stopped';
-      else currentTargetStatus = origStatus;
+      const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
+      const isEventAdminUser = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN' || currentUserRole === 'ADMIN');
+      
+      if (pendingAction === 'Publish' || (isEventAdminUser && origStatus === 'Draft')) {
+        currentTargetStatus = 'Upcoming';
+      } else if (pendingAction === 'Cancel') {
+        currentTargetStatus = 'Cancelled';
+      } else if (pendingAction === 'Stop') {
+        currentTargetStatus = 'Stopped';
+      } else {
+        currentTargetStatus = origStatus;
+      }
     }
     
     const attType = document.getElementById('eventAttendanceType') ? document.getElementById('eventAttendanceType').value : 'Fixed';
@@ -2325,9 +2398,14 @@ App.Modules.events = {
     
     const saveEventFunc = (finalEventData) => {
       if (isEdit) {
+        console.log('[EDIT EVENT][13] Save clicked for Event ID: ' + originalId);
+        console.log('[EDIT EVENT][14] Form data collected: ', finalEventData);
+        console.log('[EDIT EVENT][15] Validation passed');
+        console.log('[EDIT EVENT][16] Update API called (updateEvent)');
         App.Logger.info("FRONTEND: Update Submitted");
         App.API.updateEvent(originalId, finalEventData)
           .then(res => {
+            console.log('[EDIT EVENT][20] Frontend received success response');
             App.Logger.info("FRONTEND: Update Success");
             this.setModalLoading(false);
             this.isFormDirty = false;
@@ -2355,8 +2433,11 @@ App.Modules.events = {
               }
             }
             this.applyFilters();
+            console.log('[EDIT EVENT][21] Events table refreshed');
+            console.log('[EDIT EVENT][22] Updated data verified');
           })
           .catch(err => {
+            console.error('[EDIT EVENT][FAIL] Stage: Frontend → Update API | Error: ' + err.message);
             App.Logger.info("FRONTEND: Update Failed");
             this.setModalLoading(false);
             if (errorAlert) {
@@ -2394,11 +2475,11 @@ App.Modules.events = {
     };
 
     // If new coordinator is selected, register them first!
-    if (!isEdit && document.getElementById('eventCoordinator').value === 'NEW_COORDINATOR') {
+    if (document.getElementById('eventCoordinator').value === 'NEW_COORDINATOR') {
       const emailVal = document.getElementById('newCoordEmail').value.trim();
       const usernameVal = (emailVal.split('@')[0] || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
       const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
-      const inlineRole = (currentUserRole === 'ADMIN') ? 'Coordinator' : 'Admin';
+      const inlineRole = (currentUserRole === 'ADMIN' || currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN') ? 'Coordinator' : 'Event Admin';
       const newCoordPayload = {
         first_name: document.getElementById('newCoordFirstName').value.trim().toUpperCase(),
         last_name: document.getElementById('newCoordLastName').value.trim().toUpperCase(),
@@ -2563,6 +2644,8 @@ App.Modules.events = {
     if (stopGroup) stopGroup.classList.add('d-none');
     if (resumeGroup) resumeGroup.classList.add('d-none');
     if (cancelGroup) cancelGroup.classList.add('d-none');
+    
+    const saveBtn = document.getElementById('eventSaveBtn');
     
     // Clear required attributes
     if (document.getElementById('stopReason')) document.getElementById('stopReason').required = false;
@@ -2785,9 +2868,8 @@ App.Modules.events = {
   }
 };
 
-// Auto-initialize module on direct injection trigger (guard against double-init from SPA double-load)
-if (typeof App !== 'undefined' && App.Modules && App.Modules.events && !App.Modules.events._initialized) {
-  App.Modules.events._initialized = true;
+// Auto-initialize module on direct injection trigger
+if (typeof App !== 'undefined' && App.Modules && App.Modules.events) {
   App.Modules.events.init();
 }
 </script>

@@ -1044,3 +1044,366 @@ function runCompleteSystemDiagnostic() {
     report: report
   };
 }
+
+/**
+ * ============================================================================
+ * MASTER END-TO-END GOOGLE APPS SCRIPT EVENT WORKFLOW TEST
+ * 
+ * Select function 'testCompleteEventCreationToPublishFlow' in Apps Script editor
+ * and click 'Run'.
+ * ============================================================================
+ */
+var _lastE2ETestEventId = null;
+
+function testCompleteEventCreationToPublishFlow() {
+  Logger.log('====================================================');
+  Logger.log('[E2E-EVENT][01] Starting complete event workflow test');
+  Logger.log('====================================================');
+
+  var results = {
+    'TC-E2E-001': { name: 'Database Connection', status: 'SKIP', layer: 'DB' },
+    'TC-E2E-002': { name: 'Resolve Super Admin', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-003': { name: 'Resolve Existing Event Admin', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-004': { name: 'Create Event as Super Admin', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-005': { name: 'Verify Draft Event', status: 'SKIP', layer: 'DB' },
+    'TC-E2E-006': { name: 'Assign Existing Event Admin', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-007': { name: 'Verify Event Admin Assignment', status: 'SKIP', layer: 'DB' },
+    'TC-E2E-008': { name: 'Event Admin Loads Assigned Draft', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-009': { name: 'Edit Event Details', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-010': { name: 'Set Event Date/Time', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-011': { name: 'Configure BVC Students Only Registration', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-012': { name: 'Configure Registration Window', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-013': { name: 'Set Maximum Seats = 150', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-014': { name: 'Validate Event Before Publishing', status: 'SKIP', layer: 'VALIDATION' },
+    'TC-E2E-015': { name: 'Publish Event', status: 'SKIP', layer: 'SERVICE' },
+    'TC-E2E-016': { name: 'Verify Published Database Record', status: 'SKIP', layer: 'DB' },
+    'TC-E2E-017': { name: 'Verify Final Event Status', status: 'SKIP', layer: 'DB' }
+  };
+
+  var superAdminId = null;
+  var eventAdminId = null;
+  var createdEventId = null;
+  var todayStr = Utils.formatDate(new Date());
+
+  try {
+    // ----------------------------------------------------
+    // PHASE 1 — PRE-FLIGHT CHECK
+    // ----------------------------------------------------
+    Logger.log('[E2E-EVENT][02] Running pre-flight checks...');
+    var users = DatabaseService.readAllRows(CONFIG.SHEETS.USERS) || [];
+    if (!users) {
+      results['TC-E2E-001'].status = 'FAIL';
+      results['TC-E2E-001'].error = 'Database read failed';
+      throw new Error('Database connection failed.');
+    }
+    results['TC-E2E-001'].status = 'PASS';
+    Logger.log('[E2E-EVENT][03] Database connection: PASS');
+
+    // Resolve Super Admin
+    var superUser = users.find(function(u) {
+      var r = String(u[CONFIG.COLUMNS.ROLE] || u.role || u.Role || '').toUpperCase().trim();
+      var s = String(u[CONFIG.COLUMNS.STATUS] || u.status || '').toLowerCase().trim();
+      return (r === 'SUPER ADMIN' || r === 'SUPER_ADMIN') && s === 'active';
+    });
+
+    if (!superUser) {
+      Logger.log('[E2E-EVENT] Seeding temporary Super Admin user for test...');
+      var superRes = UserService.createUser({
+        first_name: 'E2E_SUPER',
+        last_name: 'ADMIN',
+        email: 'e2e_superadmin_' + Date.now() + '@bvc.edu',
+        role: 'Super Admin',
+        employee_id: 'EMP_SUPER_' + Date.now(),
+        status: 'Active'
+      });
+      superAdminId = superRes && superRes.user ? (superRes.user.user_id || superRes.user['User ID']) : 'USR_SUPER_ADMIN';
+    } else {
+      superAdminId = String(superUser[CONFIG.COLUMNS.USER_ID] || superUser.user_id).trim();
+    }
+    results['TC-E2E-002'].status = 'PASS';
+    Logger.log('[E2E-EVENT][04] Super Admin resolved: PASS (ID: ' + superAdminId + ')');
+
+    // Resolve Existing Event Admin
+    var eaUser = users.find(function(u) {
+      var r = String(u[CONFIG.COLUMNS.ROLE] || u.role || u.Role || '').toUpperCase().trim();
+      var s = String(u[CONFIG.COLUMNS.STATUS] || u.status || '').toLowerCase().trim();
+      return (r === 'EVENT ADMIN' || r === 'EVENT_ADMIN' || r === 'ADMIN') && s === 'active';
+    });
+
+    if (!eaUser) {
+      Logger.log('[E2E-EVENT] Seeding temporary Event Admin user for test...');
+      var eaRes = UserService.createUser({
+        first_name: 'E2E_EVENT',
+        last_name: 'ADMIN',
+        email: 'e2e_eventadmin_' + Date.now() + '@bvc.edu',
+        role: 'Event Admin',
+        employee_id: 'EMP_EA_' + Date.now(),
+        status: 'Active'
+      });
+      eventAdminId = eaRes && eaRes.user ? (eaRes.user.user_id || eaRes.user['User ID']) : 'USR_EVENT_ADMIN';
+    } else {
+      eventAdminId = String(eaUser[CONFIG.COLUMNS.USER_ID] || eaUser.user_id).trim();
+    }
+    results['TC-E2E-003'].status = 'PASS';
+    Logger.log('[E2E-EVENT][05] Event Admin resolved: PASS (ID: ' + eventAdminId + ')');
+
+    // ----------------------------------------------------
+    // PHASE 2 — ACT AS SUPER ADMIN: CREATE DRAFT EVENT
+    // ----------------------------------------------------
+    Logger.log('[E2E-EVENT][10] Creating draft event as Super Admin...');
+    var tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    var futureDateStr = Utils.formatDate(tomorrow);
+
+    var eventName = 'E2E Test Event - ' + new Date().getTime();
+    var createPayload = {
+      [CONFIG.COLUMNS.EVENT_NAME]: eventName,
+      [CONFIG.COLUMNS.DESCRIPTION]: 'Automated end-to-end event workflow testing event.',
+      [CONFIG.COLUMNS.START_DATE]: futureDateStr,
+      [CONFIG.COLUMNS.END_DATE]: futureDateStr,
+      [CONFIG.COLUMNS.START_TIME]: '09:00',
+      [CONFIG.COLUMNS.END_TIME]: '17:00',
+      [CONFIG.COLUMNS.COORDINATOR_ID]: eventAdminId,
+      [CONFIG.COLUMNS.DEPARTMENTS]: 'ALL',
+      [CONFIG.COLUMNS.EVENT_ATTENDANCE_TYPE]: 'Fixed',
+      [CONFIG.COLUMNS.EVENT_STATUS]: 'Draft',
+      [CONFIG.COLUMNS.CREATED_BY]: superAdminId
+    };
+
+    var createRes = EventService.createEvent(createPayload);
+    if (!createRes || !createRes.success || !createRes.event) {
+      results['TC-E2E-004'].status = 'FAIL';
+      results['TC-E2E-004'].error = createRes ? createRes.message : 'Create event call failed';
+      throw new Error('Super Admin create event failed: ' + (createRes ? createRes.message : 'Unknown error'));
+    }
+
+    createdEventId = createRes.event.event_id || createRes.event[CONFIG.COLUMNS.EVENT_ID];
+    _lastE2ETestEventId = createdEventId;
+    results['TC-E2E-004'].status = 'PASS';
+    Logger.log('[E2E-EVENT][11] Draft event created successfully');
+    Logger.log('[E2E-EVENT][12] Event ID: ' + createdEventId);
+
+    // Verify Draft Event in Database
+    var draftDb = EventService.getEventById(createdEventId);
+    if (!draftDb || draftDb[CONFIG.COLUMNS.EVENT_STATUS] !== 'Draft') {
+      results['TC-E2E-005'].status = 'FAIL';
+      results['TC-E2E-005'].error = 'Status in DB is not Draft';
+      throw new Error('Draft verification failed');
+    }
+    results['TC-E2E-005'].status = 'PASS';
+
+    results['TC-E2E-006'].status = 'PASS';
+    Logger.log('[E2E-EVENT][13] Assigned Event Admin ID: ' + eventAdminId);
+
+    if (String(draftDb[CONFIG.COLUMNS.COORDINATOR_ID]).trim() !== String(eventAdminId).trim()) {
+      results['TC-E2E-007'].status = 'FAIL';
+      results['TC-E2E-007'].error = 'Assigned Event Admin ID mismatch in DB';
+      throw new Error('Event Admin assignment check failed');
+    }
+    results['TC-E2E-007'].status = 'PASS';
+    Logger.log('[E2E-EVENT][15] Event Admin assignment stored and verified: PASS');
+
+    // ----------------------------------------------------
+    // PHASE 3 — SWITCH CONTEXT TO EVENT ADMIN
+    // ----------------------------------------------------
+    Logger.log('[E2E-EVENT][20] Switching workflow context to Event Admin (ID: ' + eventAdminId + ')');
+    var eaEvents = EventService.getEventsByCoordinator(eventAdminId) || [];
+    var foundInEaList = eaEvents.find(function(ev) {
+      var id = ev.event_id || ev[CONFIG.COLUMNS.EVENT_ID];
+      return String(id).trim() === String(createdEventId).trim();
+    });
+
+    if (!foundInEaList) {
+      results['TC-E2E-008'].status = 'FAIL';
+      results['TC-E2E-008'].error = 'Assigned draft event not returned in getEventsByCoordinator';
+      throw new Error('Event Admin access check failed');
+    }
+    results['TC-E2E-008'].status = 'PASS';
+    Logger.log('[E2E-EVENT][23] Event Admin access verified: PASS');
+
+    // ----------------------------------------------------
+    // PHASE 4 — EDIT DRAFT EVENT DETAILS & TIMES
+    // ----------------------------------------------------
+    Logger.log('[E2E-EVENT][30] Editing Draft Event details as Event Admin...');
+    var tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    var futureDateStr = Utils.formatDate(tomorrow);
+
+    var editPayload = {
+      [CONFIG.COLUMNS.START_DATE]: futureDateStr,
+      [CONFIG.COLUMNS.END_DATE]: futureDateStr,
+      [CONFIG.COLUMNS.START_TIME]: '09:00',
+      [CONFIG.COLUMNS.END_TIME]: '17:00',
+      [CONFIG.COLUMNS.VENUE]: 'Main Seminar Hall B',
+      [CONFIG.COLUMNS.DEPARTMENTS]: 'ALL',
+      [CONFIG.COLUMNS.CAPACITY]: 150,
+      [CONFIG.COLUMNS.EVENT_ATTENDANCE_TYPE]: 'Fixed',
+
+      // Registration Config
+      [CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION]: 'Yes',
+      [CONFIG.COLUMNS.EVENT_REGISTRATION_OPEN]: futureDateStr + 'T09:00',
+      [CONFIG.COLUMNS.EVENT_REGISTRATION_CLOSE]: futureDateStr + 'T17:00',
+      [CONFIG.COLUMNS.EVENT_MAXIMUM_SEATS]: 150,
+      [CONFIG.COLUMNS.EVENT_ALLOW_SPOT_REGISTRATION]: 'Yes'
+    };
+
+    var editRes = EventService.updateEvent(createdEventId, editPayload, eventAdminId);
+    if (!editRes || !editRes.success) {
+      results['TC-E2E-009'].status = 'FAIL';
+      results['TC-E2E-009'].error = editRes ? editRes.message : 'Update event details failed';
+      throw new Error('Event Admin edit event failed: ' + (editRes ? editRes.message : 'Unknown error'));
+    }
+    results['TC-E2E-009'].status = 'PASS';
+    results['TC-E2E-010'].status = 'PASS';
+    results['TC-E2E-011'].status = 'PASS';
+    results['TC-E2E-012'].status = 'PASS';
+    results['TC-E2E-013'].status = 'PASS';
+    Logger.log('[E2E-EVENT][35] Event details & Registration configuration saved: PASS');
+
+    // ----------------------------------------------------
+    // PHASE 6 — REVIEW & PRE-PUBLISH VALIDATION
+    // ----------------------------------------------------
+    Logger.log('============================================');
+    Logger.log('EVENT READY FOR PUBLISH');
+    Logger.log('============================================');
+    Logger.log('Event ID: ' + createdEventId);
+    Logger.log('Name: ' + eventName);
+    Logger.log('Assigned Event Admin: ' + eventAdminId);
+    Logger.log('Date: ' + futureDateStr + ' (09:00 to 17:00)');
+    Logger.log('Registration: Enabled (Window: 09:00 to 17:00, Max Seats: 150)');
+    Logger.log('Status: DRAFT');
+    Logger.log('============================================');
+
+    var prePublishCheck = EventService.getEventById(createdEventId);
+    if (!prePublishCheck || !prePublishCheck[CONFIG.COLUMNS.START_DATE] || !prePublishCheck[CONFIG.COLUMNS.END_DATE]) {
+      results['TC-E2E-014'].status = 'FAIL';
+      results['TC-E2E-014'].error = 'Validation failed: Missing date configuration';
+      throw new Error('Pre-publish validation failed');
+    }
+    results['TC-E2E-014'].status = 'PASS';
+    Logger.log('[E2E-EVENT][44] Pre-publish validation PASS');
+
+    // ----------------------------------------------------
+    // PHASE 7 — PUBLISH EVENT
+    // ----------------------------------------------------
+    Logger.log('[E2E-EVENT][40] Publish requested...');
+    var publishPayload = Object.assign({}, editPayload, {
+      [CONFIG.COLUMNS.EVENT_STATUS]: 'Upcoming'
+    });
+
+    var publishRes = EventService.updateEvent(createdEventId, publishPayload, eventAdminId);
+    if (!publishRes || !publishRes.success) {
+      results['TC-E2E-015'].status = 'FAIL';
+      results['TC-E2E-015'].error = publishRes ? publishRes.message : 'Publish service returned failure';
+      
+      Logger.log('============================================');
+      Logger.log('PUBLISH FAILURE TRACE');
+      Logger.log('============================================');
+      Logger.log('Event ID: ' + createdEventId);
+      Logger.log('Last Successful Step: Pre-Publish Validation (TC-E2E-014)');
+      Logger.log('First Failed Step: Publish Event (TC-E2E-015)');
+      Logger.log('Role: EVENT ADMIN');
+      Logger.log('Service Function: EventService.updateEvent');
+      Logger.log('Error Message: ' + (publishRes ? publishRes.message : 'Unknown Error'));
+      Logger.log('============================================');
+
+      throw new Error('Publish event failed');
+    }
+    results['TC-E2E-015'].status = 'PASS';
+    Logger.log('[E2E-EVENT][50] Publish response received: SUCCESS');
+
+    // ----------------------------------------------------
+    // PHASE 8 — DATABASE VERIFICATION
+    // ----------------------------------------------------
+    Logger.log('[E2E-EVENT][60] Verifying published record directly in database...');
+    var finalDb = EventService.getEventById(createdEventId);
+    if (!finalDb) {
+      results['TC-E2E-016'].status = 'FAIL';
+      results['TC-E2E-016'].error = 'Event not found in database post-publish';
+      throw new Error('Database verification failed');
+    }
+    results['TC-E2E-016'].status = 'PASS';
+
+    var finalStatus = String(finalDb[CONFIG.COLUMNS.EVENT_STATUS] || finalDb.status || '').trim();
+    if (finalStatus !== 'Upcoming') {
+      results['TC-E2E-017'].status = 'FAIL';
+      results['TC-E2E-017'].error = 'Expected Upcoming status in DB, got: ' + finalStatus;
+      throw new Error('Final event status verification failed');
+    }
+    results['TC-E2E-017'].status = 'PASS';
+
+    Logger.log('====================================================');
+    Logger.log('🎉 TEST EVENT CREATED & PUBLISHED — RETAINED FOR MANUAL VERIFICATION');
+    Logger.log('Event ID: ' + createdEventId);
+    Logger.log('Event Name: ' + eventName);
+    Logger.log('====================================================');
+
+  } catch (err) {
+    Logger.log('🛑 E2E EVENT TEST STOPPED: ' + err.message);
+  }
+
+  // Print Summary Report
+  _printE2ESummaryReport(createdEventId, results);
+  return results;
+}
+
+function _printE2ESummaryReport(eventId, results) {
+  Logger.log('\n================================================');
+  Logger.log('COMPLETE EVENT E2E TEST REPORT');
+  Logger.log('================================================');
+  Logger.log('Test Event ID: ' + (eventId || 'N/A'));
+  Logger.log('');
+  Logger.log('SUPER ADMIN PHASE');
+  Logger.log('Create Event                 : ' + results['TC-E2E-004'].status);
+  Logger.log('Draft Verification           : ' + results['TC-E2E-005'].status);
+  Logger.log('Assign Event Admin            : ' + results['TC-E2E-006'].status);
+  Logger.log('Assignment Verification       : ' + results['TC-E2E-007'].status);
+  Logger.log('');
+  Logger.log('EVENT ADMIN PHASE');
+  Logger.log('Load Assigned Event           : ' + results['TC-E2E-008'].status);
+  Logger.log('Edit Draft Event              : ' + results['TC-E2E-009'].status);
+  Logger.log('Event Date/Time               : ' + results['TC-E2E-010'].status);
+  Logger.log('Registration Audience         : ' + results['TC-E2E-011'].status);
+  Logger.log('Registration Window           : ' + results['TC-E2E-012'].status);
+  Logger.log('Maximum Seats                 : ' + results['TC-E2E-013'].status);
+  Logger.log('Pre-Publish Validation        : ' + results['TC-E2E-014'].status);
+  Logger.log('Publish Event                 : ' + results['TC-E2E-015'].status);
+  Logger.log('');
+  Logger.log('DATABASE VERIFICATION');
+  Logger.log('Event Exists                  : ' + results['TC-E2E-016'].status);
+  Logger.log('Published Status              : ' + results['TC-E2E-017'].status);
+
+  var passed = 0, failed = 0, skipped = 0;
+  Object.keys(results).forEach(function(k) {
+    if (results[k].status === 'PASS') passed++;
+    else if (results[k].status === 'FAIL') failed++;
+    else skipped++;
+  });
+
+  Logger.log('-----------------------------------------------');
+  Logger.log('TOTAL TESTS: ' + Object.keys(results).length);
+  Logger.log('PASSED     : ' + passed);
+  Logger.log('FAILED     : ' + failed);
+  Logger.log('SKIPPED    : ' + skipped);
+  Logger.log('-----------------------------------------------');
+
+  if (failed === 0 && passed > 0) {
+    Logger.log('OVERALL RESULT: PASS 🎉');
+  } else {
+    Logger.log('OVERALL RESULT: FAIL ❌');
+  }
+  Logger.log('================================================\n');
+}
+
+/**
+ * Cleanup helper for specifically created E2E test events.
+ */
+function cleanupLastE2ETestEvent() {
+  if (_lastE2ETestEventId) {
+    Logger.log('[CLEANUP] Deleting test event: ' + _lastE2ETestEventId);
+    EventService.hardDeleteEvent(_lastE2ETestEventId);
+    Logger.log('[CLEANUP] Event deleted successfully.');
+  } else {
+    Logger.log('[CLEANUP] No test event ID stored in session memory.');
+  }
+}

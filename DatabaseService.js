@@ -88,14 +88,9 @@ const DatabaseService = {
       }
       
       var val = record[key];
-      // Convert empty strings to null for date, time, and timestamp columns to prevent PostgreSQL syntax errors
+      // Convert empty strings to null for ALL columns to prevent PostgreSQL syntax errors (e.g. 22007 timestamp, 22P02 integer)
       if (val === "") {
-        if (dbKey.indexOf('timestamp') !== -1 || 
-            dbKey.indexOf('date') !== -1 || 
-            dbKey.indexOf('time') !== -1 || 
-            dbKey === 'expiry_time') {
-          val = null;
-        }
+        val = null;
       } else if (val !== null && val !== undefined) {
         // If it's a date/timestamp column and is numeric/epoch millisecond format, convert to ISO 8601 string
         if (dbKey.indexOf('timestamp') !== -1 || 

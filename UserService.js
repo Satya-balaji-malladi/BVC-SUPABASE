@@ -301,18 +301,23 @@ const UserService = {
 
       // Security Enforcement:
       // Super Admin: can create Admin, HOD, Coordinator, Super Admin
-      // Admin: can create HOD, Coordinator
+      // Admin / Event Admin: can create Coordinator
       // HOD: can create Coordinator
       if (callerUserContext) {
         var requestedRole = String(userData[roleCol] || userData.role || '').trim().toUpperCase();
-        if (callerUserContext.isSuperAdmin) {
+        var callerRole = String(callerUserContext.role || '').trim().toUpperCase();
+        var isCallerSuperAdmin = callerUserContext.isSuperAdmin || callerRole === 'SUPER ADMIN' || callerRole === 'SUPER_ADMIN';
+        var isCallerEventAdmin = callerUserContext.isEventAdmin || callerRole === 'EVENT ADMIN' || callerRole === 'EVENT_ADMIN' || callerRole === 'ADMIN';
+        var isCallerHOD = callerUserContext.isHOD || callerRole === 'HOD';
+
+        if (isCallerSuperAdmin) {
           // Super Admin has full privilege
-        } else if (callerUserContext.isEventAdmin || (callerUserContext.isAdmin && !callerUserContext.isSuperAdmin)) {
+        } else if (isCallerEventAdmin || callerUserContext.isAdmin) {
           // Event Admin can create Coordinator accounts
-          if (requestedRole !== 'COORDINATOR') {
+          if (requestedRole !== 'COORDINATOR' && requestedRole !== 'EVENT COORDINATOR') {
             return Utils.buildResponse(false, 'Unauthorized: Event Admins can only create Coordinator accounts.');
           }
-        } else if (callerUserContext.isHOD) {
+        } else if (isCallerHOD) {
           // HOD can create Event Admin and Coordinator accounts
           if (requestedRole !== 'COORDINATOR' && requestedRole !== 'ADMIN' && requestedRole !== 'EVENT ADMIN' && requestedRole !== 'EVENT_ADMIN') {
             return Utils.buildResponse(false, 'Unauthorized: HODs can only create Event Admin and Coordinator accounts.');
@@ -336,7 +341,10 @@ const UserService = {
         return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.USERNAME_EXISTS) ? CONFIG.MESSAGES.USERNAME_EXISTS : 'Username already exists');
       }
 
-      // Note: Duplicate Email IS ALLOWED per business rules (no _isEmailAvailable check)
+      // Duplicate Email Address MUST NOT be allowed (enforces Supabase users_email_address_key unique constraint cleanly)
+      if (email && !this._isEmailAvailable(email)) {
+        return Utils.buildResponse(false, 'Email address "' + email + '" is already registered to another account.');
+      }
 
       var userId = IdService.generateUserId();
       var passCols = this._getPasswordColumns();

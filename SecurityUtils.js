@@ -168,9 +168,10 @@ const SecurityUtils = {
         'view_dashboard'
       ];
     }
-    // EVENT ADMIN: Can create and manage events, but not manage users at system level
+    // EVENT ADMIN: Can create and manage events and create inline Event Coordinators
     if (normRole === 'EVENT ADMIN' || normRole === 'EVENT_ADMIN') {
       return [
+        'create_user',
         'create_event', 'edit_event', 'delete_event', 'close_event',
         'scan_attendance', 'manual_attendance', 'edit_attendance',
         'add_participants', 'manage_forms',
