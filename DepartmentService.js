@@ -51,11 +51,15 @@ const DepartmentService = {
     const empId = data['HOD Emp ID'] || data.hod_emp_id || data.hod_employee_id || '';
     const email = data['HOD Email'] || data.hod_email || '';
     const status = data[CONFIG.COLUMNS.STATUS] || data.status || CONFIG.DEPARTMENT_STATUS.ACTIVE;
+    const deptId = data.department_id || data[CONFIG.COLUMNS.DEPARTMENT_ID] || IdService.generateDepartmentId();
 
     return {
-      [CONFIG.COLUMNS.DEPARTMENT_ID]: IdService.generateDepartmentId(),
+      [CONFIG.COLUMNS.DEPARTMENT_ID]: deptId,
+      'department_id': deptId,
       [CONFIG.COLUMNS.DEPARTMENT_NAME]: name,
+      'department_name': name,
       [CONFIG.COLUMNS.DEPARTMENT_CODE]: code,
+      'department_code': code,
       'HOD Name': hod,
       'hod_name': hod,
       'HOD Emp ID': empId,
