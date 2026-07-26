@@ -697,9 +697,15 @@ const CoordinatorUI = (() => {
             hideSkeleton();
             return;
           }
-          setScannerStatus('Auth error', 'status-error');
-          showToast('error', res && res.message ? res.message : 'Session verification failed.');
-          handleRedirect();
+          // On Netlify (BACKEND_API_URL set), show error + retry instead of redirecting to login
+          const errMsg = res && res.message ? res.message : 'Session verification failed.';
+          setScannerStatus('Error – tap Refresh to retry', 'status-error');
+          showToast('error', errMsg);
+          console.error('[Coordinator Terminal] Backend returned error:', errMsg);
+          // Only redirect if we're running inside Google Apps Script iframe (not Netlify standalone)
+          if (!(window.BACKEND_API_URL)) {
+            handleRedirect();
+          }
         }
       })
       .withFailureHandler((err) => {
