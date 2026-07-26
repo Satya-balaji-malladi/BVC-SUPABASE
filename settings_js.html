@@ -18,6 +18,7 @@
       this.bindEvents();
       this.loadSettings();
       this.enforceRoleVisibility();
+      this.loadDepartments();
     },
 
     bindEvents: function() {
@@ -580,9 +581,17 @@
       }
 
       const modalEl = document.getElementById('departmentModal');
-      if (modalEl && typeof bootstrap !== 'undefined') {
-        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-        modal.show();
+      if (modalEl) {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          let modalObj = bootstrap.Modal.getInstance(modalEl);
+          if (!modalObj) {
+            modalObj = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: true });
+          }
+          modalObj.show();
+        } else {
+          modalEl.classList.add('show');
+          modalEl.style.display = 'block';
+        }
       }
     },
 
