@@ -948,6 +948,8 @@ const CoordinatorService = {
     }
 
     // Save/update student details
+    spotData = spotData || {};
+    var studentType = (spotData.studentType || spotData.type || 'BVC').toUpperCase();
     var studentName = (spotData.studentName || spotData.name || '').trim();
     var collegeName = (spotData.college || spotData.collegeName || 'BVC Engineering College').trim();
     var branch = (spotData.branch || spotData.department || 'CSE').trim().toUpperCase();
