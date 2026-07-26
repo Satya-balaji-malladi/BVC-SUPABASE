@@ -319,32 +319,21 @@
 
   if (role === 'COORDINATOR') {
     loginForm.classList.add('d-none');
-    const redirectContainer = document.getElementById('coordinatorRedirectContainer');
-    const portalUrl = window.COORDINATOR_PORTAL_URL || '';
+    const portalUrl = window.COORDINATOR_PORTAL_URL || 'https://satya-balaji-malladi.github.io/BVC-SUPABASE/';
+    const coordUrl = portalUrl + (portalUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(actualToken);
     
-    if (portalUrl && portalUrl.indexOf('script.google.com') === -1) {
-      // Direct navigation on Netlify (same window) so token is never lost or desynced
-      const coordUrl = portalUrl + (portalUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(actualToken);
-      console.log('Redirecting coordinator directly to:', coordUrl);
+    console.log('Redirecting coordinator to GitHub Pages scanner:', coordUrl);
+    
+    try {
+      if (window.top && window.top.location) {
+        window.top.location.href = coordUrl;
+      } else {
+        window.location.href = coordUrl;
+      }
+    } catch (e) {
       window.location.href = coordUrl;
-      return;
     }
-
-    const btnOpen = document.getElementById('btnOpenCoordinator');
-    if (redirectContainer && btnOpen) {
-      redirectContainer.classList.remove('d-none');
-      google.script.run
-        .withSuccessHandler(function(scriptUrl) {
-          const coordUrl = scriptUrl + '?page=coordinator&token=' + encodeURIComponent(actualToken);
-          btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
-        })
-        .withFailureHandler(function(err) {
-          console.error('Failed to pre-fetch script URL:', err);
-          const fallbackUrl = window.APP_SCRIPT_URL + '?page=coordinator&token=' + encodeURIComponent(actualToken);
-          btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${fallbackUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
-        })
-        .getScriptUrl();
-    }
+    return;
   } else {
     const targetPage = 'dashboard';
     // Admin / Super Admin: load the full dashboard shell via document.write
