@@ -956,7 +956,16 @@ const CoordinatorService = {
     var yearVal = String(spotData.year || '1');
     var sectionVal = String(spotData.section || 'A');
 
-    // Create or update Student entity
+    // Get valid department_id (prefer existing department_id over hardcoded string)
+    var targetDeptId = 'DEP001';
+    try {
+      var depts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+      if (depts && depts.length > 0) {
+        targetDeptId = depts[0]['Department ID'] || depts[0].department_id || 'DEP001';
+      }
+    } catch(e) {}
+
+    // Ensure student exists in students table for foreign key constraint
     var existingStudent = StudentService.getStudentByRollNumber(normRoll);
     if (!existingStudent) {
       if (studentType.includes('OTHER') || !collegeName.toLowerCase().includes('bvc')) {
@@ -975,21 +984,16 @@ const CoordinatorService = {
         try { DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload); } catch(e) {}
       }
 
-      // Ensure main student stub for foreign key constraint
       try {
         var mainStudentPayload = {
           student_id: 'STU_SPOT_' + Date.now(),
-          'Roll Number': normRoll,
-          'roll_number': normRoll,
-          'Student Name': studentName,
-          'student_name': studentName,
-          'Department ID': branch,
-          'department_id': branch,
-          'Year': yearVal,
-          'year': yearVal,
-          'Section': sectionVal,
-          'Status': 'Active',
-          'College': collegeName
+          roll_number: normRoll,
+          student_name: studentName,
+          department_id: targetDeptId,
+          year: yearVal,
+          section: sectionVal,
+          status: 'Active',
+          college: collegeName
         };
         DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, mainStudentPayload);
       } catch(e) {
@@ -997,36 +1001,24 @@ const CoordinatorService = {
       }
     }
 
-    // Insert Participant Record into event_participants
-    var participantId = IdService._generateNextIdWithLock('EVENT_PARTICIPANTS');
+    // Insert Participant Record into event_participants with exact Supabase column names
+    var participantId = 'PART_' + Date.now() + '_' + Math.floor(Math.random()*1000);
     var nowIso = new Date().toISOString();
     var nowDate = Utils.formatDate(new Date());
 
     var participantRecord = {
-      'Participant ID': participantId,
-      'participant_id': participantId,
-      'Event ID': eventId,
-      'event_id': eventId,
-      'Roll Number': normRoll,
-      'roll_number': normRoll,
-      'Registration Type': 'Spot',
-      'registration_type': 'Spot',
-      'Registration Status': 'Active',
-      'registration_status': 'Active',
-      'Attendance Status': 'Absent',
-      'attendance_status': 'Absent',
-      'Approval Status': 'Approved',
-      'approval_status': 'Approved',
-      'Registration Date': nowDate,
-      'registration_date': nowDate,
-      'Registration Timestamp': nowIso,
-      'registration_timestamp': nowIso,
-      'Custom Fields Data': JSON.stringify(spotData.customFields || {}),
-      'custom_fields_data': JSON.stringify(spotData.customFields || {}),
-      'Created By': 'Coordinator',
-      'created_by': 'Coordinator',
-      'Created At': nowIso,
-      'created_at': nowIso
+      participant_id: participantId,
+      event_id: eventId,
+      roll_number: normRoll,
+      registration_type: 'Spot',
+      registration_status: 'Active',
+      attendance_status: 'Absent',
+      approval_status: 'Approved',
+      registration_date: nowDate,
+      registration_timestamp: nowIso,
+      custom_fields_data: JSON.stringify(spotData.customFields || {}),
+      created_by: 'Coordinator',
+      created_at: nowIso
     };
 
     var insertOk = DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, participantRecord);
