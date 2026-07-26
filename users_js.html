@@ -642,6 +642,34 @@
         }
       }
 
+      // Dynamically populate Add/Edit User Modal department dropdown
+      const userDeptSelect = document.getElementById('userDepartment');
+      if (userDeptSelect) {
+        const curVal = userDeptSelect.value;
+        userDeptSelect.innerHTML = '<option value="">Select Department</option>';
+        if (this.departmentsData && this.departmentsData.length > 0) {
+          this.departmentsData.forEach(d => {
+            const code = d['Department Code'] || d.department_code || '';
+            const name = d['Department Name'] || d.department_name || code;
+            if (code) {
+              const opt = document.createElement('option');
+              opt.value = code;
+              opt.textContent = `${name} (${code})`;
+              userDeptSelect.appendChild(opt);
+            }
+          });
+        } else {
+          // Fallback options if database has no custom departments yet
+          ['CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'AIDS', 'AIML'].forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            userDeptSelect.appendChild(opt);
+          });
+        }
+        if (curVal) userDeptSelect.value = curVal;
+      }
+
       if (roleFilter) {
         roleFilter.innerHTML = `
           <option value="">All Roles</option>

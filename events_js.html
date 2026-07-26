@@ -31,8 +31,9 @@ App.Modules.events = {
   loadDependencies: function() {
     return Promise.all([
       App.API.getAllUsers().catch(() => []),
-      App.API.getAllStudents().catch(() => [])
-    ]).then(([users, students]) => {
+      App.API.getAllStudents().catch(() => []),
+      App.API.getAllDepartments().catch(() => [])
+    ]).then(([users, students, departments]) => {
       const uData = (users && (users.users || users.data || (Array.isArray(users) ? users : []))) || [];
       // Users from sheet have 'Role' key (Config.COLUMNS.USER_ROLE = 'Role'), not lowercase 'role'
       this.coordinatorsData = (Array.isArray(uData) ? uData : []).filter(u => {
@@ -42,8 +43,22 @@ App.Modules.events = {
         return role === 'COORDINATOR' || role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'ADMIN';
       });
       
-      const defaultDepts = ['FIRST YEAR DEPARTMENT', 'CSE DEPARTMENT', 'AI&ML DEPARTMENT', 'ECE DEPARTMENT', 'EEE DEPARTMENT', 'CIVIL DEPARTMENT'];
-      defaultDepts.forEach(d => this.departmentsData.add(d));
+      this.departmentsData = new Set();
+      let deptsArray = [];
+      if (Array.isArray(departments)) deptsArray = departments;
+      else if (departments && departments.data && Array.isArray(departments.data.departments)) deptsArray = departments.data.departments;
+      else if (departments && departments.data && Array.isArray(departments.data)) deptsArray = departments.data;
+      else if (departments && Array.isArray(departments.departments)) deptsArray = departments.departments;
+
+      if (deptsArray && deptsArray.length > 0) {
+        deptsArray.forEach(d => {
+          const code = d['Department Code'] || d.department_code || d['Department Name'] || d.department_name;
+          if (code) this.departmentsData.add(code);
+        });
+      } else {
+        const defaultDepts = ['CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'AIDS', 'AIML'];
+        defaultDepts.forEach(d => this.departmentsData.add(d));
+      }
 
       const sData = (students && (students.students || students.data || (Array.isArray(students) ? students : []))) || [];
       const studList = Array.isArray(sData) ? sData : [];
