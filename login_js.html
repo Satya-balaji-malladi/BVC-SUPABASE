@@ -319,19 +319,16 @@
 
   if (role === 'COORDINATOR') {
     loginForm.classList.add('d-none');
+    const redirectContainer = document.getElementById('coordinatorRedirectContainer');
+    const btnOpen = document.getElementById('btnOpenCoordinator');
     const portalUrl = window.COORDINATOR_PORTAL_URL || 'https://satya-balaji-malladi.github.io/BVC-SUPABASE/';
     const coordUrl = portalUrl + (portalUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(actualToken);
-    
-    console.log('Redirecting coordinator to GitHub Pages scanner:', coordUrl);
-    
-    try {
-      if (window.top && window.top.location) {
-        window.top.location.href = coordUrl;
-      } else {
-        window.location.href = coordUrl;
-      }
-    } catch (e) {
-      window.location.href = coordUrl;
+
+    if (redirectContainer && btnOpen) {
+      redirectContainer.classList.remove('d-none');
+      btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-3 fw-bold text-uppercase fs-6 shadow-sm"><i class="bi bi-camera-video me-2"></i> Open Scanner Terminal</a>`;
+    } else {
+      window.open(coordUrl, '_top');
     }
     return;
   } else {
