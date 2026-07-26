@@ -232,6 +232,7 @@
      * ========================================================== */
 
     openAddUserModal: function () {
+      this.populateFilters();
       const form = document.getElementById('userForm');
       if (form) {
         form.reset();
