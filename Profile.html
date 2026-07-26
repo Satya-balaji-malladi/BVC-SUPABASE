@@ -1,0 +1,123 @@
+<div class="container-fluid py-2" id="profileModuleContainer">
+  <!-- Page Header -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h4 class="fw-bold text-dark mb-1">My Account Profile</h4>
+      <p class="text-muted mb-0 small">Manage your personal information and security credentials</p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Left Column: User Summary Card -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rounded-4 p-4 text-center">
+        <div class="position-relative d-inline-block mx-auto mb-3">
+          <svg class="rounded-circle bg-light border p-2 text-secondary" width="100" height="100" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 14C18.2091 14 20 12.2091 20 10C20 7.79086 18.2091 6 16 6C13.7909 6 12 7.79086 12 10C12 12.2091 13.7909 14 16 14Z" fill="#6c757d"/>
+            <path d="M6 24C6 20 10 18 16 18C22 18 26 20 26 24V26H6V24Z" fill="#6c757d"/>
+          </svg>
+          <span class="position-absolute bottom-0 end-0 bg-success border border-white border-2 p-2 rounded-circle" title="Account Active"></span>
+        </div>
+        
+        <h5 class="fw-bold text-dark mb-1" id="profileSummaryName">Loading...</h5>
+        <p class="text-muted small mb-3" id="profileSummaryTitle">Loading...</p>
+        
+        <div class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill font-monospace text-uppercase mb-4" id="profileSummaryRole" style="font-size: 0.75rem;">Loading...</div>
+        
+        <div class="border-top pt-3 text-start">
+          <div class="d-flex justify-content-between py-2 small">
+            <span class="text-muted">Username</span>
+            <span class="fw-semibold text-dark" id="profileMetaUsername">--</span>
+          </div>
+          <div class="d-flex justify-content-between py-2 small">
+            <span class="text-muted">Employee ID</span>
+            <span class="fw-semibold text-dark font-monospace" id="profileMetaEmployeeId">--</span>
+          </div>
+          <div class="d-flex justify-content-between py-2 small">
+            <span class="text-muted">Department</span>
+            <span class="fw-semibold text-dark" id="profileMetaDepartment">--</span>
+          </div>
+          <div class="d-flex justify-content-between py-2 small">
+            <span class="text-muted">Last Login</span>
+            <span class="fw-semibold text-dark" id="profileMetaLastLogin">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Forms -->
+    <div class="col-lg-8">
+      <!-- Edit Details Card -->
+      <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-person-gear text-primary me-2"></i>Personal Details</h5>
+        
+        <form id="profileDetailsForm">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold text-muted">First Name</label>
+              <input type="text" class="form-control" id="profileFirstName" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold text-muted">Last Name</label>
+              <input type="text" class="form-control" id="profileLastName" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold text-muted">Email Address</label>
+              <input type="email" class="form-control" id="profileEmail" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold text-muted">Phone Number</label>
+              <input type="tel" class="form-control" id="profilePhone" pattern="[0-9]{10}" placeholder="10-digit number">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold text-muted">Title / Designation</label>
+              <input type="text" class="form-control" id="profileDesignation">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold text-muted">Department</label>
+              <input type="text" class="form-control bg-light" id="profileDepartmentDisplay" disabled>
+            </div>
+          </div>
+          
+          <div class="d-flex justify-content-end mt-4">
+            <button type="submit" class="btn btn-primary" id="saveProfileDetailsBtn">
+              <span class="spinner-border spinner-border-sm d-none me-2" id="saveProfileSpinner" role="status"></span>
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Update Password Card -->
+      <div class="card border-0 shadow-sm rounded-4 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-shield-lock-fill text-warning me-2"></i>Security Credentials</h5>
+        
+        <form id="profilePasswordForm">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold text-muted">Current Password</label>
+              <input type="password" class="form-control" id="profileCurrentPassword" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold text-muted">New Password</label>
+              <input type="password" class="form-control" id="profileNewPassword" minlength="6" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold text-muted">Confirm New Password</label>
+              <input type="password" class="form-control" id="profileConfirmPassword" minlength="6" required>
+            </div>
+          </div>
+          
+          <div class="d-flex justify-content-end mt-4">
+            <button type="submit" class="btn btn-warning text-dark fw-semibold" id="changePasswordBtn">
+              <span class="spinner-border spinner-border-sm d-none me-2" id="changePasswordSpinner" role="status"></span>
+              Update Password
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?!= include('profile_js'); ?>

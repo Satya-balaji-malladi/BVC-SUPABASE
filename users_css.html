@@ -1,0 +1,154 @@
+<style>
+/* 
+  ==========================================================
+  USERS (COORDINATORS) MODULE ENTERPRISE STYLES
+  ========================================================== 
+*/
+
+/* Module Wrapper */
+#module-users {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Statistics Cards */
+.stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 15px rgba(0,0,0,0.05) !important;
+}
+
+/* Skeleton Loading Animation */
+.skeleton-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s infinite;
+  z-index: 10;
+  border-radius: inherit;
+}
+@keyframes skeletonLoading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Enterprise Data Table */
+.enterprise-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.enterprise-table th {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9ecef;
+  white-space: nowrap;
+}
+.enterprise-table td {
+  vertical-align: middle;
+  padding: 1rem 0.75rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #f1f3f5;
+  transition: background-color 0.15s ease;
+}
+.enterprise-table tbody tr:hover td {
+  background-color: #f8f9fa;
+}
+
+/* User Profile cell layout */
+.user-profile-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.user-name {
+  font-weight: 600;
+  color: #212529;
+  margin: 0;
+}
+.user-email-small {
+  font-size: 0.75rem;
+  color: #6c757d;
+}
+
+/* Action Buttons */
+.btn-action {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s;
+  background: transparent;
+  border: 1px solid transparent;
+}
+.btn-action:hover {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+  transform: translateY(-1px);
+}
+.btn-action-view { color: #0d6efd; }
+.btn-action-edit { color: #fd7e14; }
+.btn-action-lock { color: #6c757d; }
+.btn-action-reset { color: #0dcaf0; }
+.btn-action-delete { color: #dc3545; }
+
+/* Status Badges */
+.status-badge {
+  padding: 0.4em 0.8em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* Pagination Info */
+#users-pagination-info {
+  font-weight: 500;
+}
+
+/* View Drawer Specifics */
+#userViewDrawer .nav-tabs {
+  border-bottom: 1px solid #dee2e6;
+}
+#userViewDrawer .nav-tabs .nav-link {
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 1rem 0;
+  font-weight: 600;
+  color: #6c757d;
+  transition: all 0.2s;
+}
+#userViewDrawer .nav-tabs .nav-link:hover {
+  color: #0d6efd;
+}
+#userViewDrawer .nav-tabs .nav-link.active {
+  color: #0d6efd;
+  background-color: transparent;
+  border-bottom: 2px solid #0d6efd;
+}
+
+/* Offcanvas form tweaks */
+#usersAdvancedFilterForm label {
+  letter-spacing: 0.5px;
+}
+</style>

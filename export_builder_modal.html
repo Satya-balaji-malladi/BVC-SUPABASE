@@ -1,0 +1,614 @@
+<!-- Custom Export Builder Modal -->
+<div class="modal fade" id="exportBuilderModal" tabindex="-1" aria-labelledby="exportBuilderModalLabel" aria-hidden="true" style="z-index: 1060;">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="exportBuilderModalLabel">
+          <i class="bi bi-file-earmark-arrow-up-fill text-primary"></i> Custom Export Builder
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-3">
+        <!-- Stepper Wizard Navigation -->
+        <div class="d-flex justify-content-between mb-4 border-bottom pb-3 text-center" id="exportWizardStepsNav">
+          <div class="flex-fill fw-bold text-primary export-step-item" id="exportStepNavItem1">
+            <span class="badge bg-primary rounded-circle me-1">1</span> Format
+          </div>
+          <div class="flex-fill text-muted export-step-item" id="exportStepNavItem2">
+            <span class="badge bg-secondary rounded-circle me-1">2</span> Fields
+          </div>
+          <div class="flex-fill text-muted export-step-item" id="exportStepNavItem3">
+            <span class="badge bg-secondary rounded-circle me-1">3</span> Options
+          </div>
+          <div class="flex-fill text-muted export-step-item" id="exportStepNavItem4">
+            <span class="badge bg-secondary rounded-circle me-1">4</span> Preview
+          </div>
+        </div>
+
+        <div id="exportModalError" class="alert alert-danger d-none"></div>
+
+        <!-- Step 1: Format Selection -->
+        <div id="exportStep1" class="export-step-panel">
+          <label class="form-label fw-bold mb-3 text-secondary">Choose Export Format</label>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="card border p-3 h-100 rounded-3 cursor-pointer text-center export-format-card active" for="fmtExcel">
+                <input class="form-check-input d-none" type="radio" name="exportFormat" id="fmtExcel" value="excel" checked>
+                <i class="bi bi-file-earmark-excel-fill text-success fs-1 mb-2"></i>
+                <div class="fw-bold text-dark">Excel Worksheet (.xlsx)</div>
+                <small class="text-muted">Best for calculations and analysis</small>
+              </label>
+            </div>
+            <div class="col-md-6">
+              <label class="card border p-3 h-100 rounded-3 cursor-pointer text-center export-format-card" for="fmtCSV">
+                <input class="form-check-input d-none" type="radio" name="exportFormat" id="fmtCSV" value="csv">
+                <i class="bi bi-file-earmark-text-fill text-secondary fs-1 mb-2"></i>
+                <div class="fw-bold text-dark">CSV Plain Text (.csv)</div>
+                <small class="text-muted">Universal lightweight format</small>
+              </label>
+            </div>
+            <div class="col-md-6">
+              <label class="card border p-3 h-100 rounded-3 cursor-pointer text-center export-format-card" for="fmtPDF">
+                <input class="form-check-input d-none" type="radio" name="exportFormat" id="fmtPDF" value="pdf">
+                <i class="bi bi-file-earmark-pdf-fill text-danger fs-1 mb-2"></i>
+                <div class="fw-bold text-dark">PDF Printable Document (.pdf)</div>
+                <small class="text-muted">Best for sharing official documents</small>
+              </label>
+            </div>
+            <div class="col-md-6">
+              <div class="card border p-3 h-100 rounded-3 bg-light opacity-75 text-center">
+                <i class="bi bi-google text-primary fs-1 mb-2"></i>
+                <div class="fw-bold text-muted">Google Sheets (Future-ready)</div>
+                <small class="text-muted">Sync directly to Google Drive</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Template Panel -->
+          <div class="card mt-4 border-light shadow-sm">
+            <div class="card-body bg-light rounded-3">
+              <h6 class="fw-bold text-dark mb-2"><i class="bi bi-bookmark-star-fill text-warning me-1"></i> Saved Templates</h6>
+              <div class="d-flex gap-2 flex-wrap" id="savedTemplatesList">
+                <span class="text-muted small">No templates saved yet.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Data Categories & Fields Selection -->
+        <div id="exportStep2" class="export-step-panel d-none">
+          <label class="form-label fw-bold mb-3 text-secondary">Select Fields to Include</label>
+          
+          <div class="row">
+            <div class="col-md-12">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted fw-semibold">Available Fields</span>
+                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" id="btnSelectAllExportFields">Select All</button>
+              </div>
+              
+              <div class="card border-0 bg-light p-3 rounded-3" style="max-height: 250px; overflow-y: auto;" id="exportFieldsContainer">
+                <!-- Checkboxes populated dynamically based on moduleType -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Filters, Sorting & Layout Options -->
+        <div id="exportStep3" class="export-step-panel d-none">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold text-secondary mb-2">Sorting Order</label>
+              <div class="row g-2">
+                <div class="col-6">
+                  <select class="form-select form-select-sm" id="exportSortBy">
+                    <option value="">Sort Field</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <select class="form-select form-select-sm" id="exportSortOrder">
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-bold text-secondary mb-2">Summary Options</label>
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="Total Records" id="chkSummaryTotal" checked>
+                  <label class="form-check-label small" for="chkSummaryTotal">Total Count</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="Present Count" id="chkSummaryPresent">
+                  <label class="form-check-label small" for="chkSummaryPresent">Presents/Absents (Attendance)</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-12">
+              <label class="form-label fw-bold text-secondary mb-2">Layout Customization</label>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="Logo" id="chkLayoutLogo" checked>
+                    <label class="form-check-label small" for="chkLayoutLogo">Include College Logo</label>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="Alternate" id="chkLayoutAltColors" checked>
+                    <label class="form-check-label small" for="chkLayoutAltColors">Alternate Row Colors</label>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="Gridlines" id="chkLayoutGridlines" checked>
+                    <label class="form-check-label small" for="chkLayoutGridlines">Show Gridlines</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Preview Details -->
+        <div id="exportStep4" class="export-step-panel d-none">
+          <label class="form-label fw-bold mb-3 text-secondary">Export Preview</label>
+          <div class="card border-0 shadow-sm rounded-3 bg-light p-3">
+            <div class="row g-3">
+              <div class="col-md-6 border-end">
+                <span class="small text-muted d-block">CHOSEN FORMAT</span>
+                <strong class="text-dark fs-5" id="previewFormat">Excel Worksheet</strong>
+              </div>
+              <div class="col-md-6">
+                <span class="small text-muted d-block">ESTIMATED RECORD COUNT</span>
+                <strong class="text-dark fs-5" id="previewRecordCount">Calculating...</strong>
+              </div>
+              <div class="col-md-12 border-top pt-3">
+                <span class="small text-muted d-block">SELECTED COLUMNS TO GENERATE</span>
+                <div class="d-flex flex-wrap gap-1 mt-1" id="previewColumnsContainer">
+                  <!-- Badges of selected columns -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Template Save Area -->
+          <div class="mt-4">
+            <div class="input-group input-group-sm" style="max-width: 400px;">
+              <input type="text" class="form-control" id="exportTemplateName" placeholder="Save this template config name (e.g. CSE Summary)">
+              <button class="btn btn-primary" type="button" id="btnSaveExportTemplate"><i class="bi bi-save me-1"></i>Save Template</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer border-top-0 pt-0 bg-light-subtle d-flex justify-content-between rounded-bottom-4 py-3">
+        <div>
+          <button type="button" class="btn btn-outline-secondary px-4 d-none" id="btnExportPrev">Back</button>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary px-4" id="btnExportNext">Next</button>
+          <button type="button" class="btn btn-success px-4 d-none" id="btnExportSubmit">
+            <span class="spinner-border spinner-border-sm d-none" id="exportSubmitSpinner" role="status" aria-hidden="true"></span>
+            Export File
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.export-format-card {
+  transition: all 0.2s ease-in-out;
+}
+.export-format-card:hover {
+  border-color: var(--bs-primary) !important;
+  background-color: var(--bs-light) !important;
+}
+.export-format-card.active {
+  border-color: var(--bs-primary) !important;
+  border-width: 2px !important;
+  background-color: rgba(var(--bs-primary-rgb), 0.05) !important;
+}
+.cursor-pointer {
+  cursor: pointer;
+}
+</style>
+
+<script>
+(function() {
+  /**
+   * Universal Export Builder Engine.
+   */
+  const ExportBuilder = {
+    moduleType: null,
+    currentStep: 1,
+    modalInstance: null,
+    fieldsMap: {
+      'events': [
+        { label: 'Event ID', value: 'event_id' },
+        { label: 'Event Name', value: 'event_name' },
+        { label: 'Description', value: 'description' },
+        { label: 'Venue/Location', value: 'venue' },
+        { label: 'Organizer', value: 'organizer' },
+        { label: 'Start Date', value: 'start_date' },
+        { label: 'End Date', value: 'end_date' },
+        { label: 'Start Time', value: 'start_time' },
+        { label: 'End Time', value: 'end_time' },
+        { label: 'Capacity', value: 'capacity' },
+        { label: 'Status', value: 'status' }
+      ],
+      'participants': [
+        { label: 'Participant ID', value: 'participant_id' },
+        { label: 'Event ID', value: 'event_id' },
+        { label: 'Roll Number', value: 'roll_number' },
+        { label: 'Registration Type', value: 'registration_type' },
+        { label: 'Registration Status', value: 'registration_status' },
+        { label: 'Attendance Status', value: 'attendance_status' },
+        { label: 'Approval Status', value: 'approval_status' }
+      ],
+      'attendance': [
+        { label: 'Attendance ID', value: 'attendance_id' },
+        { label: 'Event ID', value: 'event_id' },
+        { label: 'Roll Number', value: 'roll_number' },
+        { label: 'Attendance Status', value: 'attendance_status' },
+        { label: 'Correction Status', value: 'correction_status' },
+        { label: 'Timestamp', value: 'timestamp' }
+      ],
+      'users': [
+        { label: 'User ID', value: 'user_id' },
+        { label: 'Employee ID', value: 'employee_id' },
+        { label: 'Full Name', value: 'first_name' },
+        { label: 'Email', value: 'email_address' },
+        { label: 'Phone', value: 'phone_number' },
+        { label: 'Department', value: 'department' },
+        { label: 'Role', value: 'role' },
+        { label: 'Status', value: 'status' }
+      ],
+      'departments': [
+        { label: 'Department ID', value: 'department_id' },
+        { label: 'Department Name', value: 'department_name' },
+        { label: 'Department Code', value: 'department_code' }
+      ],
+      'students': [
+        { label: 'Student ID', value: 'student_id' },
+        { label: 'Roll Number', value: 'roll_number' },
+        { label: 'Student Name', value: 'student_name' },
+        { label: 'Branch', value: 'branch' },
+        { label: 'Year', value: 'year' },
+        { label: 'Section', value: 'section' },
+        { label: 'Status', value: 'student_status' }
+      ]
+    },
+
+    open: function(moduleType) {
+      // Normalize module type to match fieldsMap keys
+      let normalizedType = moduleType || '';
+      if (moduleType === 'event') normalizedType = 'events';
+      else if (moduleType === 'student' || moduleType === 'student_history') normalizedType = 'students';
+      else if (moduleType === 'department' || moduleType === 'dept_comparison') normalizedType = 'departments';
+      else if (moduleType === 'coordinator' || moduleType === 'coord_performance') normalizedType = 'users';
+      else if (['daterange', 'event_trend', 'cancelled', 'monthly', 'yearwise', 'defaulters', 'top_participants', 'absent'].indexOf(moduleType) !== -1) {
+        normalizedType = 'attendance';
+      }
+      this.moduleType = normalizedType;
+      this.currentStep = 1;
+      this.goToStep(1);
+
+      document.getElementById('exportModalError').classList.add('d-none');
+      document.getElementById('exportTemplateName').value = '';
+
+      // Set format selection click events
+      const cards = document.querySelectorAll('.export-format-card');
+      cards.forEach(card => {
+        card.onclick = () => {
+          cards.forEach(c => c.classList.remove('active'));
+          card.classList.add('active');
+          const input = card.querySelector('input');
+          if (input) input.checked = true;
+        };
+      });
+
+      this.populateFieldsList();
+      this.populateSortDropdown();
+      this.loadSavedTemplates();
+
+      if (!this.modalInstance) {
+        this.modalInstance = new bootstrap.Modal(document.getElementById('exportBuilderModal'));
+      }
+      this.modalInstance.show();
+    },
+
+    populateFieldsList: function() {
+      const container = document.getElementById('exportFieldsContainer');
+      container.innerHTML = '';
+      const fields = this.fieldsMap[this.moduleType] || [];
+      
+      fields.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'form-check mb-2';
+        div.innerHTML = `
+          <input class="form-check-input export-field-checkbox" type="checkbox" value="${f.value}" id="field_${f.value}" checked>
+          <label class="form-check-label small" for="field_${f.value}">${f.label}</label>
+        `;
+        container.appendChild(div);
+      });
+
+      // Select All click event
+      document.getElementById('btnSelectAllExportFields').onclick = () => {
+        document.querySelectorAll('.export-field-checkbox').forEach(cb => cb.checked = true);
+      };
+    },
+
+    populateSortDropdown: function() {
+      const dropdown = document.getElementById('exportSortBy');
+      dropdown.innerHTML = '<option value="">Sort Field</option>';
+      const fields = this.fieldsMap[this.moduleType] || [];
+      fields.forEach(f => {
+        dropdown.insertAdjacentHTML('beforeend', `<option value="${f.value}">${f.label}</option>`);
+      });
+    },
+
+    loadSavedTemplates: function() {
+      const listEl = document.getElementById('savedTemplatesList');
+      listEl.innerHTML = '<span class="text-muted small"><i class="spinner-border spinner-border-sm me-1"></i>Loading templates...</span>';
+      
+      const token = localStorage.getItem('sessionToken');
+      App.API._call('getExportTemplates', token)
+        .then(templates => {
+          const filtered = (templates || []).filter(t => t.module_type === this.moduleType);
+          if (filtered.length === 0) {
+            listEl.innerHTML = '<span class="text-muted small">No templates saved yet.</span>';
+            return;
+          }
+
+          let html = '';
+          filtered.forEach(t => {
+            html += `<button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 saved-template-btn" data-id="${t.template_id}">${App.Utils.escapeHtml(t.template_name)}</button>`;
+          });
+          listEl.innerHTML = html;
+
+          listEl.querySelectorAll('.saved-template-btn').forEach(btn => {
+            btn.onclick = () => {
+              const id = btn.getAttribute('data-id');
+              const matched = filtered.find(x => x.template_id === id);
+              if (matched) {
+                this.applyTemplateConfig(matched);
+              }
+            };
+          });
+        })
+        .catch(err => {
+          listEl.innerHTML = '<span class="text-danger small">Failed to load templates</span>';
+        });
+    },
+
+    applyTemplateConfig: function(tpl) {
+      try {
+        const config = JSON.parse(tpl.configuration);
+        // Set Format
+        if (config.format) {
+          const card = document.querySelector(`.export-format-card input[value="${config.format}"]`);
+          if (card) card.click();
+        }
+
+        // Set Fields
+        if (config.fields) {
+          document.querySelectorAll('.export-field-checkbox').forEach(cb => {
+            cb.checked = config.fields.indexOf(cb.value) !== -1;
+          });
+        }
+
+        // Set Sort
+        if (config.sort_by) document.getElementById('exportSortBy').value = config.sort_by;
+        if (config.sort_order) document.getElementById('exportSortOrder').value = config.sort_order;
+
+        App.UI.showSuccess("Template '" + tpl.template_name + "' configuration applied.");
+      } catch (e) {
+        App.UI.showError("Failed to apply template config: " + e.message);
+      }
+    },
+
+    saveTemplate: function() {
+      const name = document.getElementById('exportTemplateName').value.trim();
+      if (!name) {
+        App.UI.showError("Please enter a template name.");
+        return;
+      }
+
+      const config = this.getExportConfig();
+      const payload = {
+        template_name: name,
+        module_type: this.moduleType,
+        configuration: config
+      };
+
+      const token = localStorage.getItem('sessionToken');
+      App.API._call('saveExportTemplate', token, payload)
+        .then(res => {
+          if (res && res.success) {
+            App.UI.showSuccess("Template saved successfully.");
+            this.loadSavedTemplates();
+            document.getElementById('exportTemplateName').value = '';
+          } else {
+            App.UI.showError(res.message || "Failed to save template.");
+          }
+        })
+        .catch(err => {
+          App.UI.showError("Template save exception: " + err.message);
+        });
+    },
+
+    getExportConfig: function() {
+      const format = document.querySelector('input[name="exportFormat"]:checked').value;
+      const fields = Array.from(document.querySelectorAll('.export-field-checkbox:checked')).map(cb => cb.value);
+      const sortBy = document.getElementById('exportSortBy').value;
+      const sortOrder = document.getElementById('exportSortOrder').value;
+
+      const summaryOptions = [];
+      if (document.getElementById('chkSummaryTotal').checked) summaryOptions.push('Total Records');
+      if (document.getElementById('chkSummaryPresent').checked) {
+        summaryOptions.push('Present Count');
+        summaryOptions.push('Absent Count');
+      }
+
+      return {
+        module_type: this.moduleType,
+        format: format,
+        fields: fields,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        summary_options: summaryOptions
+      };
+    },
+
+    renderPreview: function() {
+      const config = this.getExportConfig();
+      document.getElementById('previewFormat').textContent = config.format.toUpperCase();
+      
+      const countEl = document.getElementById('previewRecordCount');
+      countEl.textContent = 'Calculating...';
+
+      // Load record preview count
+      const token = localStorage.getItem('sessionToken');
+      App.API._call('processCustomExport', token, config)
+        .then(res => {
+          if (res && res.success && res.rows) {
+            countEl.textContent = `${res.rows.length} rows to export`;
+          } else {
+            countEl.textContent = '--';
+          }
+        })
+        .catch(() => {
+          countEl.textContent = 'Error';
+        });
+
+      // Render column badges
+      const colContainer = document.getElementById('previewColumnsContainer');
+      colContainer.innerHTML = '';
+      config.fields.forEach(f => {
+        colContainer.insertAdjacentHTML('beforeend', `<span class="badge bg-secondary rounded-pill px-2.5 py-1.5">${f}</span>`);
+      });
+    },
+
+    executeExport: function() {
+      const config = this.getExportConfig();
+      if (config.fields.length === 0) {
+        App.UI.showError("Please select at least one field to export.");
+        return;
+      }
+
+      const spinner = document.getElementById('exportSubmitSpinner');
+      const submitBtn = document.getElementById('btnExportSubmit');
+      
+      if (spinner) spinner.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = true;
+
+      const token = localStorage.getItem('sessionToken');
+      App.API._call('processCustomExport', token, config)
+        .then(res => {
+          if (spinner) spinner.classList.add('d-none');
+          if (submitBtn) submitBtn.disabled = false;
+
+          if (res && res.success && res.rows) {
+            this.modalInstance.hide();
+            if (config.format === 'pdf') {
+              // Open print layout in new window
+              App.API.generatePrintablePdfHtml(`BVC Custom Export - ${this.moduleType.toUpperCase()}`, {}, config.fields, res.rows, res.summary)
+                .then(htmlStr => {
+                  const printWin = window.open('', '_blank');
+                  if (printWin) {
+                    printWin.document.write(htmlStr);
+                    printWin.document.close();
+                  }
+                });
+            } else {
+              // Trigger CSV Download
+              App.API.exportToCsv(config.fields, res.rows)
+                .then(csvStr => {
+                  const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.setAttribute('download', `BVC_Custom_${this.moduleType}_Export.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                });
+            }
+          } else {
+            App.UI.showError(res.message || "Export processing failed.");
+          }
+        })
+        .catch(err => {
+          if (spinner) spinner.classList.add('d-none');
+          if (submitBtn) submitBtn.disabled = false;
+          App.UI.showError("Export error: " + err.message);
+        });
+    },
+
+    goToStep: function(stepNum) {
+      this.currentStep = stepNum;
+
+      // Hide all panels
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById('exportStep' + i).classList.add('d-none');
+        document.getElementById('exportStepNavItem' + i).classList.remove('fw-bold', 'text-primary');
+        document.getElementById('exportStepNavItem' + i).classList.add('text-muted');
+        document.getElementById('exportStepNavItem' + i).querySelector('.badge').className = 'badge bg-secondary rounded-circle me-1';
+      }
+
+      // Show target step
+      document.getElementById('exportStep' + stepNum).classList.remove('d-none');
+      document.getElementById('exportStepNavItem' + stepNum).classList.remove('text-muted');
+      document.getElementById('exportStepNavItem' + stepNum).classList.add('fw-bold', 'text-primary');
+      document.getElementById('exportStepNavItem' + stepNum).querySelector('.badge').className = 'badge bg-primary rounded-circle me-1';
+
+      // Update footer buttons
+      const btnPrev = document.getElementById('btnExportPrev');
+      const btnNext = document.getElementById('btnExportNext');
+      const btnSubmit = document.getElementById('btnExportSubmit');
+
+      if (stepNum === 1) btnPrev.classList.add('d-none');
+      else btnPrev.classList.remove('d-none');
+
+      if (stepNum === 4) {
+        btnNext.classList.add('d-none');
+        btnSubmit.classList.remove('d-none');
+        this.renderPreview();
+      } else {
+        btnNext.classList.remove('d-none');
+        btnSubmit.classList.add('d-none');
+      }
+    }
+  };
+
+  // Wire navigation buttons
+  document.getElementById('btnExportNext').onclick = () => {
+    if (ExportBuilder.currentStep < 4) {
+      ExportBuilder.goToStep(ExportBuilder.currentStep + 1);
+    }
+  };
+
+  document.getElementById('btnExportPrev').onclick = () => {
+    if (ExportBuilder.currentStep > 1) {
+      ExportBuilder.goToStep(ExportBuilder.currentStep - 1);
+    }
+  };
+
+  document.getElementById('btnSaveExportTemplate').onclick = () => {
+    ExportBuilder.saveTemplate();
+  };
+
+  document.getElementById('btnExportSubmit').onclick = () => {
+    ExportBuilder.executeExport();
+  };
+
+  // Expose globally
+  App.ExportBuilder = ExportBuilder;
+})();
+</script>

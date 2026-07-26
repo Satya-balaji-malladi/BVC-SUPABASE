@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="description" content="BVC Engineering College - Event Coordinator Attendance Terminal">
+  <title>Coordinator Terminal - BVC Event Attendance</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+  <!-- Configurable Version Testing & Dynamic Library Loading -->
+  <script>
+    window.QR_SCANNER_VERSION = "2.3.7"; // Change to "2.3.8", "2.3.6", "2.3.5", "2.2.8" to test versions
+    window.CDN_PROVIDER = "unpkg";       // Change to "jsdelivr" or "unpkg"
+    window.BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbxAxvWa_2LUkqjJwizGdHquJvbtk62Jm7ZuHEwPE51pHs9Ua9OdH1bCPYc9RkTZO_Om/exec"; // Paste your Web App Exec URL here
+
+    (function () {
+      const startTime = Date.now();
+      let scriptUrl = "";
+      if (window.CDN_PROVIDER === "jsdelivr") {
+        scriptUrl = "https://cdn.jsdelivr.net/npm/html5-qrcode@" + window.QR_SCANNER_VERSION + "/html5-qrcode.min.js";
+      } else {
+        scriptUrl = "https://unpkg.com/html5-qrcode@" + window.QR_SCANNER_VERSION + "/html5-qrcode.min.js";
+      }
+
+      console.log("=== DYNAMIC LIBRARY LOADER ===");
+      console.log("Target URL:", scriptUrl);
+      console.log("Version Selected:", window.QR_SCANNER_VERSION);
+      console.log("CDN Provider:", window.CDN_PROVIDER);
+
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = scriptUrl;
+      script.onload = function () {
+        const downloadTime = Date.now() - startTime;
+        window.QR_LIBRARY_LOAD_TIME = downloadTime;
+        console.log("Library Downloaded & Loaded in " + downloadTime + "ms");
+
+        console.log("===================================");
+        console.log("QR Scanner Runtime Information");
+        console.log("===================================");
+        console.log("Library Version:", window.QR_SCANNER_VERSION);
+        console.log("CDN:", window.CDN_PROVIDER);
+        console.log("Browser:", navigator.userAgent.split(' ')[0]);
+        console.log("Platform:", navigator.platform);
+        console.log("User Agent:", navigator.userAgent);
+        console.log("Window Origin:", window.location.origin);
+        console.log("Secure Context:", window.isSecureContext);
+        console.log("Html5Qrcode exists:", typeof Html5Qrcode !== 'undefined');
+        console.log("Html5QrcodeScanner exists:", typeof Html5QrcodeScanner !== 'undefined');
+        console.log("MediaDevices exists:", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+        console.log("===================================");
+
+        // Run auto compatibility check if available
+        if (typeof window.testLibraryVersion === 'function') {
+          window.testLibraryVersion();
+        }
+      };
+      script.onerror = function () {
+        console.error("Library FAILED to load from URL:", scriptUrl);
+        window.QR_LIBRARY_LOAD_ERROR = true;
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
+  <script>
+    (function() {
+      var theme = localStorage.getItem('appTheme') || 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <?!= include('common_css'); ?>
+  <?!= include('coordinator_attendance_css'); ?>
+  <script>
+    // Inject session token from backend template parameter to bypass iframe query limitations
+    window.SESSION_TOKEN_FROM_BACKEND = "<?= token ?>";
+    window.DEBUG_MODE = true;
+  </script>
+</head>
+
+<body>
+
+  <!-- App Shell -->
+  <div class="coord-app" id="coord-app">
+
+    <!-- ===================== GLOBAL HEADER ===================== -->
+    <header class="coord-header" role="banner" aria-label="Coordinator Terminal Header">
+      <div class="coord-header-inner">
+        <!-- Brand & Nav Tabs -->
+        <div class="d-flex align-items-center gap-4">
+          <div class="coord-brand">
+            <div class="coord-brand-logo" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="20" cy="20" r="20" fill="rgba(255,255,255,0.18)" />
+                <path d="M12 11H28V15L20 22L12 15V11Z" fill="#ffffff" />
+                <path d="M12 25H28V28H12V25Z" fill="#ffffff" />
+              </svg>
+            </div>
+            <div>
+              <span class="coord-brand-name">BVC Coordinator</span>
+              <span class="coord-brand-sub" id="terminal-event-name">Loading...</span>
+            </div>
+          </div>
+
+          <!-- Sidebar / Top Navigation Tabs -->
+          <nav class="nav nav-pills gap-2 bg-dark p-1 rounded-pill" id="coord-nav-tabs">
+            <button class="nav-link active rounded-pill px-3 py-1 text-white small fw-bold" id="tab-btn-scanner" data-target="scanner-view-panel">
+              <i class="bi bi-qr-code-scan me-1"></i> SCANNER
+            </button>
+            <button class="nav-link rounded-pill px-3 py-1 text-white-50 small fw-bold" id="tab-btn-attendance" data-target="attendance-view-panel">
+              <i class="bi bi-calendar-check me-1"></i> ATTENDANCE
+            </button>
+          </nav>
+        </div>
+
+        <!-- Header Right Indicators -->
+        <div class="coord-header-right">
+          <span class="coord-status-chip" id="connection-status" aria-live="polite">
+            <span class="coord-status-dot" id="conn-dot"></span>
+            <span id="conn-label">Online</span>
+          </span>
+          <button class="coord-icon-btn" id="btn-terminal-refresh" title="Refresh Data"
+            aria-label="Refresh terminal data">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+          <button class="coord-icon-btn coord-icon-btn-danger" id="btn-terminal-logout" title="Logout"
+            aria-label="Logout from terminal">
+            <i class="bi bi-box-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===================== MAIN LAYOUT ===================== -->
+    <main class="coord-main" role="main">
+
+      <!-- PANEL 1: SCANNER VIEW -->
+      <div id="scanner-view-panel" class="coord-view-panel">
+        <div class="coord-grid">
+
+          <!-- ============ LEFT COLUMN: Scanner Panel ============ -->
+          <div class="coord-col-left">
+
+            <!-- Event Info Card -->
+            <div class="coord-card coord-event-card">
+              <div class="coord-event-card-inner">
+                <div class="coord-event-info">
+                  <span class="coord-event-label">Current Event</span>
+                  <h2 class="coord-event-title" id="event-title-display">Loading event...</h2>
+                  <div class="coord-event-meta">
+                    <span id="terminal-event-date"><i class="bi bi-calendar3"></i> --/--/----</span>
+                    <span id="terminal-coordinator-name"><i class="bi bi-person-badge"></i> Coordinator</span>
+                  </div>
+                </div>
+                <span id="event-status-badge" class="coord-badge coord-badge-active">
+                  <span class="coord-badge-dot"></span> Active
+                </span>
+              </div>
+              <div class="coord-event-meta-bar">
+                <span><i class="bi bi-clock"></i> Last Scan: <strong id="last-scan-time">--:--</strong></span>
+                <span><i class="bi bi-camera-video"></i> Camera: <strong id="camera-status-text">Loading</strong></span>
+              </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <section class="coord-stats-grid" aria-label="Live Statistics">
+              <div class="coord-stat-card">
+                <div class="coord-stat-icon coord-stat-icon-present"><i class="bi bi-person-check-fill"></i></div>
+                <div>
+                  <span class="coord-stat-label">Present</span>
+                  <span class="coord-stat-value text-success" id="stat-present-count">--</span>
+                </div>
+              </div>
+              <div class="coord-stat-card">
+                <div class="coord-stat-icon coord-stat-icon-remaining"><i class="bi bi-hourglass-split"></i></div>
+                <div>
+                  <span class="coord-stat-label">Remaining</span>
+                  <span class="coord-stat-value text-warning" id="stat-remaining-count">--</span>
+                </div>
+              </div>
+              <div class="coord-stat-card">
+                <div class="coord-stat-icon coord-stat-icon-total"><i class="bi bi-people-fill"></i></div>
+                <div>
+                  <span class="coord-stat-label">Total</span>
+                  <span class="coord-stat-value text-primary" id="stat-total-count">--</span>
+                </div>
+              </div>
+              <div class="coord-stat-card">
+                <div class="coord-stat-icon coord-stat-icon-duplicate"><i class="bi bi-slash-circle-fill"></i></div>
+                <div>
+                  <span class="coord-stat-label">Duplicates</span>
+                  <span class="coord-stat-value text-danger" id="stat-duplicate-count">0</span>
+                </div>
+              </div>
+              <!-- Percentage card -->
+              <div class="coord-stat-card coord-stat-card-pct">
+                <div class="coord-stat-icon coord-stat-icon-pct"><i class="bi bi-bar-chart-fill"></i></div>
+                <div class="w-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="coord-stat-label">Attendance</span>
+                    <span class="coord-stat-value" id="stat-percent-count">0%</span>
+                  </div>
+                  <div class="coord-progress-bar-bg">
+                    <div class="coord-progress-bar-fill" id="stat-progress-bar" style="width:0%"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Automatic Camera Scanner Card -->
+            <section class="coord-card coord-scanner-card" aria-label="QR/Barcode Scanner">
+              <!-- Camera Controls Bar -->
+              <div class="coord-camera-controls">
+                <span class="coord-section-label"><i class="bi bi-camera-video-fill me-1"></i>Automatic Scanner</span>
+                <div class="coord-camera-actions">
+                  <select id="camera-device-select" class="coord-cam-select d-none" aria-label="Select camera device">
+                    <option value="">Select Camera</option>
+                  </select>
+                  <button type="button" id="btn-flip-camera" class="coord-cam-btn" title="Flip Camera">
+                    <i class="bi bi-arrow-repeat"></i> <span class="d-none d-sm-inline">Flip</span>
+                  </button>
+                  <button type="button" id="btn-toggle-camera" class="coord-cam-btn coord-cam-btn-primary" title="Toggle Camera">
+                    <i class="bi bi-camera-video-off-fill" id="camera-toggle-icon"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Camera Viewport -->
+              <div class="coord-viewport" id="coord-viewport" role="img" aria-label="Camera scanner viewport">
+                <div id="interactive-camera-scanner" style="width:100%;"></div>
+                <div class="coord-viewport-frame" aria-hidden="true">
+                  <div class="corner tl"></div>
+                  <div class="corner tr"></div>
+                  <div class="corner bl"></div>
+                  <div class="corner br"></div>
+                </div>
+                <div class="coord-laser" id="coord-laser" aria-hidden="true"></div>
+                <div class="coord-viewport-placeholder" id="viewport-placeholder">
+                  <i class="bi bi-qr-code-scan"></i>
+                  <span>Scanner Auto Starts Below</span>
+                </div>
+              </div>
+
+              <!-- Manual Entry Bar Directly Below Scanner -->
+              <form id="attendance-input-form" onsubmit="return false;" novalidate class="mt-3">
+                <label for="barcode-roll-input" class="coord-input-label">
+                  <i class="bi bi-keyboard me-1"></i>Manual Attendance Input (Type Roll / Scan Barcode)
+                </label>
+                <div class="coord-input-group">
+                  <input type="text" id="barcode-roll-input" class="coord-input" placeholder="ENTER ROLL NUMBER MANUALLY"
+                    autocomplete="off" autocapitalize="characters" spellcheck="false" autofocus aria-required="true">
+                  <button type="submit" id="btn-submit-attendance" class="coord-submit-btn" disabled>
+                    <i class="bi bi-arrow-right-circle-fill"></i>
+                  </button>
+                </div>
+                <div id="scanner-status" class="coord-status-text" aria-live="polite">Ready for verification scan</div>
+              </form>
+            </section>
+
+          </div><!-- /coord-col-left -->
+
+          <!-- ============ RIGHT COLUMN: History Panel ============ -->
+          <div class="coord-col-right">
+            <div class="coord-card coord-history-card h-100 d-flex flex-column">
+
+              <!-- History Card Header -->
+              <div class="coord-history-header">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi bi-list-check text-primary"></i>
+                  <span class="coord-section-label">Scanned History</span>
+                  <span class="coord-count-badge" id="history-count-badge">0</span>
+                </div>
+                <button class="coord-cam-btn" id="btn-terminal-sync" title="Sync from server">
+                  <i class="bi bi-cloud-arrow-down"></i> Sync
+                </button>
+              </div>
+
+              <!-- Search & Filters -->
+              <div class="coord-history-filters">
+                <div class="coord-search-wrapper">
+                  <i class="bi bi-search coord-search-icon"></i>
+                  <input type="search" id="history-search-input" class="coord-search-input"
+                    placeholder="Search by name or roll number...">
+                </div>
+                <select id="history-dept-filter" class="coord-filter-select">
+                  <option value="">All Depts</option>
+                </select>
+              </div>
+
+              <!-- Feed Container -->
+              <div id="recent-scans-container" class="coord-history-feed" role="list"></div>
+
+            </div>
+          </div><!-- /coord-col-right -->
+
+        </div><!-- /coord-grid -->
+      </div><!-- /#scanner-view-panel -->
+
+
+      <!-- PANEL 2: ATTENDANCE VIEW (Two Column Split: ABSENT vs PRESENT for Today) -->
+      <div id="attendance-view-panel" class="coord-view-panel d-none">
+        <div class="card border-0 shadow-sm bg-white p-3 mb-3" style="border-radius:16px;">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+              <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-calendar-check-fill me-2"></i>Today's Attendance Management</h5>
+              <small class="text-muted" id="att-today-date-sub">Date: Loading today...</small>
+            </div>
+            <div class="d-flex gap-2">
+              <input type="text" id="att-search-input" class="form-control form-control-sm" placeholder="Search student name / roll..." style="max-width: 250px;">
+              <select id="att-dept-filter" class="form-select form-select-sm" style="max-width: 150px;">
+                <option value="">All Depts</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Two Columns Container -->
+        <div class="row g-3">
+          <!-- Left Column: ABSENT List -->
+          <div class="col-md-6">
+            <div class="card border-danger border-opacity-25 shadow-sm h-100" style="border-radius:16px;">
+              <div class="card-header bg-danger bg-opacity-10 py-3 border-0 d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-danger"><i class="bi bi-person-x-fill me-2"></i>ABSENT STUDENTS</span>
+                <span class="badge bg-danger rounded-pill" id="absent-count-badge">0</span>
+              </div>
+              <div class="card-body p-2 style-scrollbar" style="max-height: 550px; overflow-y: auto;" id="absent-list-container">
+                <div class="text-center text-muted py-4">Loading absent students...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: PRESENT List -->
+          <div class="col-md-6">
+            <div class="card border-success border-opacity-25 shadow-sm h-100" style="border-radius:16px;">
+              <div class="card-header bg-success bg-opacity-10 py-3 border-0 d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-success"><i class="bi bi-person-check-fill me-2"></i>PRESENT STUDENTS</span>
+                <span class="badge bg-success rounded-pill" id="present-count-badge">0</span>
+              </div>
+              <div class="card-body p-2 style-scrollbar" style="max-height: 550px; overflow-y: auto;" id="present-list-container">
+                <div class="text-center text-muted py-4">Loading present students...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /#attendance-view-panel -->
+
+    </main>
+
+    <!-- ===================== SCAN VERIFICATION MODAL ===================== -->
+    <div class="modal fade" id="scanVerificationModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered px-3" style="max-width:440px;">
+        <div class="modal-content border-0" style="border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+          <div class="modal-header border-0 py-3 bg-primary text-white" style="border-radius:20px 20px 0 0;">
+            <h5 class="modal-title fw-bold mb-0"><i class="bi bi-shield-check me-2"></i>Verify Student Profile</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4 text-center">
+            <div class="avatar-circle bg-light text-primary mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:70px; height:70px; font-size:2rem;">
+              <i class="bi bi-person-fill"></i>
+            </div>
+            <h4 class="fw-bold text-dark mb-1" id="verif-name">--</h4>
+            <div class="badge bg-secondary mb-3 fs-6" id="verif-roll">--</div>
+
+            <div class="card bg-light border-0 p-3 text-start mb-3" style="border-radius:12px;">
+              <div class="row g-2">
+                <div class="col-6">
+                  <span class="small text-muted d-block">DEPARTMENT / BRANCH</span>
+                  <strong class="text-dark small" id="verif-dept">--</strong>
+                </div>
+                <div class="col-6">
+                  <span class="small text-muted d-block">YEAR OF STUDY</span>
+                  <strong class="text-dark small" id="verif-year">--</strong>
+                </div>
+                <div class="col-12 border-top pt-2 mt-2" id="verif-college-row">
+                  <span class="small text-muted d-block">COLLEGE / INSTITUTION</span>
+                  <strong class="text-dark small" id="verif-college">BVC Engineering College</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic Missing Event Admin Required Fields -->
+            <div id="verif-missing-fields-container" class="text-start mb-3 d-none">
+              <div class="alert alert-warning border-0 small py-2 px-3 mb-2" style="border-radius:10px;">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i><strong>Missing Event Admin Fields:</strong> Complete required details below before marking attendance.
+              </div>
+              <div id="verif-missing-fields-inputs" class="row g-2"></div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-light w-50 fw-bold py-2" style="border-radius:12px;" data-bs-dismiss="modal">Cancel</button>
+              <button type="button" id="btn-confirm-attendance-verif" class="btn btn-success w-50 fw-bold py-2" style="border-radius:12px;">Confirm &amp; Mark</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== TOAST NOTIFICATION ===================== -->
+    <div class="coord-toast-stack" id="coord-toast-stack" aria-live="assertive" aria-atomic="true"></div>
+
+  </div><!-- /coord-app -->
+
+  <!-- ===================== SPOT REGISTRATION MODAL ===================== -->
+  <div class="modal fade" id="spotRegistrationModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+    aria-labelledby="spotRegistrationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered px-3" style="max-width:480px;">
+      <div class="modal-content border-0" style="border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div class="modal-header border-0 py-3"
+          style="background:linear-gradient(135deg,#2563EB,#1D4ED8);border-radius:20px 20px 0 0;">
+          <h5 class="modal-title fw-bold text-white" id="spotRegistrationModalLabel">
+            <i class="bi bi-person-plus-fill me-2"></i>Spot Enrollment
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+            aria-label="Close spot enrollment modal" id="btn-close-spot-modal"></button>
+        </div>
+        <div class="modal-body p-4">
+
+          <!-- Open Event View -->
+          <div id="spot-open-event-view" class="d-none">
+            <div class="alert border-0 small mb-3"
+              style="border-radius:12px;background:rgba(37,99,235,0.08);color:#1D4ED8;">
+              <i class="bi bi-info-circle-fill me-2"></i><strong>Open Event Check-in</strong>: Add student to
+              attendance?
+            </div>
+            <p class="small text-muted mb-4">ID <strong id="spot-open-roll-display" class="text-dark"></strong> is not
+              registered. Click <strong>Add to Attendance</strong> to mark their attendance.</p>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-light w-50 fw-bold" data-bs-dismiss="modal"
+                style="border-radius:12px;padding:12px;">Cancel</button>
+              <button type="button" id="btn-confirm-spot-open" class="btn btn-primary w-50 fw-bold"
+                style="border-radius:12px;padding:12px;">Add to Attendance</button>
+            </div>
+          </div>
+
+          <!-- Fixed Event Form View -->
+          <div id="spot-fixed-event-view" class="d-none">
+            <div class="alert border-0 small mb-3"
+              style="border-radius:12px;background:rgba(245,158,11,0.1);color:#B45309;">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>ID <strong id="spot-fixed-roll-display"></strong> is
+              not registered. Do you want to spot register them?
+            </div>
+
+            <form id="spot-registration-form" onsubmit="return false;">
+              <input type="hidden" id="spot-roll-input">
+
+              <!-- Student Type Dropdown -->
+              <div class="mb-3">
+                <label for="spot-student-type-select" class="form-label small fw-bold text-secondary">Student Type</label>
+                <select class="form-select fw-bold text-primary" id="spot-student-type-select" style="border-radius:10px;padding:10px;">
+                  <option value="BVC" selected>BVC STUDENT</option>
+                  <option value="OTHER">OTHER COLLEGE STUDENT</option>
+                </select>
+              </div>
+
+              <div class="mb-3">
+                <label for="spot-name-input" class="form-label small fw-bold text-secondary">Student Full Name</label>
+                <input type="text" class="form-control" id="spot-name-input" placeholder="e.g. Satya Balaji" required
+                  style="border-radius:10px;padding:10px;">
+              </div>
+
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label for="spot-email-input" class="form-label small fw-bold text-secondary">Email Address</label>
+                  <input type="email" class="form-control" id="spot-email-input" placeholder="student@gmail.com"
+                    style="border-radius:10px;padding:10px;">
+                </div>
+                <div class="col-6">
+                  <label for="spot-phone-input" class="form-label small fw-bold text-secondary">Phone Number</label>
+                  <input type="tel" class="form-control" id="spot-phone-input" placeholder="9876543210"
+                    style="border-radius:10px;padding:10px;">
+                </div>
+              </div>
+
+              <div class="mb-3" id="spot-college-container">
+                <label for="spot-college-input" class="form-label small fw-bold text-secondary">College Name</label>
+                <input class="form-control" list="college-datalist" id="spot-college-input"
+                  placeholder="Type to search college..." required style="border-radius:10px;padding:10px;">
+              </div>
+                <datalist id="college-datalist">
+                  <option value="ABR College of Engineering and Technology">
+                  <option value="Adarsh College of Engineering">
+                  <option value="Aditya College of Engineering">
+                  <option value="Aditya College of Engineering and Technology">
+                  <option value="Aditya Engineering College">
+                  <option value="Aditya Engineering College for Women">
+                  <option value="Anil Neerukonda Institute of Technology and Sciences">
+                  <option value="Andhra University College of Engineering">
+                  <option value="ANU College of Engineering and Technology">
+                  <option value="Annamacharya Institute of Technology and Sciences, Rajampet">
+                  <option value="Annamacharya Institute of Technology and Sciences, Tirupati">
+                  <option value="A.K.R.G. College of Engineering and Technology">
+                  <option value="Bapatla Engineering College">
+                  <option value="BITS Vizag">
+                  <option value="Bonam Venkata Chalamayya Engineering College">
+                  <option value="BVC Institute of Technology and Science">
+                  <option value="Chadalawada Ramanamma Engineering College">
+                  <option value="Chalapathi Institute of Engineering and Technology">
+                  <option value="Chaitanya Institute of Engineering and Technology">
+                  <option value="Dadi Institute of Engineering and Technology">
+                  <option value="Dr. K.V. Subba Reddy Institute of Technology">
+                  <option value="Dhanekula Institute of Engineering and Technology">
+                  <option value="D.M.S.S.V.H. College of Engineering">
+                  <option value="DNR College of Engineering and Technology">
+                  <option value="DVR & Dr. HS MIC College of Technology">
+                  <option value="Eluru College of Engineering and Technology">
+                  <option value="Guntur Engineering College">
+                  <option value="GMR Institute of Technology">
+                  <option value="Gayatri Vidya Parishad College of Engineering">
+                  <option value="Gayatri Vidya Parishad College of Engineering for Women">
+                  <option value="JNTUA College of Engineering, Anantapur">
+                  <option value="JNTUK University College of Engineering, Kakinada">
+                  <option value="KL College of Engineering">
+                  <option value="Lakireddy Bali Reddy College of Engineering">
+                  <option value="Lendi Institute of Engineering and Technology">
+                  <option value="NRI Institute of Technology">
+                  <option value="PACE Institute of Technology and Sciences">
+                  <option value="Pragati Engineering College">
+                  <option value="Prasad V. Potluri Siddhartha Institute of Technology">
+                  <option value="RVR & JC College of Engineering">
+                  <option value="Sasi Institute of Technology and Engineering">
+                  <option value="SRKR Engineering College">
+                  <option value="SRM University AP">
+                  <option value="Sri Venkateswara College of Engineering">
+                  <option value="Vasireddy Venkatadri Institute of Technology">
+                  <option value="Vignan's Institute of Information Technology">
+                  <option value="Vignan's Lara Institute of Technology and Science">
+                  <option value="YSR Engineering College of Yogi Vemana University">
+                </datalist>
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label for="spot-dept-select" class="form-label small fw-bold text-secondary">Branch</label>
+                  <select class="form-select" id="spot-dept-select" style="border-radius:10px;padding:10px;">
+                    <option value="CSE" selected>CSE</option>
+                    <option value="CSE-AIML">CSE (AI & ML)</option>
+                    <option value="CSE-DS">CSE (Data Science)</option>
+                    <option value="ECE">ECE</option>
+                    <option value="EEE">EEE</option>
+                    <option value="MECH">MECH</option>
+                    <option value="CIVIL">CIVIL</option>
+                    <option value="IT">IT</option>
+                    <option value="OTHERS">Others</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <label for="spot-year-select" class="form-label small fw-bold text-secondary">Year of Study</label>
+                  <select class="form-select" id="spot-year-select" style="border-radius:10px;padding:10px;">
+                    <option value="1" selected>1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mb-3 d-none" id="spot-dept-other-container">
+                <label for="spot-dept-other-input" class="form-label small fw-bold text-secondary">Specify
+                  Branch</label>
+                <input type="text" class="form-control" id="spot-dept-other-input"
+                  placeholder="e.g. Artificial Intelligence" style="border-radius:10px;padding:10px;">
+              </div>
+              <div class="d-flex gap-2 mt-4">
+                <button type="button" class="btn btn-light w-50 fw-bold" data-bs-dismiss="modal"
+                  style="border-radius:12px;padding:12px;">Cancel</button>
+                <button type="submit" id="btn-confirm-spot-reg" class="btn btn-primary w-50 fw-bold"
+                  style="border-radius:12px;padding:12px;">Register &amp; Mark</button>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Camera Debug Panel Trigger (Visible only if DEBUG_MODE is active) -->
+  <div id="camera-debug-trigger-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;">
+    <button id="btn-open-camera-debug" class="btn btn-dark shadow-lg d-flex align-items-center justify-content-center"
+      style="width:50px;height:50px;border-radius:50%;border:2px solid #ffc107;" title="Open Camera Diagnostic Panel">
+      <i class="bi bi-bug-fill text-warning fs-5"></i>
+    </button>
+  </div>
+
+  <!-- Floating Camera Debug Panel Container -->
+  <div id="camera-debug-panel" class="card shadow-lg border-warning"
+    style="position:fixed;bottom:80px;right:20px;width:380px;height:520px;z-index:9999;border-radius:16px;display:none;flex-direction:column;overflow:hidden;background:rgba(255,255,255,0.98);backdrop-filter:blur(8px);">
+    <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between py-2"
+      style="border-top-left-radius:15px;border-top-right-radius:15px;">
+      <span class="fw-bold small d-flex align-items-center gap-2"><i class="bi bi-shield-fill-check text-warning"></i>
+        Camera Diagnostic Panel</span>
+      <button id="btn-close-camera-debug" class="btn-close btn-close-white" style="font-size:0.8rem;"></button>
+    </div>
+    <div class="card-body p-3 d-flex flex-column gap-3"
+      style="overflow-y:auto;font-family:monospace;font-size:0.75rem;">
+
+      <!-- Subsystems Stats Tab -->
+      <div class="bg-light p-2 rounded border">
+        <div class="fw-bold text-secondary mb-1 border-bottom pb-1 small">SYSTEM METRICS</div>
+        <div class="row g-1">
+          <div class="col-6">Browser: <span id="dbg-browser" class="text-primary">Detecting...</span></div>
+          <div class="col-6">Platform: <span id="dbg-platform" class="text-primary">Detecting...</span></div>
+          <div class="col-6">Secure Context: <span id="dbg-secure" class="text-primary">-</span></div>
+          <div class="col-6">Camera Permission: <span id="dbg-permission" class="text-primary">-</span></div>
+          <div class="col-6">Html5Qrcode: <span id="dbg-lib" class="text-primary">-</span></div>
+          <div class="col-6">Camera Count: <span id="dbg-cam-count" class="text-primary">0</span></div>
+          <div class="col-6">Active Index: <span id="dbg-active-idx" class="text-primary">-</span></div>
+          <div class="col-6">Scanner Status: <span id="dbg-status" class="text-primary">-</span></div>
+          <div class="col-12 text-truncate">Device ID: <span id="dbg-device-id" class="text-secondary">-</span></div>
+        </div>
+      </div>
+
+      <!-- Independent Test Actions Grid -->
+      <div class="bg-light p-2 rounded border">
+        <div class="fw-bold text-secondary mb-2 border-bottom pb-1 small">DIAGNOSTIC TEST RUNNERS</div>
+        <div class="d-grid gap-1" style="grid-template-columns: 1fr 1fr;">
+          <button id="dbg-btn-test-1" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-check-circle"></i> 1. Browser API</button>
+          <button id="dbg-btn-test-2" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-key"></i> 2. Permission</button>
+          <button id="dbg-btn-test-3" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-camera"></i> 3. Enumerate</button>
+          <button id="dbg-btn-test-4" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-gear"></i> 4. Settings</button>
+          <button id="dbg-btn-test-5" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-play"></i> 5. Start Prev</button>
+          <button id="dbg-btn-test-6" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-stop"></i> 6. Stop Cam</button>
+          <button id="dbg-btn-test-7" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-activity"></i> 7. Stress Test</button>
+          <button id="dbg-btn-test-8" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-qr-code-scan"></i> 8. Decode QR</button>
+          <button id="dbg-btn-test-9" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-box"></i> 9. Container</button>
+          <button id="dbg-btn-test-10" class="btn btn-outline-dark btn-xs text-start py-1" style="font-size:0.68rem;"><i
+              class="bi bi-speedometer2"></i> 10. Perf Check</button>
+        </div>
+      </div>
+
+      <!-- Error Dashboard -->
+      <div class="bg-light p-2 rounded border">
+        <div
+          class="fw-bold text-secondary mb-1 border-bottom pb-1 small d-flex justify-content-between align-items-center">
+          <span>ERROR DASHBOARD</span>
+          <button id="dbg-btn-clear-error" class="btn btn-xs btn-link p-0 text-decoration-none text-danger"
+            style="font-size:0.65rem;">Clear</button>
+        </div>
+        <div id="dbg-error-display" class="text-danger overflow-auto"
+          style="max-height:80px;white-space:pre-wrap;font-size:0.7rem;">None recorded.</div>
+      </div>
+
+      <!-- Live Execution Timeline -->
+      <div class="bg-light p-2 rounded border flex-grow-1 d-flex flex-column">
+        <div
+          class="fw-bold text-secondary mb-1 border-bottom pb-1 small d-flex justify-content-between align-items-center">
+          <span>LIVE RUNTIME TIMELINE</span>
+          <button id="dbg-btn-clear-timeline" class="btn btn-xs btn-link p-0 text-decoration-none text-secondary"
+            style="font-size:0.65rem;">Clear</button>
+        </div>
+        <div id="dbg-timeline" class="overflow-auto flex-grow-1" style="max-height:100px;font-size:0.68rem;"></div>
+      </div>
+
+      <!-- Logs Exporter -->
+      <div class="d-flex gap-2">
+        <button id="dbg-btn-export-logs" class="btn btn-secondary w-50 btn-sm fw-bold" style="border-radius:8px;"><i
+            class="bi bi-download"></i> Export Logs</button>
+        <button id="dbg-btn-reset-test" class="btn btn-warning w-50 btn-sm fw-bold" style="border-radius:8px;"><i
+            class="bi bi-arrow-counterclockwise"></i> Reset Test</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <?!= include('coordinator_attendance_js'); ?>
+</body>
+
+</html>

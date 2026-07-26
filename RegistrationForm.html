@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Registration - BVC System</title>
+  <!-- Google Fonts & Bootstrap Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+
+  <style>
+    :root {
+      --primary-color: #4f46e5;
+      --primary-hover: #4338ca;
+      --secondary-color: #06b6d4;
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --text-dark: #0f172a;
+      --text-muted: #64748b;
+      --border-color: rgba(226, 232, 240, 0.8);
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-gradient);
+      min-height: 100vh;
+      color: var(--text-dark);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem 1rem;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Ambient background lights */
+    .bg-light-glow {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(79, 70, 229, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+      top: -10%;
+      left: -10%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .bg-light-glow-secondary {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(6, 182, 212, 0.12) 0%, rgba(0, 0, 0, 0) 70%);
+      bottom: -10%;
+      right: -10%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .main-container {
+      width: 100%;
+      max-width: 680px;
+      z-index: 10;
+      position: relative;
+    }
+
+    .reg-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      overflow: hidden;
+    }
+
+    .college-logo-container {
+      background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%);
+      padding: 2rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .college-logo {
+      max-width: 80px;
+      height: auto;
+      filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+    }
+
+    .event-header {
+      background: #ffffff;
+      padding: 2rem;
+      border-bottom: 1px dashed var(--border-color);
+    }
+
+    .event-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    .event-meta-badge {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 100px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #475569;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .event-meta-badge i {
+      color: var(--primary-color);
+    }
+
+    .form-section {
+      padding: 2rem;
+    }
+
+    .form-label {
+      font-weight: 600;
+      color: #334155;
+      font-size: 0.9rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .form-control, .form-select {
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-control:focus, .form-select:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+      outline: none;
+    }
+
+    .btn-primary-custom {
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+      border: none;
+      border-radius: 12px;
+      padding: 0.85rem 1.5rem;
+      color: #fff;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
+    }
+
+    .btn-primary-custom:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.4);
+    }
+
+    .btn-primary-custom:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary-custom:disabled {
+      transform: none;
+      box-shadow: none;
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    /* Success animation styling */
+    .success-checkmark {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.5rem;
+    }
+
+    .check-icon {
+      width: 80px;
+      height: 80px;
+      position: relative;
+      border-radius: 50%;
+      box-sizing: content-box;
+      border: 4px solid #4caf50;
+    }
+
+    .check-icon::after {
+      content: '';
+      position: absolute;
+      width: 40px;
+      height: 20px;
+      border-left: 4px solid #4caf50;
+      border-bottom: 4px solid #4caf50;
+      transform: rotate(-45deg);
+      top: 24px;
+      left: 18px;
+    }
+
+    .pulse-animation {
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4);
+      }
+      70% {
+        box-shadow: 0 0 0 15px rgba(79, 70, 229, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
+      }
+    }
+
+    .badge-read-only {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 0.95rem;
+      display: block;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 2rem;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Light Effects -->
+  <div class="bg-light-glow"></div>
+  <div class="bg-light-glow-secondary"></div>
+
+  <main class="main-container">
+    <div class="reg-card">
+      
+      <!-- Top College Branding Banner -->
+      <div class="college-logo-container">
+        <img src="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=150&q=80" alt="BVC Logo" class="college-logo rounded mb-3">
+        <h4 class="fw-bold mb-1" style="color: var(--text-dark); letter-spacing: 0.5px;">BVC Engineering College</h4>
+        <p class="text-muted small mb-0">Autonomous Institution &bull; Approved by AICTE, Affiliated to JNTUK</p>
+      </div>
+
+      <!-- Spinner Overlay/Placeholder while fetching Event Details -->
+      <div id="loadingContainer" class="p-5 text-center">
+        <div class="spinner-border text-primary pulse-animation" role="status" style="width: 3rem; height: 3rem;"></div>
+        <p class="text-muted mt-3 fw-medium">Retrieving event registration settings...</p>
+      </div>
+
+      <!-- Error State View -->
+      <div id="errorContainer" class="p-5 text-center d-none">
+        <i class="bi bi-exclamation-octagon text-danger" style="font-size: 4rem;"></i>
+        <h4 class="fw-bold text-dark mt-3" id="errorTitle">Registration Closed</h4>
+        <p class="text-muted" id="errorMessage">This event registration link is either invalid or registration has already closed.</p>
+      </div>
+
+      <!-- Registration Form Content -->
+      <div id="contentContainer" class="d-none">
+        <!-- Event details section -->
+        <div class="event-header">
+          <h2 class="event-title" id="eventTitle">Event Name</h2>
+          <p class="text-muted small mb-3" id="eventDesc">Event Description</p>
+          
+          <div class="d-flex flex-wrap">
+            <span class="event-meta-badge"><i class="bi bi-calendar-event"></i> <span id="eventDate">--</span></span>
+            <span class="event-meta-badge"><i class="bi bi-clock"></i> <span id="eventTime">--</span></span>
+            <span class="event-meta-badge"><i class="bi bi-geo-alt"></i> <span id="eventVenue">--</span></span>
+            <span class="event-meta-badge"><i class="bi bi-people"></i> <span id="eventCapacity">--</span></span>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <!-- step 1: Look up student roll number -->
+          <div id="stepLookup">
+            <form id="lookupForm" novalidate>
+              <h5 class="fw-bold mb-3"><i class="bi bi-person-badge-fill me-2 text-primary"></i>Verify College Eligibility</h5>
+              <div class="mb-4">
+                <label for="studentRoll" class="form-label">Student Roll Number <span class="text-danger">*</span></label>
+                <div class="input-group">
+                  <span class="input-group-text bg-white text-muted"><i class="bi bi-card-text"></i></span>
+                  <input type="text" class="form-control text-uppercase" id="studentRoll" placeholder="e.g. 21A91A0501" required>
+                  <button type="submit" class="btn btn-primary" id="btnLookup">
+                    <span class="btn-text">Verify Roll</span>
+                    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                  </button>
+                </div>
+                <div id="lookupFeedback" class="form-text small text-danger mt-1" style="display: none;"></div>
+              </div>
+            </form>
+          </div>
+
+          <!-- step 2: Details submission (Pre-filled + custom fields + spot registration if guest) -->
+          <div id="stepForm" class="d-none">
+            <form id="registerForm" novalidate>
+              <h5 class="fw-bold mb-3 border-bottom pb-2 text-primary"><i class="bi bi-card-list me-2"></i>Complete Registration Details</h5>
+              
+              <!-- Student Profile Fields (dynamic read-only vs editable based on DB result) -->
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <label class="form-label">Full Name</label>
+                  <span id="dispName" class="badge-read-only">--</span>
+                  <input type="text" class="form-control d-none" id="inpName" required>
+                  <div class="invalid-feedback">Full Name is required.</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Department</label>
+                  <span id="dispDept" class="badge-read-only">--</span>
+                  <select class="form-select text-uppercase d-none" id="inpDept" required>
+                    <!-- Populated dynamically -->
+                  </select>
+                  <div class="invalid-feedback">Department is required.</div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Year</label>
+                  <span id="dispYear" class="badge-read-only">--</span>
+                  <select class="form-select d-none" id="inpYear" required>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                  <div class="invalid-feedback">Year is required.</div>
+                </div>
+                <div class="col-md-4" id="sectionGroup">
+                  <label class="form-label">Section</label>
+                  <span id="dispSection" class="badge-read-only">--</span>
+                  <input type="text" class="form-control text-uppercase d-none" id="inpSection" value="A" required>
+                  <div class="invalid-feedback">Section is required.</div>
+                </div>
+                <div class="col-md-4 d-none" id="collegeGroup">
+                  <label class="form-label">College Name</label>
+                  <input type="text" class="form-control" id="inpCollege" value="BVC Engineering College" required>
+                  <div class="invalid-feedback">College name is required.</div>
+                </div>
+              </div>
+
+              <!-- Dynamic Custom Fields Block -->
+              <div id="dynamicFieldsContainer" class="row g-3 mb-4">
+                <!-- Custom fields generated here -->
+              </div>
+
+              <!-- Terms and conditions (if enabled) -->
+              <div class="mb-4 d-none" id="termsContainer">
+                <div class="card bg-light border-0 p-3 mb-2" style="border-radius: 12px; max-height: 120px; overflow-y: auto;">
+                  <span class="small fw-semibold text-muted d-block mb-1">Terms &amp; Conditions</span>
+                  <p class="small text-dark mb-0" id="termsText" style="white-space: pre-line;"></p>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="agreeTerms" required>
+                  <label class="form-check-label small fw-semibold text-secondary" for="agreeTerms">
+                    I agree to the terms and conditions listed above <span class="text-danger">*</span>
+                  </label>
+                  <div class="invalid-feedback">You must agree to the terms &amp; conditions to register.</div>
+                </div>
+              </div>
+
+              <!-- Submit button -->
+              <div class="mt-4">
+                <button type="submit" class="btn btn-primary-custom w-100 py-3 text-uppercase" id="btnSubmit">
+                  <span class="btn-text">Submit Registration</span>
+                  <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Success View -->
+          <div id="stepSuccess" class="d-none text-center py-4">
+            <div class="success-checkmark">
+              <div class="check-icon"></div>
+            </div>
+            <h3 class="fw-bold text-success mb-2">Registration Confirmed!</h3>
+            <p class="text-muted mb-4" id="successMessage">Successfully registered for the event.</p>
+            
+            <div class="card border-0 bg-light p-3 mx-auto mb-4" style="border-radius: 16px; max-width: 420px;">
+              <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                <span class="small text-muted">PARTICIPANT ID</span>
+                <strong class="text-primary font-monospace" id="resultPartId">PARxxxxx</strong>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted">ROLL NUMBER</span>
+                <strong class="text-dark" id="resultRoll">--</strong>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="small text-muted">EVENT NAME</span>
+                <strong class="text-dark" id="resultEventName">--</strong>
+              </div>
+            </div>
+
+            <p class="small text-muted">Kindly note down your Participant ID for verification at the venue.</p>
+          </div>
+
+        </div>
+      </div>
+      
+    </div>
+    
+    <div class="footer">
+      &copy; 2026 BVC Engineering College. All rights reserved.
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Global State
+    const State = {
+      eventId: null,
+      eventDetails: null,
+      studentData: null,
+      isSpotRegistration: false
+    };
+
+    // Initialize Page
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Get Event ID
+      const urlParams = new URLSearchParams(window.location.search);
+      State.eventId = urlParams.get('eventId') || "<?= eventId ?>";
+
+      if (!State.eventId) {
+        showError('Invalid Link', 'This event registration link is missing the Event ID parameter.');
+        return;
+      }
+
+      // 2. Fetch Event Details
+      google.script.run
+        .withSuccessHandler(onEventDetailsFetched)
+        .withFailureHandler(onApiFailure)
+        .getEventDetailsForRegistration(State.eventId);
+        
+      // Bind Form Listeners
+      document.getElementById('lookupForm').addEventListener('submit', handleLookupSubmit);
+      document.getElementById('registerForm').addEventListener('submit', handleRegistrationSubmit);
+    });
+
+    // Handle initial API return for event configs
+    function onEventDetailsFetched(res) {
+      document.getElementById('loadingContainer').classList.add('d-none');
+
+      if (!res || !res.success || !res.data) {
+        showError('Registration Inactive', res ? res.message : 'Event details could not be retrieved.');
+        return;
+      }
+
+      const evt = res.data;
+      State.eventDetails = evt;
+
+      // Populate Header Details
+      document.getElementById('eventTitle').textContent = evt.eventName || 'Event';
+      document.getElementById('eventDesc').textContent = evt.description || 'No description provided.';
+      
+      const formatDT = (dtStr) => {
+        if (!dtStr) return '--';
+        const d = new Date(dtStr);
+        if (isNaN(d.getTime())) return dtStr;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;
+      };
+      
+      document.getElementById('eventDate').textContent = formatDT(evt.startDate);
+      document.getElementById('eventTime').textContent = `${evt.startTime || '--'} to ${evt.endTime || '--'}`;
+      document.getElementById('eventVenue').textContent = evt.venue || 'N/A';
+      
+      const maxSeatsVal = parseInt(evt.maxSeats, 10);
+      const regCountVal = parseInt(evt.registeredCount, 10);
+      if (!isNaN(maxSeatsVal) && maxSeatsVal > 0) {
+        document.getElementById('eventCapacity').textContent = `Seats: ${regCountVal} / ${maxSeatsVal}`;
+      } else {
+        document.getElementById('eventCapacity').textContent = `Seats: ${regCountVal} Registered`;
+      }
+
+      // Show layout content
+      document.getElementById('contentContainer').classList.remove('d-none');
+    }
+
+    // Handle student lookup verify
+    function handleLookupSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('studentRoll');
+      const roll = input.value.trim().toUpperCase();
+      const feedback = document.getElementById('lookupFeedback');
+      
+      feedback.style.display = 'none';
+
+      if (!roll) {
+        feedback.textContent = 'Please enter a valid roll number.';
+        feedback.style.display = 'block';
+        return;
+      }
+
+      setLoading('btnLookup', true);
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          setLoading('btnLookup', false);
+          if (res && res.success) {
+            State.studentData = res.data;
+            setupRegistrationForm();
+          } else {
+            feedback.textContent = res ? res.message : 'Verification failed. Try again.';
+            feedback.style.display = 'block';
+          }
+        })
+        .withFailureHandler((err) => {
+          setLoading('btnLookup', false);
+          feedback.textContent = 'Server error during lookup. Try again.';
+          feedback.style.display = 'block';
+        })
+        .getStudentForRegistration(State.eventId, roll);
+    }
+
+    // Set up step 2 inputs based on lookup details
+    function setupRegistrationForm() {
+      document.getElementById('stepLookup').classList.add('d-none');
+      document.getElementById('stepForm').classList.remove('d-none');
+
+      const s = State.studentData;
+      const isSpot = !s.found;
+      State.isSpotRegistration = isSpot;
+
+      const dispName = document.getElementById('dispName');
+      const inpName = document.getElementById('inpName');
+      const dispDept = document.getElementById('dispDept');
+      const inpDept = document.getElementById('inpDept');
+      const dispYear = document.getElementById('dispYear');
+      const inpYear = document.getElementById('inpYear');
+      const dispSection = document.getElementById('dispSection');
+      const inpSection = document.getElementById('inpSection');
+      
+      const collegeGroup = document.getElementById('collegeGroup');
+      const sectionGroup = document.getElementById('sectionGroup');
+
+      if (!isSpot) {
+        // Registered Student pre-filled display
+        dispName.textContent = s.name;
+        dispName.classList.remove('d-none');
+        inpName.classList.add('d-none');
+        inpName.value = s.name;
+
+        dispDept.textContent = s.dept;
+        dispDept.classList.remove('d-none');
+        inpDept.classList.add('d-none');
+        inpDept.value = s.dept;
+
+        dispYear.textContent = `${s.year} Year`;
+        dispYear.classList.remove('d-none');
+        inpYear.classList.add('d-none');
+        inpYear.value = s.year;
+
+        dispSection.textContent = `Sec ${s.section}`;
+        dispSection.classList.remove('d-none');
+        inpSection.classList.add('d-none');
+        inpSection.value = s.section;
+
+        collegeGroup.classList.add('d-none');
+        sectionGroup.classList.remove('d-none');
+      } else {
+        // Guest Student editable inputs
+        dispName.classList.add('d-none');
+        inpName.classList.remove('d-none');
+        inpName.value = '';
+
+        dispDept.classList.add('d-none');
+        inpDept.classList.remove('d-none');
+        
+        const defaultDepts = ['CSE', 'CSE-AIML', 'CSE-DS', 'IT', 'ECE', 'EEE', 'MECH', 'CIVIL'];
+        let allowedDepts = defaultDepts;
+        if (State.eventDetails && State.eventDetails.departments) {
+          const splitDepts = State.eventDetails.departments.split(',').map(d => d.trim().toUpperCase()).filter(Boolean);
+          if (splitDepts.length > 0) {
+            allowedDepts = splitDepts;
+          }
+        }
+        inpDept.innerHTML = allowedDepts.map(dept => `<option value="${escapeHtml(dept)}">${escapeHtml(dept)}</option>`).join('');
+        inpDept.value = allowedDepts[0] || 'CSE';
+
+        dispYear.classList.add('d-none');
+        inpYear.classList.remove('d-none');
+        inpYear.value = '1';
+
+        dispSection.classList.add('d-none');
+        inpSection.classList.remove('d-none');
+        inpSection.value = 'A';
+
+        collegeGroup.classList.remove('d-none');
+        sectionGroup.classList.remove('d-none');
+      }
+
+      // Generate dynamic custom fields
+      const container = document.getElementById('dynamicFieldsContainer');
+      container.innerHTML = '';
+
+      if (State.eventDetails.fields) {
+        try {
+          const fields = JSON.parse(State.eventDetails.fields);
+          if (Array.isArray(fields)) {
+            fields.forEach((f, idx) => {
+              const div = document.createElement('div');
+              div.className = f.type === 'checkbox' ? 'col-md-12' : 'col-md-6';
+              
+              const fieldId = `custom_field_${idx}`;
+              const requiredMark = f.required ? ' <span class="text-danger">*</span>' : '';
+              
+              let inputHtml = '';
+              if (f.type === 'text') {
+                inputHtml = `
+                  <label for="${fieldId}" class="form-label">${escapeHtml(f.name)}${requiredMark}</label>
+                  <input type="text" class="form-control custom-reg-input" id="${fieldId}" data-name="${escapeHtml(f.name)}" ${f.required ? 'required' : ''}>
+                  <div class="invalid-feedback">${escapeHtml(f.name)} is required.</div>
+                `;
+              } else if (f.type === 'number') {
+                inputHtml = `
+                  <label for="${fieldId}" class="form-label">${escapeHtml(f.name)}${requiredMark}</label>
+                  <input type="number" class="form-control custom-reg-input" id="${fieldId}" data-name="${escapeHtml(f.name)}" ${f.required ? 'required' : ''}>
+                  <div class="invalid-feedback">A valid numeric response is required.</div>
+                `;
+              } else if (f.type === 'dropdown') {
+                let optionsHtml = '<option value="">Choose response...</option>';
+                if (Array.isArray(f.options)) {
+                  f.options.forEach(o => {
+                    optionsHtml += `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`;
+                  });
+                }
+                inputHtml = `
+                  <label for="${fieldId}" class="form-label">${escapeHtml(f.name)}${requiredMark}</label>
+                  <select class="form-select custom-reg-input" id="${fieldId}" data-name="${escapeHtml(f.name)}" ${f.required ? 'required' : ''}>
+                    ${optionsHtml}
+                  </select>
+                  <div class="invalid-feedback">Please select an option.</div>
+                `;
+              } else if (f.type === 'checkbox') {
+                inputHtml = `
+                  <div class="form-check pt-2">
+                    <input class="form-check-input custom-reg-input" type="checkbox" id="${fieldId}" data-name="${escapeHtml(f.name)}" ${f.required ? 'required' : ''}>
+                    <label class="form-check-label small fw-semibold text-secondary" for="${fieldId}">
+                      ${escapeHtml(f.name)}${requiredMark}
+                    </label>
+                    <div class="invalid-feedback">This checkbox is required.</div>
+                  </div>
+                `;
+              }
+
+              div.innerHTML = inputHtml;
+              container.appendChild(div);
+            });
+          }
+        } catch(e) {
+          console.error("Failed to render custom fields: " + e.message);
+        }
+      }
+
+      // Populate Terms & Conditions
+      const termsCont = document.getElementById('termsContainer');
+      const termsText = document.getElementById('termsText');
+      if (State.eventDetails.terms && State.eventDetails.terms.trim()) {
+        termsText.textContent = State.eventDetails.terms;
+        termsCont.classList.remove('d-none');
+        document.getElementById('agreeTerms').required = true;
+      } else {
+        termsCont.classList.add('d-none');
+        document.getElementById('agreeTerms').required = false;
+      }
+    }
+
+    // Submit registration details
+    function handleRegistrationSubmit(e) {
+      e.preventDefault();
+      const form = e.target;
+
+      if (!form.checkValidity()) {
+        e.stopPropagation();
+        form.classList.add('was-validated');
+        return;
+      }
+
+      setLoading('btnSubmit', true);
+
+      // Collect custom responses
+      const customResponses = {};
+      document.querySelectorAll('.custom-reg-input').forEach(inp => {
+        const name = inp.getAttribute('data-name');
+        if (inp.type === 'checkbox') {
+          customResponses[name] = inp.checked ? 'Yes' : 'No';
+        } else {
+          customResponses[name] = inp.value.trim();
+        }
+      });
+
+      const payload = {
+        eventId: State.eventId,
+        rollNumber: document.getElementById('studentRoll').value.trim().toUpperCase(),
+        studentName: document.getElementById('inpName').value.trim(),
+        department: document.getElementById('inpDept').value.trim().toUpperCase(),
+        year: document.getElementById('inpYear').value,
+        section: document.getElementById('inpSection').value.trim().toUpperCase(),
+        collegeName: document.getElementById('inpCollege') ? document.getElementById('inpCollege').value.trim() : 'BVC Engineering College',
+        customResponses: customResponses
+      };
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          setLoading('btnSubmit', false);
+          if (res && res.success) {
+            showSuccess(res.data.participantId, payload.rollNumber);
+          } else {
+            alert(res ? res.message : 'Registration failed. Try again.');
+          }
+        })
+        .withFailureHandler((err) => {
+          setLoading('btnSubmit', false);
+          alert('Server error: ' + err.message);
+        })
+        .submitEventRegistration(payload);
+    }
+
+    // Show Success wizard panel
+    function showSuccess(partId, roll) {
+      document.getElementById('stepForm').classList.add('d-none');
+      document.getElementById('stepSuccess').classList.remove('d-none');
+
+      document.getElementById('resultPartId').textContent = partId;
+      document.getElementById('resultRoll').textContent = roll;
+      document.getElementById('resultEventName').textContent = State.eventDetails.eventName;
+      document.getElementById('successMessage').textContent = `Successfully registered for "${State.eventDetails.eventName}".`;
+    }
+
+    // UI Helpers
+    function showError(title, msg) {
+      document.getElementById('loadingContainer').classList.add('d-none');
+      document.getElementById('contentContainer').classList.add('d-none');
+      
+      document.getElementById('errorTitle').textContent = title;
+      document.getElementById('errorMessage').textContent = msg;
+      document.getElementById('errorContainer').classList.remove('d-none');
+    }
+
+    function onApiFailure(err) {
+      showError('System Error', err.message || 'An unexpected connection error occurred.');
+    }
+
+    function setLoading(btnId, isLoading) {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      btn.disabled = isLoading;
+      const text = btn.querySelector('.btn-text');
+      const spinner = btn.querySelector('.spinner-border');
+      if (spinner && text) {
+        if (isLoading) {
+          spinner.classList.remove('d-none');
+          text.classList.add('d-opacity-50'); // styling helper
+        } else {
+          spinner.classList.add('d-none');
+          text.classList.remove('d-opacity-50');
+        }
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

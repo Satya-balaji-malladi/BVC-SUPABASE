@@ -1,0 +1,309 @@
+<div class="container-fluid px-4 py-4" id="system-test-center-view">
+  <!-- Header Title & Controls -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h3 class="fw-bold text-dark mb-1"><i class="bi bi-shield-check text-primary me-2"></i>System Test Center</h3>
+      <p class="text-muted small mb-0">Automated diagnostic and latency checker suite for BVC platform verification.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-primary btn-sm fw-semibold" id="btnViewTestHistory"><i class="bi bi-clock-history me-1"></i>View History</button>
+      <button type="button" class="btn btn-primary btn-sm fw-semibold" id="btnRunHealthCheck">
+        <span class="spinner-border spinner-border-sm d-none" id="healthCheckSpinner" role="status" aria-hidden="true"></span>
+        <i class="bi bi-play-circle me-1" id="healthCheckPlayIcon"></i> Run System Health Check
+      </button>
+    </div>
+  </div>
+
+  <div id="testCenterAlert" class="alert alert-danger d-none"></div>
+
+  <!-- Score widgets -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm rounded-3 bg-primary text-white p-3 h-100">
+        <span class="small opacity-75">OVERALL HEALTH SCORE</span>
+        <h2 class="fw-bold my-2" id="scoreOverall">--</h2>
+        <div class="progress bg-white bg-opacity-25" style="height: 6px;">
+          <div class="progress-bar bg-white" role="progressbar" style="width: 0%" id="progressOverall"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm rounded-3 bg-success text-white p-3 h-100">
+        <span class="small opacity-75">TESTS PASSED</span>
+        <h2 class="fw-bold my-2" id="testsPassed">--</h2>
+        <span class="small opacity-75" id="lblTestsPassedDetail">0 checks verified</span>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm rounded-3 bg-danger text-white p-3 h-100">
+        <span class="small opacity-75">TESTS FAILED</span>
+        <h2 class="fw-bold my-2" id="testsFailed">--</h2>
+        <span class="small opacity-75" id="lblTestsFailedDetail">0 failures identified</span>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm rounded-3 bg-secondary text-white p-3 h-100">
+        <span class="small opacity-75">EXECUTION TIMING</span>
+        <h2 class="fw-bold my-2" id="executionTime">--</h2>
+        <span class="small opacity-75" id="lblExecDetail">Last run speed</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dev mode switch -->
+  <div class="d-flex justify-content-between align-items-center mb-3 bg-light p-2.5 rounded-3 border">
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input" type="checkbox" role="switch" id="chkDevMode">
+      <label class="form-check-label small fw-bold text-dark" for="chkDevMode"><i class="bi bi-bug-fill text-warning me-1"></i> Developer Debug Mode</label>
+    </div>
+    <span class="badge bg-secondary" id="devModeIndicator">Normal Mode</span>
+  </div>
+
+  <!-- Accordion Modules list -->
+  <div class="card border-0 shadow-sm rounded-4 mb-4">
+    <div class="card-header bg-white border-bottom py-3">
+      <h5 class="fw-bold mb-0 text-dark">Diagnostic Modules</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="accordion accordion-flush" id="testModulesAccordion">
+        <div class="p-4 text-center text-muted" id="noTestsExecuted">
+          <i class="bi bi-activity fs-1 d-block mb-2 text-muted"></i>
+          <span>No health runs recorded. Click "Run System Health Check" above to verify configuration stability.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Panel Modal -->
+  <div class="modal fade" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg rounded-4">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold text-dark" id="historyModalLabel"><i class="bi bi-clock-history me-1"></i> Health Check Runs History</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Total Tests</th>
+                  <th>Success Rate</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr>
+                  <td colspan="4" class="text-center py-3 text-muted">No runs found</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const SystemTestCenter = {
+    results: [],
+
+    init: function() {
+      document.getElementById('btnRunHealthCheck').onclick = () => this.runDiagnostics();
+      document.getElementById('btnViewTestHistory').onclick = () => this.showHistory();
+      
+      const chkDev = document.getElementById('chkDevMode');
+      chkDev.onchange = () => {
+        const ind = document.getElementById('devModeIndicator');
+        if (chkDev.checked) {
+          ind.textContent = 'Developer Mode Active';
+          ind.className = 'badge bg-warning text-dark';
+        } else {
+          ind.textContent = 'Normal Mode';
+          ind.className = 'badge bg-secondary';
+        }
+        this.renderResults();
+      };
+    },
+
+    runDiagnostics: function() {
+      const spinner = document.getElementById('healthCheckSpinner');
+      const icon = document.getElementById('healthCheckPlayIcon');
+      const btn = document.getElementById('btnRunHealthCheck');
+      const alert = document.getElementById('testCenterAlert');
+
+      spinner.classList.remove('d-none');
+      icon.classList.add('d-none');
+      btn.disabled = true;
+      alert.classList.add('d-none');
+
+      const token = localStorage.getItem('sessionToken');
+      App.API._call('runSystemHealthCheck', token)
+        .then(res => {
+          spinner.classList.add('d-none');
+          icon.classList.remove('d-none');
+          btn.disabled = false;
+
+          if (res && res.success && res.summary) {
+            this.results = res.details || [];
+            this.updateScores(res.summary);
+            this.renderResults();
+          } else {
+            alert.textContent = res.message || "Failed to trigger system checks.";
+            alert.classList.remove('d-none');
+          }
+        })
+        .catch(err => {
+          spinner.classList.add('d-none');
+          icon.classList.remove('d-none');
+          btn.disabled = false;
+          alert.textContent = "Exception running health diagnostics: " + err.message;
+          alert.classList.remove('d-none');
+        });
+    },
+
+    updateScores: function(summary) {
+      document.getElementById('scoreOverall').textContent = summary.score + '%';
+      document.getElementById('progressOverall').style.width = summary.score + '%';
+      document.getElementById('testsPassed').textContent = summary.passed;
+      document.getElementById('lblTestsPassedDetail').textContent = `${summary.passed} test cases passed successfully`;
+      document.getElementById('testsFailed').textContent = summary.failed;
+      document.getElementById('lblTestsFailedDetail').textContent = `${summary.failed} failures identified`;
+      document.getElementById('executionTime').textContent = summary.duration_ms + 'ms';
+    },
+
+    renderResults: function() {
+      const container = document.getElementById('testModulesAccordion');
+      if (this.results.length === 0) {
+        container.innerHTML = `
+          <div class="p-4 text-center text-muted" id="noTestsExecuted">
+            <i class="bi bi-activity fs-1 d-block mb-2 text-muted"></i>
+            <span>No health runs recorded. Click "Run System Health Check" above to verify configuration stability.</span>
+          </div>
+        `;
+        return;
+      }
+
+      const isDev = document.getElementById('chkDevMode').checked;
+
+      // Group by module
+      const groups = {};
+      this.results.forEach(r => {
+        if (!groups[r.module]) groups[r.module] = [];
+        groups[r.module].push(r);
+      });
+
+      let html = '';
+      Object.keys(groups).forEach((mod, idx) => {
+        const modId = 'mod_' + mod.replace(/\s+/g, '_');
+        const list = groups[mod];
+        const failedCount = list.filter(x => x.status === 'Failed').length;
+        const statusText = failedCount > 0 ? `🟢 Passed | 🔴 ${failedCount} Failed` : `🟢 Passed`;
+        const headerClass = failedCount > 0 ? 'text-danger' : 'text-success';
+
+        html += `
+          <div class="accordion-item border-bottom">
+            <h2 class="accordion-header" id="heading_${modId}">
+              <button class="accordion-button collapsed py-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapse_${modId}" aria-expanded="false" aria-controls="collapse_${modId}">
+                <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                  <span class="fw-bold text-dark"><i class="bi bi-folder-symlink me-2"></i> ${App.Utils.escapeHtml(mod)}</span>
+                  <span class="small fw-bold ${headerClass}">${statusText}</span>
+                </div>
+              </button>
+            </h2>
+            <div id="collapse_${modId}" class="accordion-collapse collapse" aria-labelledby="heading_${modId}" data-bs-parent="#testModulesAccordion">
+              <div class="accordion-body bg-light-subtle p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                      <tr class="small">
+                        <th>Test Case Name</th>
+                        <th>Expected Behavior</th>
+                        <th>Actual Output</th>
+                        <th>Status</th>
+                        <th>Speed</th>
+                      </tr>
+                    </thead>
+                    <tbody class="small">
+                      ${list.map(t => `
+                        <tr>
+                          <td><strong>${App.Utils.escapeHtml(t.test_name)}</strong></td>
+                          <td>${App.Utils.escapeHtml(t.expected)}</td>
+                          <td class="${t.status === 'Failed' ? 'text-danger fw-bold' : ''}">${App.Utils.escapeHtml(t.actual)}</td>
+                          <td>
+                            <span class="badge ${t.status === 'Passed' ? 'bg-success' : 'bg-danger'}">${t.status}</span>
+                          </td>
+                          <td class="font-monospace text-secondary">${t.duration_ms}ms</td>
+                        </tr>
+                        ${isDev ? `
+                          <tr class="table-warning font-monospace small">
+                            <td colspan="5">
+                              <strong>[DEBUG] API Target:</strong> Controller.js -> ${t.module}<br>
+                              <strong>[DEBUG] Response Timings:</strong> Latency: ${t.duration_ms}ms | Cache hit: n/a
+                            </td>
+                          </tr>
+                        ` : ''}
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    },
+
+    showHistory: function() {
+      const token = localStorage.getItem('sessionToken');
+      const table = document.getElementById('historyTableBody');
+      table.innerHTML = '<tr><td colspan="4" class="text-center text-muted"><i class="spinner-border spinner-border-sm me-1"></i>Loading history...</td></tr>';
+      
+      const modal = new bootstrap.Modal(document.getElementById('historyModal'));
+      modal.show();
+
+      App.API._call('getTestHistory', token)
+        .then(records => {
+          if (records.length === 0) {
+            table.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No runs found</td></tr>';
+            return;
+          }
+
+          let html = '';
+          records.forEach(r => {
+            let summary = {};
+            try {
+              summary = JSON.parse(r.summary);
+            } catch(e) {}
+            
+            html += `
+              <tr>
+                <td>${new Date(r.run_timestamp).toLocaleString()}</td>
+                <td>${summary.total || '--'} checks</td>
+                <td><span class="badge bg-success">${summary.score || 0}% Success</span></td>
+                <td>${summary.duration_ms || 0}ms</td>
+              </tr>
+            `;
+          });
+          table.innerHTML = html;
+        })
+        .catch(err => {
+          table.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Failed to load run history log</td></tr>';
+        });
+    },
+
+    destroy: function() {
+      // Destructor
+    }
+  };
+
+  // Expose globally
+  App.SystemTestCenter = SystemTestCenter;
+  App.Modules.testcenter = SystemTestCenter;
+})();
+</script>

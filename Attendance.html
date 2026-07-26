@@ -1,0 +1,79 @@
+<div class="card h-100 border-0 shadow-sm module-card">
+  <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+    <h5 class="fw-semibold mb-0">Attendance Tracking</h5>
+    <div class="d-flex align-items-center gap-2">
+      <select id="attendanceCollegeSelect" class="form-select d-inline-block w-auto ms-2">
+        <option value="">All Colleges</option>
+      </select>
+      <select id="attendanceEventSelect" class="form-select d-inline-block w-auto ms-2">
+        <option value="">Select Event...</option>
+      </select>
+      <select id="attendanceDayFilter" class="form-select d-inline-block w-auto d-none ms-2">
+        <option value="ALL">All Days</option>
+      </select>
+    </div>
+  </div>
+  <div class="card-body p-4">
+    <div id="attendanceEntrySection" class="d-none mb-4">
+      
+      <!-- Analytics Dashboard -->
+      <div class="row mb-4" id="attendanceAnalyticsBoard">
+        <div class="col-md-3">
+          <div class="card bg-primary text-white text-center border-0 h-100">
+            <div class="card-body py-3">
+              <h6 class="text-uppercase small mb-1 opacity-75">Expected</h6>
+              <h2 class="mb-0 fw-bold" id="statExpected">0</h2>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card bg-success text-white text-center border-0 h-100">
+            <div class="card-body py-3">
+              <h6 class="text-uppercase small mb-1 opacity-75">Present</h6>
+              <h2 class="mb-0 fw-bold" id="statPresent">0</h2>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card bg-danger text-white text-center border-0 h-100">
+            <div class="card-body py-3">
+              <h6 class="text-uppercase small mb-1 opacity-75">Absent</h6>
+              <h2 class="mb-0 fw-bold" id="statAbsent">0</h2>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card bg-info text-white text-center border-0 h-100">
+            <div class="card-body py-3">
+              <h6 class="text-uppercase small mb-1 opacity-75">Attendance %</h6>
+              <h2 class="mb-0 fw-bold" id="statPercentage">0%</h2>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+    
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="attendanceTable">
+        <thead class="table-light">
+          <tr>
+            <th>Roll Number</th>
+            <th>Name</th>
+            <th>College</th>
+            <th>Department</th>
+            <th>Time</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="attendance-table-body">
+          <tr><td colspan="6" class="text-center text-muted py-5">Please select an event</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<?!= include('attendance_css'); ?>
+<?!= include('attendance_js'); ?>

@@ -1,0 +1,11 @@
+# Ignore node build scripts
+compile_index.js
+index.html
+
+# Ignore node_modules
+node_modules/**
+
+# Ignore git
+.git/**
+.gitignore
+README.md

@@ -1,0 +1,349 @@
+<!-- Enterprise Admin Dashboard Layout -->
+<!-- NOTE: This file loads inside <div id="pageContainer"></div> of Index.html -->
+<?!= include('dashboard_css'); ?>
+
+<div class="dashboard-wrapper">
+  
+  <!-- Dashboard Title & Breadcrumb -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="section-title mb-0">Dashboard Overview</h2>
+      <nav aria-label="breadcrumb" class="mt-2">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item"><a href="#" class="text-decoration-none"><i class="bi bi-house-door"></i> Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
+        </ol>
+      </nav>
+    </div>
+    <div class="text-end text-muted small d-none d-md-block">
+      <div id="currentDateTime"><i class="bi bi-clock me-1"></i> Loading time...</div>
+      <div class="mt-1"><i class="bi bi-building me-1"></i> BVC Engineering College</div>
+    </div>
+  </div>
+
+  <!-- Welcome Banner -->
+  <div class="welcome-banner">
+    <div class="row align-items-center position-relative" style="z-index: 1;">
+      <div class="col-md-8">
+        <h2>Welcome back, <span id="welcomeUserName">Administrator</span>!</h2>
+        <p>Here's what's happening in the BVC Event Attendance System today.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-light text-primary px-3 py-2 rounded-pill fs-6 border shadow-sm">
+          <i class="bi bi-shield-check me-1"></i> Role: <span id="welcomeUserRole">System Admin</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Stats -->
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3" id="cardTotalCoordinatorsContainer">
+      <div class="stat-card">
+        <div class="stat-icon bg-light-primary"><i class="bi bi-people-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label" id="labelTotalCoordinators">Total Coordinators</div>
+          <div class="stat-value" id="totalUsers">--</div>
+          <div class="stat-trend positive"><i class="bi bi-arrow-up-short"></i> Active</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3 d-none" id="cardTotalAdminsContainer">
+      <div class="stat-card border-start border-info border-4">
+        <div class="stat-icon bg-light-info text-info"><i class="bi bi-person-badge-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Total Department Admins</div>
+          <div class="stat-value" id="totalDeptAdmins">0</div>
+          <div class="stat-trend text-info"><i class="bi bi-shield-check"></i> Department Staff</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3" id="cardActiveEventsContainer">
+      <div class="stat-card">
+        <div class="stat-icon bg-light-success"><i class="bi bi-calendar-event-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label" id="labelActiveEvents">Active Events</div>
+          <div class="stat-value" id="activeEvents">--</div>
+          <div class="stat-trend positive"><i class="bi bi-arrow-up-short"></i> Today</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3" id="cardTodayAttendanceContainer">
+      <div class="stat-card">
+        <div class="stat-icon bg-light-info"><i class="bi bi-person-check-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label" id="labelTodayAttendance">Today's Attendance</div>
+          <div class="stat-value" id="todayAttendance">--</div>
+          <div class="stat-trend positive"><i class="bi bi-arrow-up-short"></i> High</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3" id="cardTotalDeptsContainer">
+      <div class="stat-card">
+        <div class="stat-icon bg-light-warning"><i class="bi bi-building-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Total Departments</div>
+          <div class="stat-value" id="totalDepartments">--</div>
+          <div class="stat-trend text-muted"><i class="bi bi-dash"></i> Stable</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="stat-card border-start border-secondary border-4">
+        <div class="stat-icon bg-light text-secondary"><i class="bi bi-calendar-check-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Completed Events</div>
+          <div class="stat-value" id="completedEventsCount">0</div>
+          <div class="stat-trend text-muted"><i class="bi bi-check-all"></i> Total Finished</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="stat-card border-start border-primary border-4">
+        <div class="stat-icon bg-light-primary text-primary"><i class="bi bi-trophy-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Top Event Today</div>
+          <div class="stat-value fs-6 text-truncate fw-bold" id="topEventTodayName" title="No events today">No events today</div>
+          <div class="stat-trend text-success"><i class="bi bi-people-fill me-1"></i><span id="topEventTodayCount">0</span> Attendees</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3 d-none" id="crossDeptCardContainer">
+      <div class="stat-card" id="btnOpenCrossDept" style="background: linear-gradient(135deg, #f0f3ff 0%, #e0e7ff 100%); border: 1px solid #c7d2fe; cursor: pointer;">
+        <div class="stat-icon bg-light-primary text-primary"><i class="bi bi-arrow-left-right"></i></div>
+        <div class="stat-details">
+          <div class="stat-label fw-bold text-indigo">Cross-Dept Scans</div>
+          <div class="stat-value text-indigo" id="crossDeptCount">0</div>
+          <div class="stat-trend text-primary small"><i class="bi bi-eye-fill"></i> Click to see all students</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <h5 class="fw-bold mb-3 text-secondary">Quick Actions</h5>
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+      <a href="#" class="quick-action-card" data-page="Events" aria-label="Create Event">
+        <div class="quick-action-icon"><i class="bi bi-calendar-plus"></i></div>
+        <div class="quick-action-title">Create Event</div>
+        <div class="quick-action-desc">Schedule new</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <a href="#" class="quick-action-card" data-page="Users" aria-label="Manage Users">
+        <div class="quick-action-icon"><i class="bi bi-person-lines-fill"></i></div>
+        <div class="quick-action-title">Manage Users</div>
+        <div class="quick-action-desc">Staff & Students</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <a href="#" class="quick-action-card" data-page="Attendance" aria-label="Take Attendance">
+        <div class="quick-action-icon"><i class="bi bi-upc-scan"></i></div>
+        <div class="quick-action-title">Attendance</div>
+        <div class="quick-action-desc">Scan Barcode</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <a href="#" class="quick-action-card" data-page="Reports" aria-label="Generate Reports">
+        <div class="quick-action-icon"><i class="bi bi-file-earmark-bar-graph"></i></div>
+        <div class="quick-action-title">Reports</div>
+        <div class="quick-action-desc">Export data</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <a href="#" class="quick-action-card" data-page="Settings" aria-label="Manage Departments">
+        <div class="quick-action-icon"><i class="bi bi-building"></i></div>
+        <div class="quick-action-title">Departments</div>
+        <div class="quick-action-desc">Configure logic</div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <a href="#" class="quick-action-card" data-page="Settings" aria-label="System Settings">
+        <div class="quick-action-icon"><i class="bi bi-gear"></i></div>
+        <div class="quick-action-title">Settings</div>
+        <div class="quick-action-desc">App Config</div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Analytics & Timeline Row -->
+  <div class="row g-4 mb-4">
+    <!-- Analytics Chart Placeholder -->
+    <div class="col-lg-8">
+      <div class="enterprise-card">
+        <div class="enterprise-card-header">
+          <h3 class="enterprise-card-title"><i class="bi bi-graph-up me-2"></i>Attendance Analytics</h3>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              This Month
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="#">This Week</a></li>
+              <li><a class="dropdown-item" href="#">This Month</a></li>
+              <li><a class="dropdown-item" href="#">This Semester</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="enterprise-card-body">
+          <div class="chart-placeholder" id="attendanceChart">
+            <i class="bi bi-bar-chart"></i>
+            <h5>Analytics Engine Coming Soon</h5>
+            <p class="mb-0 text-muted small">Awaiting backend integration for live Chart.js rendering.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activities Timeline -->
+    <div class="col-lg-4">
+      <div class="enterprise-card">
+        <div class="enterprise-card-header">
+          <h3 class="enterprise-card-title"><i class="bi bi-activity me-2"></i>Recent Activity</h3>
+          <button class="btn btn-sm btn-link text-decoration-none" aria-label="Refresh Activities" onclick="refreshDashboard()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <div class="enterprise-card-body">
+          <ul class="timeline" id="recentActivityList">
+            <!-- Populated via JS -->
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Tables Row -->
+  <div class="row g-4 mb-4">
+    <!-- Active Events Table -->
+    <div class="col-12">
+      <div class="enterprise-card">
+        <div class="enterprise-card-header">
+          <h3 class="enterprise-card-title"><i class="bi bi-collection-play me-2"></i>Active & Upcoming Events</h3>
+          <div class="input-group input-group-sm" style="width: 250px;">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control" id="eventSearchInput" placeholder="Search events..." disabled aria-label="Search Events">
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-enterprise" aria-label="Active Events Table">
+            <thead>
+              <tr>
+                <th scope="col">Event Name</th>
+                <th scope="col">Department</th>
+                <th scope="col">Coordinator</th>
+                <th scope="col">Date & Time</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="activeEventsTableBody">
+              <!-- Populated via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  
+  <div class="pb-4"></div> <!-- Footer spacing -->
+
+</div>
+
+<!-- Reusable Loader Overlay -->
+<div id="dashboardLoader" class="d-none" aria-hidden="true">
+  <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+  <h5 class="mt-3 text-secondary fw-semibold">Loading Dashboard Data...</h5>
+</div>
+
+<!-- Reusable Toast Container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+  <div id="dashboardToast" class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="dashboardToastMessage">
+        Action completed successfully.
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Reusable Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title fw-bold text-dark" id="confirmModalLabel">Confirm Action</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-secondary" id="confirmModalBody">
+        Are you sure you want to proceed?
+      </div>
+      <div class="modal-footer border-top-0 pt-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmModalBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Cross-Department Students Modal -->
+<div class="modal fade" id="crossDeptModal" tabindex="-1" aria-labelledby="crossDeptModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+      <div class="modal-header bg-primary text-white" style="border-top-left-radius: 16px; border-top-right-radius: 16px;">
+        <h5 class="modal-title fw-bold" id="crossDeptModalLabel"><i class="bi bi-arrow-left-right me-2"></i>Students Participated in Other Departments</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <!-- Filters Row -->
+        <div class="row g-2 mb-3 align-items-center">
+          <div class="col-md-3">
+            <input type="text" id="cdSearchInput" class="form-control" placeholder="Search by name or roll...">
+          </div>
+          <div class="col-md-3">
+            <select id="cdBranchFilter" class="form-select">
+              <option value="">All Branches</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <select id="cdYearFilter" class="form-select">
+              <option value="">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+          </div>
+          <div class="col-md-3 text-end text-muted small">
+            Total Found: <span id="cdTotalCount" class="fw-bold text-primary">0</span>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Roll Number</th>
+                <th>Student Name</th>
+                <th>Department</th>
+                <th>Branch</th>
+                <th>Event Attended</th>
+                <th>Host Department</th>
+                <th>Scanned Time</th>
+              </tr>
+            </thead>
+            <tbody id="crossDeptTableBody">
+              <tr>
+                <td colspan="7" class="text-center py-4 text-muted">No records found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?!= include('dashboard_js'); ?>

@@ -1,0 +1,173 @@
+<div class="card h-100 border-0 shadow-sm module-card">
+  <!-- Stats Section -->
+  <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+    <div class="row g-3 mb-4" id="users-stats-container">
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center">
+          <h6 class="text-muted mb-1">Total Users</h6>
+          <h3 class="mb-0 fw-bold" id="users-stat-total">0</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center">
+          <h6 class="text-muted mb-1">Active Users</h6>
+          <h3 class="mb-0 fw-bold text-success" id="users-stat-active">0</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center">
+          <h6 class="text-muted mb-1">Inactive Users</h6>
+          <h3 class="mb-0 fw-bold text-danger" id="users-stat-inactive">0</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center">
+          <h6 class="text-muted mb-1">Coordinators</h6>
+          <h3 class="mb-0 fw-bold text-primary" id="users-stat-coordinators">0</h3>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="row g-2 align-items-center pb-3 border-bottom">
+      <div class="col-md-3">
+        <input type="text" id="users-search-input" class="form-control" placeholder="Search users...">
+      </div>
+      <div class="col-md-2">
+        <select id="users-role-filter" class="form-select">
+          <option value="">All Roles</option>
+          <option value="Admin">Admin</option>
+          <option value="Coordinator">Coordinator</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select id="users-dept-filter" class="form-select">
+          <option value="">All Depts</option>
+          <!-- Populated dynamically later if needed -->
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select id="users-status-filter" class="form-select">
+          <option value="">All Statuses</option>
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </div>
+      <div class="col-md-3 text-end">
+        <button class="btn btn-primary" data-action="add-user"><i class="bi bi-person-plus me-2"></i>Add User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card-body p-4 pt-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-4" id="users-table">
+        <thead class="table-light">
+          <tr>
+            <th>User ID</th>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Department</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-table-body">
+          <tr><td colspan="7" class="text-center text-muted py-5">Loading users...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination UI -->
+    <nav aria-label="Users pagination" class="d-flex justify-content-end mt-2">
+      <ul class="pagination mb-0" id="users-pagination">
+        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
+        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+        <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <!-- User Modal -->
+  <div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <form id="userForm" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title" id="userModalLabel">Add User</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="userModalError" class="alert alert-danger d-none"></div>
+            
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="userName" class="form-label">Full Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="userName" required>
+                <div class="invalid-feedback">Please provide a full name.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="userEmail" class="form-label">Email <span class="text-danger">*</span></label>
+                <input type="email" class="form-control" id="userEmail" required>
+                <div class="invalid-feedback">Please provide a valid email format.</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="userDepartment" class="form-label">Department <span class="text-danger">*</span></label>
+                <select class="form-select" id="userDepartment" required>
+                  <option value="">Select Department</option>
+                  <option value="CSE">CSE</option>
+                  <option value="ECE">ECE</option>
+                  <option value="EEE">EEE</option>
+                  <option value="MECH">MECH</option>
+                  <option value="CIVIL">CIVIL</option>
+                  <option value="IT">IT</option>
+                  <option value="Admin">Admin</option>
+                </select>
+                <div class="invalid-feedback">Please select a department.</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="userRole" class="form-label">Role <span class="text-danger">*</span></label>
+                <select class="form-select" id="userRole" required>
+                  <option value="">Select Role</option>
+                  <option value="Admin">Admin</option>
+                  <option value="Coordinator">Coordinator</option>
+                </select>
+                <div class="invalid-feedback">Please select a role.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="userStatus" class="form-label">Status <span class="text-danger">*</span></label>
+                <select class="form-select" id="userStatus" required>
+                  <option value="Active" selected>Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+                <div class="invalid-feedback">Please select a status.</div>
+              </div>
+              
+              <div class="col-md-6">
+                <label for="userPassword" class="form-label">Password <span class="text-danger">*</span></label>
+                <input type="password" class="form-control" id="userPassword" required minlength="8">
+                <div class="invalid-feedback">Password must be at least 8 characters.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="userConfirmPassword" class="form-label">Confirm Password <span class="text-danger">*</span></label>
+                <input type="password" class="form-control" id="userConfirmPassword" required>
+                <div class="invalid-feedback" id="userConfirmPasswordFeedback">Passwords must match.</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="userSaveBtn">
+              <span class="spinner-border spinner-border-sm d-none" id="userSaveSpinner" role="status" aria-hidden="true"></span>
+              <span id="userSaveBtnText">Save User</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

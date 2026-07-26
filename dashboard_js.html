@@ -1,0 +1,571 @@
+<script>
+/**
+ * Enterprise Dashboard JavaScript
+ * Handles initialization, DOM manipulation, and frontend logic.
+ * Integrates directly with the backend via google.script.run
+ */
+
+// Call initializeDashboard directly because DOMContentLoaded has already fired in the App Shell SPA
+initializeDashboard();
+
+/**
+ * Initializes all dashboard components
+ */
+function initializeDashboard() {
+  updateClock();
+  setInterval(updateClock, 60000); // Update time every minute
+  
+  // Load real data
+  loadDashboardData();
+  
+  // Bind Quick Actions navigation redirection
+  document.querySelectorAll('.quick-action-card[data-page]').forEach(card => {
+    card.addEventListener('click', function(e) {
+      e.preventDefault();
+      const pageName = this.getAttribute('data-page');
+      if (pageName && typeof window.loadPage === 'function') {
+        window.loadPage(pageName);
+      }
+    });
+  });
+
+  // Initialize search input behavior
+  const searchInput = document.getElementById('eventSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('keyup', function(e) {
+      if (e.key === 'Enter') {
+        showToast('Search feature is coming soon.', 'info');
+      }
+    });
+  }
+}
+
+/**
+ * Updates the current date and time display in the header
+ */
+function updateClock() {
+  const clockEl = document.getElementById('currentDateTime');
+  if (!clockEl) return;
+  
+  const now = new Date();
+  const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+  clockEl.innerHTML = `<i class="bi bi-clock me-1"></i> ${now.toLocaleDateString('en-US', options)}`;
+}
+
+/**
+ * Main function to load all dashboard panels using google.script.run
+ */
+function loadDashboardData() {
+  showLoader();
+  
+  const sessionToken = localStorage.getItem('sessionToken');
+  
+  if (!sessionToken) {
+    hideLoader();
+    showToast('Session expired. Please log in again.', 'danger');
+    console.warn("Dashboard Fetch Failed: sessionToken not found in localStorage.");
+    return;
+  }
+
+  console.log("Fetching dashboard data with token:", sessionToken);
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      console.log("Backend Response Received:", response);
+      if (response && response.success && response.data) {
+        console.log("DASHBOARD_MODULE | STEP 8 - Rendering UI");
+        updateStatsUI(response.data.stats);
+        loadActivitiesUI(response.data.recentActivities);
+        loadEventsUI(response.data.activeEvents);
+        renderDashboardChart(sessionToken);
+        loadCrossDepartmentAttendance(sessionToken);
+        console.log("DASHBOARD_MODULE | STEP 9 - Render completed");
+      } else {
+        console.error("Failed to load dashboard stats. Response structure invalid:", response);
+        showToast('Error loading dashboard data.', 'danger');
+      }
+      hideLoader();
+    })
+    .withFailureHandler(function(err) {
+      console.error("Google Script Run Error:", err);
+      hideLoader();
+      showToast('Error communicating with server.', 'danger');
+    })
+    .getDashboardData(sessionToken);
+}
+
+/**
+ * Refreshes the dashboard data (triggered by manual refresh button)
+ */
+function refreshDashboard() {
+  loadDashboardData();
+}
+
+/**
+ * Populates Quick Stats with real data
+ */
+function updateStatsUI(stats) {
+  console.log("===== DASHBOARD STATS =====");
+console.log(JSON.stringify(stats, null, 2));
+  if (!stats) return;
+  console.log("Updating Stats UI:", stats);
+  
+  const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
+  const isHOD = (userRole === 'HOD');
+  const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+
+  const cardDepts = document.getElementById('cardTotalDeptsContainer');
+  const cardAdmins = document.getElementById('cardTotalAdminsContainer');
+  const labelCoords = document.getElementById('labelTotalCoordinators');
+  const labelEvents = document.getElementById('labelActiveEvents');
+
+  if (isHOD) {
+    if (cardDepts) cardDepts.classList.add('d-none');
+    if (cardAdmins) cardAdmins.classList.remove('d-none');
+    if (labelCoords) labelCoords.textContent = 'Department Coordinators';
+    if (labelEvents) labelEvents.textContent = 'Active Events';
+  } else if (isEventAdmin) {
+    if (cardDepts) cardDepts.classList.add('d-none');
+    if (cardAdmins) cardAdmins.classList.add('d-none');
+    if (labelCoords) labelCoords.textContent = 'Assigned Coordinators';
+    if (labelEvents) labelEvents.textContent = 'Events Assigned Today';
+  } else {
+    if (cardDepts) cardDepts.classList.remove('d-none');
+    if (cardAdmins) cardAdmins.classList.add('d-none');
+    if (labelCoords) labelCoords.textContent = 'Total Coordinators';
+    if (labelEvents) labelEvents.textContent = 'Active Events';
+  }
+
+  const totalUsersEl = document.getElementById('totalUsers');
+  const activeEventsEl = document.getElementById('activeEvents');
+  const todayAttendanceEl = document.getElementById('todayAttendance');
+  const totalDepartmentsEl = document.getElementById('totalDepartments');
+  const totalDeptAdminsEl = document.getElementById('totalDeptAdmins');
+
+  if (totalUsersEl) totalUsersEl.textContent = (stats.totalCoordinators != null && stats.totalCoordinators !== '') ? stats.totalCoordinators : 0;
+  if (totalDeptAdminsEl) totalDeptAdminsEl.textContent = (stats.totalAdmins != null && stats.totalAdmins !== '') ? stats.totalAdmins : 0;
+  if (activeEventsEl) activeEventsEl.textContent = (stats.activeEvents != null && stats.activeEvents !== '') ? stats.activeEvents : ((stats.totalEvents != null && stats.totalEvents !== '') ? stats.totalEvents : 0);
+  if (todayAttendanceEl) todayAttendanceEl.textContent = (stats.todayAttendance != null && stats.todayAttendance !== '') ? stats.todayAttendance : 0;
+  if (totalDepartmentsEl) totalDepartmentsEl.textContent = (stats.totalDepartments != null && stats.totalDepartments !== '') ? stats.totalDepartments : 0;
+
+  // Completed Events count
+  const completedEl = document.getElementById('completedEventsCount');
+  if (completedEl) completedEl.textContent = (stats.completedEvents != null) ? stats.completedEvents : 0;
+
+  // Top Event Today & Count
+  const topNameEl = document.getElementById('topEventTodayName');
+  const topCountEl = document.getElementById('topEventTodayCount');
+  if (topNameEl) {
+    const topName = stats.topEventTodayName || 'No events today';
+    topNameEl.textContent = topName;
+    topNameEl.title = topName;
+  }
+  if (topCountEl) {
+    topCountEl.textContent = (stats.topEventTodayCount != null) ? stats.topEventTodayCount : 0;
+  }
+}
+
+/**
+ * Populates Recent Activities Timeline
+ */
+function loadActivitiesUI(activities) {
+  const timelineEl = document.getElementById('recentActivityList');
+  if (!timelineEl) return;
+  
+  if (!activities || activities.length === 0) {
+    timelineEl.innerHTML = '<li class="timeline-item"><div class="timeline-content"><p>No recent activity found.</p></div></li>';
+    return;
+  }
+  
+  let html = '';
+  activities.forEach(act => {
+    // Enhanced dynamic fallback for keys matching CONFIG.COLUMNS or raw log fields
+    const action = act['Action'] || act.action || act['Log Action'] || 'Action';
+    const module = act['Module'] || act.module || act['Log Module'] || 'System';
+    const desc = act['Description'] || act.description || act['Remarks'] || '';
+    const ts = act['Timestamp'] || act.timestamp || act['Created At'] || new Date().getTime();
+    
+    let type = 'info';
+    if (action.toLowerCase().includes('create') || action.toLowerCase().includes('success') || action.toLowerCase().includes('login')) type = 'success';
+    if (action.toLowerCase().includes('delete') || action.toLowerCase().includes('fail') || action.toLowerCase().includes('error')) type = 'danger';
+    if (action.toLowerCase().includes('warn')) type = 'warning';
+
+    const timeStr = new Date(ts).toLocaleString();
+
+    html += `
+      <li class="timeline-item">
+        <div class="timeline-marker ${type}"></div>
+        <div class="timeline-content">
+          <h6 class="timeline-title">${module} - ${action}</h6>
+          <span class="timeline-time"><i class="bi bi-clock me-1"></i>${timeStr}</span>
+          <p class="timeline-desc">${desc}</p>
+        </div>
+      </li>
+    `;
+  });
+  
+  timelineEl.innerHTML = html;
+}
+
+/**
+ * Populates Active Events Table
+ */
+function loadEventsUI(events) {
+  const tbody = document.getElementById('activeEventsTableBody');
+  if (!tbody) return;
+  
+  if (!events || events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No active events found.</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  events.forEach(evt => {
+    // Safe mapping supporting both Sheet Headers and Object properties from Config.gs
+    const name = evt['Event Name'] || evt.eventName || 'Unnamed Event';
+    const dept = evt['Department'] || evt['Departments'] || evt.department || 'General';
+    const coord = evt['Organizer'] || evt['Coordinator ID'] || evt.coordinatorId || 'Unknown';
+    const date = evt['Start Date'] || evt.startDate || '';
+    const status = evt['Event Status'] || evt['Status'] || evt.status || 'Active';
+    
+    let statusClass = 'badge-active';
+    if (status.toLowerCase() === 'upcoming') statusClass = 'badge-upcoming';
+    if (status.toLowerCase() === 'completed') statusClass = 'badge-completed';
+
+    html += `
+      <tr>
+        <td class="fw-semibold">${name}</td>
+        <td>${dept}</td>
+        <td>${coord}</td>
+        <td>${date}</td>
+        <td><span class="badge badge-enterprise ${statusClass}">${status}</span></td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary" aria-label="View Details" onclick="showToast('View details coming soon', 'info')"><i class="bi bi-eye"></i></button>
+        </td>
+      </tr>
+    `;
+  });
+  
+  tbody.innerHTML = html;
+}
+
+/**
+ * Utility: Shows the full-screen loader
+ */
+function showLoader() {
+  const loader = document.getElementById('dashboardLoader');
+  if (loader) loader.classList.remove('d-none');
+}
+
+/**
+ * Utility: Hides the full-screen loader
+ */
+function hideLoader() {
+  const loader = document.getElementById('dashboardLoader');
+  if (loader) loader.classList.add('d-none');
+}
+
+/**
+ * Utility: Shows a Bootstrap Toast notification
+ */
+function showToast(message, type = 'primary') {
+  const toastEl = document.getElementById('dashboardToast');
+  const toastBody = document.getElementById('dashboardToastMessage');
+  
+  if (!toastEl || !toastBody) return;
+  
+  toastEl.className = 'toast align-items-center text-white border-0';
+  
+  let bgClass = 'bg-primary';
+  if (type === 'success') bgClass = 'bg-success';
+  if (type === 'danger') bgClass = 'bg-danger';
+  if (type === 'warning') bgClass = 'bg-warning text-dark';
+  if (type === 'info') bgClass = 'bg-info text-dark';
+  
+  toastEl.classList.add(bgClass);
+  
+  const closeBtn = toastEl.querySelector('.btn-close');
+  if (type === 'warning' || type === 'info') {
+    toastEl.classList.remove('text-white');
+    if (closeBtn) closeBtn.classList.remove('btn-close-white');
+  } else {
+    if (closeBtn) closeBtn.classList.add('btn-close-white');
+  }
+  
+  toastBody.textContent = message;
+  
+  if (typeof bootstrap !== 'undefined') {
+    const bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    bsToast.show();
+  } else {
+    toastEl.classList.add('show');
+    setTimeout(() => toastEl.classList.remove('show'), 3000);
+  }
+}
+
+/**
+ * Utility: Triggers a reusable confirmation modal
+ */
+function confirmAction(message, onConfirm) {
+  const modalEl = document.getElementById('confirmModal');
+  const bodyEl = document.getElementById('confirmModalBody');
+  const confirmBtn = document.getElementById('confirmModalBtn');
+  
+  if (!modalEl || !bodyEl || !confirmBtn) {
+    if (window.confirm(message)) {
+      if (typeof onConfirm === 'function') onConfirm();
+    }
+    return;
+  }
+  
+  bodyEl.textContent = message;
+  
+  const newBtn = confirmBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+  
+  newBtn.addEventListener('click', function() {
+    if (typeof bootstrap !== 'undefined') {
+      const bsModal = bootstrap.Modal.getInstance(modalEl);
+      if (bsModal) bsModal.hide();
+    }
+    if (typeof onConfirm === 'function') onConfirm();
+  });
+  
+  if (typeof bootstrap !== 'undefined') {
+    const bsModal = new bootstrap.Modal(modalEl);
+    bsModal.show();
+  }
+}
+
+/**
+ * Loads trend data and renders it in a Chart.js instance on the dashboard
+ */
+function renderDashboardChart(sessionToken) {
+  const chartContainer = document.getElementById('attendanceChart');
+  if (!chartContainer) return;
+
+  // Statically destroy any pre-existing chart on this canvas to prevent "Canvas in use" error
+  try {
+    if (typeof Chart !== 'undefined' && Chart.getChart) {
+      const activeChart = Chart.getChart("dashboardTrendCanvas");
+      if (activeChart) activeChart.destroy();
+    }
+  } catch(e) {}
+
+  chartContainer.innerHTML = '<canvas id="dashboardTrendCanvas" style="max-height: 250px; width: 100%;"></canvas>';
+  const ctx = document.getElementById('dashboardTrendCanvas')?.getContext('2d');
+  if (!ctx) return;
+
+  google.script.run
+    .withSuccessHandler(function(trendRes) {
+      if (!trendRes || !trendRes.labels) {
+        chartContainer.innerHTML = '<p class="text-center text-muted py-5">No trend data available</p>';
+        return;
+      }
+
+      const labels = trendRes.labels || [];
+      const rates = trendRes.rates || [];
+      const volumes = trendRes.volumes || [];
+
+      // Custom Gradient for Line
+      const rateGradient = ctx.createLinearGradient(0, 0, 0, 200);
+      rateGradient.addColorStop(0, 'rgba(23, 162, 184, 0.4)');
+      rateGradient.addColorStop(1, 'rgba(23, 162, 184, 0.0)');
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Attendance Rate (%)',
+              data: rates,
+              borderColor: '#17a2b8',
+              borderWidth: 3,
+              backgroundColor: rateGradient,
+              fill: true,
+              tension: 0.4,
+              yAxisID: 'yRate'
+            },
+            {
+              label: 'Check-Ins Volume',
+              data: volumes,
+              borderColor: '#1e3d59',
+              backgroundColor: '#1e3d59',
+              type: 'bar',
+              borderRadius: 6,
+              barThickness: 16,
+              yAxisID: 'yVol'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 10 } }
+          },
+          scales: {
+            yRate: {
+              type: 'linear',
+              position: 'left',
+              min: 0,
+              max: 100,
+              ticks: { callback: v => v + '%' },
+              grid: { drawOnChartArea: true }
+            },
+            yVol: {
+              type: 'linear',
+              position: 'right',
+              grid: { drawOnChartArea: false },
+              ticks: { precision: 0 }
+            }
+          }
+        }
+      });
+    })
+    .withFailureHandler(function(err) {
+      console.error("Failed to load dashboard trend data", err);
+      chartContainer.innerHTML = '<p class="text-center text-danger py-5">Failed to load analytics</p>';
+    })
+    .getTrendData(sessionToken);
+}
+
+let crossDeptDataList = [];
+
+function loadCrossDepartmentAttendance(sessionToken) {
+  const container = document.getElementById('crossDeptCardContainer');
+  const countEl = document.getElementById('crossDeptCount');
+  if (!container) return;
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      if (response && response.success && response.data) {
+        crossDeptDataList = response.data.list || [];
+        if (countEl) {
+          countEl.textContent = crossDeptDataList.length;
+        }
+        
+        // Show card for HOD or Admin/Super Admin
+        container.classList.remove('d-none');
+        
+        // Bind click event once
+        const btn = document.getElementById('btnOpenCrossDept');
+        if (btn && !btn.dataset.bound) {
+          btn.dataset.bound = "true";
+          btn.addEventListener('click', function() {
+            openCrossDeptModal();
+          });
+        }
+      }
+    })
+    .withFailureHandler(function(err) {
+      console.error("Failed to load cross dept attendance stats", err);
+    })
+    .getCrossDepartmentAttendance(sessionToken);
+}
+
+function openCrossDeptModal() {
+  const modalEl = document.getElementById('crossDeptModal');
+  if (!modalEl) return;
+  
+  // Populate branch filter options dynamically
+  const branchFilter = document.getElementById('cdBranchFilter');
+  if (branchFilter) {
+    const branches = new Set();
+    crossDeptDataList.forEach(item => {
+      if (item.branch) branches.add(item.branch);
+    });
+    let optionsHtml = '<option value="">All Branches</option>';
+    branches.forEach(b => {
+      optionsHtml += `<option value="${b}">${b}</option>`;
+    });
+    branchFilter.innerHTML = optionsHtml;
+  }
+  
+  // Render table initially
+  renderCrossDeptTable();
+  
+  // Bind filters
+  const searchInput = document.getElementById('cdSearchInput');
+  const branchSelect = document.getElementById('cdBranchFilter');
+  const yearSelect = document.getElementById('cdYearFilter');
+  
+  const applyCdFilters = () => {
+    const q = (searchInput ? searchInput.value : '').toLowerCase().trim();
+    const branch = branchSelect ? branchSelect.value : '';
+    const year = yearSelect ? yearSelect.value : '';
+    
+    const filtered = crossDeptDataList.filter(item => {
+      const matchSearch = !q || 
+        (item.name || '').toLowerCase().includes(q) || 
+        (item.roll || '').toLowerCase().includes(q) ||
+        (item.eventName || '').toLowerCase().includes(q);
+      
+      const matchBranch = !branch || item.branch === branch;
+      const matchYear = !year || String(item.year) === String(year);
+      
+      return matchSearch && matchBranch && matchYear;
+    });
+    
+    renderCrossDeptTable(filtered);
+  };
+  
+  if (searchInput && !searchInput.dataset.bound) {
+    searchInput.dataset.bound = "true";
+    searchInput.addEventListener('input', applyCdFilters);
+  }
+  if (branchSelect && !branchSelect.dataset.bound) {
+    branchSelect.dataset.bound = "true";
+    branchSelect.addEventListener('change', applyCdFilters);
+  }
+  if (yearSelect && !yearSelect.dataset.bound) {
+    yearSelect.dataset.bound = "true";
+    yearSelect.addEventListener('change', applyCdFilters);
+  }
+  
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
+function renderCrossDeptTable(data) {
+  const tbody = document.getElementById('crossDeptTableBody');
+  const totalCountEl = document.getElementById('cdTotalCount');
+  const list = data || crossDeptDataList;
+  
+  if (totalCountEl) totalCountEl.textContent = list.length;
+  if (!tbody) return;
+  
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No records found.</td></tr>';
+    return;
+  }
+  
+  const escapeHtmlHelper = (str) => {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+  
+  let html = '';
+  list.forEach(item => {
+    const formattedTime = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
+    html += `
+      <tr>
+        <td class="fw-bold font-monospace">${escapeHtmlHelper(item.roll)}</td>
+        <td>${escapeHtmlHelper(item.name)}</td>
+        <td><span class="badge bg-light text-dark">${escapeHtmlHelper(item.dept)}</span></td>
+        <td><span class="badge bg-light text-primary">${escapeHtmlHelper(item.branch)}</span></td>
+        <td class="fw-semibold text-secondary">${escapeHtmlHelper(item.eventName)}</td>
+        <td><span class="badge bg-light-warning text-warning border">${escapeHtmlHelper(item.hostDept)}</span></td>
+        <td class="text-muted small">${escapeHtmlHelper(formattedTime)}</td>
+      </tr>
+    `;
+  });
+  tbody.innerHTML = html;
+}
+</script>

@@ -1,0 +1,244 @@
+<style>
+  /* ==========================================================================
+     Corporate Academic Design System Color Variables Matrix Tokens
+     ========================================================================== */
+  :root {
+    --bvc-nav-dark: #0a2540;
+    --bvc-nav-hover: #1e3d59;
+    --bvc-nav-active: #17a2b8;
+    --bvc-sidebar-width: 280px;
+    --bvc-sidebar-collapsed: 72px;
+    --bvc-font-stack: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  /* ==========================================================================
+     Global Base Application Layout Overrides
+     ========================================================================== */
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: var(--bvc-font-stack);
+    background-color: #f8f9fa;
+    overflow-x: hidden;
+  }
+
+  .app-container {
+    min-height: 100vh;
+    width: 100vw;
+    position: relative;
+  }
+
+  .main-layout {
+    min-width: 0;
+    transition: padding 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ==========================================================================
+     Full Screen System Overlay Components
+     ========================================================================== */
+  .app-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(10, 37, 64, 0.6);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(1px);
+  }
+
+  /* ==========================================================================
+     Left Sidebar Component Frame Layout Panel Rules
+     ========================================================================== */
+  .sidebar {
+    background-color: var(--bvc-nav-dark);
+    width: var(--bvc-sidebar-width);
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    color: #ffffff;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  /* Custom Webkit scrollbar for premium look */
+  .sidebar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
+  .brand-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  .brand-system {
+    font-size: 0.8rem;
+  }
+
+  .sidebar-divider {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    opacity: 1;
+  }
+
+  .sidebar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 500;
+    font-size: 0.95rem;
+    border-radius: 6px;
+    margin-bottom: 0.25rem;
+    transition: background-color 0.15s ease, color 0.15s ease, padding 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .sidebar-nav .nav-link i {
+    font-size: 1.2rem;
+    width: 24px;
+    text-align: center;
+  }
+
+  .sidebar-nav .nav-link:hover {
+    color: #ffffff;
+    background-color: var(--bvc-nav-hover);
+  }
+
+  .sidebar-nav .nav-link.active {
+    color: #ffffff !important;
+    background-color: var(--bvc-nav-hover);
+    border-left: 4px solid var(--bvc-nav-active);
+    padding-left: 12px;
+  }
+
+  .sidebar-nav .logout-link:hover {
+    background-color: rgba(220, 53, 69, 0.15);
+    color: #ea868f;
+  }
+
+  /* Compressed Sidebar Modifier Transition Maps */
+  .sidebar.collapsed {
+    width: var(--bvc-sidebar-collapsed);
+  }
+
+  .sidebar.collapsed .sidebar-brand-text,
+  .sidebar.collapsed .sidebar-nav span,
+  .sidebar.collapsed .sidebar-footer {
+    display: none !important;
+  }
+
+  .sidebar.collapsed .sidebar-header {
+    justify-content: center;
+    padding: 1.5rem 0 !important;
+  }
+
+  .sidebar.collapsed .sidebar-nav .nav-link {
+    text-align: center;
+    justify-content: center;
+    padding: 0.75rem 0;
+  }
+
+  .sidebar.collapsed .sidebar-nav .nav-link.active {
+    border-left: 4px solid var(--bvc-nav-active);
+    padding-left: 0;
+  }
+
+  /* ==========================================================================
+     Top Banner Navbar Input Search & Subcomponents Header Elements
+     ========================================================================== */
+  .navbar-page-title {
+    color: var(--bvc-nav-dark);
+    letter-spacing: -0.2px;
+  }
+
+  .sidebar-toggle-btn {
+    width: 40px;
+    height: 40px;
+    transition: background-color 0.15s ease;
+  }
+
+  .navbar-search-wrapper {
+    max-width: 240px;
+  }
+
+  .navbar-search-wrapper .form-control:disabled {
+    cursor: not-allowed;
+    background-color: #f1f5f9 !important;
+    opacity: 0.7;
+  }
+
+  .user-avatar {
+    border: 2px solid #e2e8f0;
+    padding: 2px;
+  }
+
+  .user-role {
+    font-size: 0.68rem;
+    letter-spacing: 0.3px;
+  }
+
+  /* Reusable Empty State Internal Container Limit Bounds */
+  .max-w-md {
+    max-width: 420px;
+  }
+
+  /* Focus Ring Indicator Controls Configuration System Override */
+  .btn:focus-visible, a:focus-visible {
+    outline: 2px solid var(--bvc-nav-active) !important;
+    outline-offset: 2px;
+  }
+
+  /* ==========================================================================
+     Responsive Framework Breakpoints Logic Layout Matrices
+     ========================================================================== */
+  @media (max-width: 991.98px) {
+    .sidebar {
+      position: fixed;
+      left: -280px;
+      width: var(--bvc-sidebar-width) !important;
+    }
+
+    .sidebar.mobile-open {
+      left: 0;
+    }
+
+    .sidebar.mobile-open .sidebar-brand-text,
+    .sidebar.mobile-open .sidebar-nav span,
+    .sidebar.mobile-open .sidebar-footer {
+      display: block !important;
+    }
+
+    .sidebar.mobile-open .sidebar-header {
+      padding: 1.5rem 1rem !important;
+    }
+
+    .sidebar.mobile-open .sidebar-nav .nav-link {
+      justify-content: start;
+      padding: 0.5rem 1rem;
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.4);
+      z-index: 1025;
+      transition: opacity 0.25s ease-in-out;
+    }
+  }
+</style>

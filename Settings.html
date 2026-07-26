@@ -1,0 +1,315 @@
+<div class="card h-100 border-0 shadow-sm module-card" id="module-settings">
+  <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+    <div>
+      <h5 class="fw-bold text-dark mb-1"><i class="bi bi-gear-fill text-primary me-2"></i>System Administration & Configurations</h5>
+      <p class="text-muted mb-0 small">Manage global constants, thresholds, audits, and maintenance procedures</p>
+    </div>
+  </div>
+
+  <div class="card-body p-4 pt-2">
+    <!-- Tabs Header -->
+    <ul class="nav nav-tabs border-bottom mb-4" id="settingsTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-semibold" id="general-tab" data-bs-toggle="tab" data-bs-target="#general-panel" type="button" role="tab" aria-controls="general-panel" aria-selected="true">
+          <i class="bi bi-sliders me-2"></i>General & Branding
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="rules-tab" data-bs-toggle="tab" data-bs-target="#rules-panel" type="button" role="tab" aria-controls="rules-panel" aria-selected="false">
+          <i class="bi bi-clipboard2-check-fill me-2"></i>Attendance & Academic Rules
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="departments-tab" data-bs-toggle="tab" data-bs-target="#departments-panel" type="button" role="tab" aria-controls="departments-panel" aria-selected="false">
+          <i class="bi bi-building me-2"></i>Department & Academic Structure
+        </button>
+      </li>
+      <li class="nav-item d-none" id="tab-maintenance-wrapper" role="presentation">
+        <button class="nav-link fw-semibold text-danger" id="maintenance-tab" data-bs-toggle="tab" data-bs-target="#maintenance-panel" type="button" role="tab" aria-controls="maintenance-panel" aria-selected="false">
+          <i class="bi bi-shield-lock-fill me-2"></i>Maintenance & Backups
+        </button>
+      </li>
+      <li class="nav-item d-none" id="tab-audit-wrapper" role="presentation">
+        <button class="nav-link fw-semibold" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit-panel" type="button" role="tab" aria-controls="audit-panel" aria-selected="false">
+          <i class="bi bi-clock-history me-2"></i>System Audit Logs
+        </button>
+      </li>
+    </ul>
+
+    <!-- Tabs Content -->
+    <div class="tab-content" id="settingsTabsContent">
+      
+      <!-- Panel 1: General Settings -->
+      <div class="tab-pane fade show active" id="general-panel" role="tabpanel" aria-labelledby="general-tab">
+        <form id="generalSettingsForm" novalidate>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold text-secondary">College Branding Name</label>
+              <input type="text" class="form-control form-control-lg" id="setCollegeName" required placeholder="e.g. BVC Engineering College">
+              <div class="invalid-feedback">Branding name is required.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold text-secondary">Admin Notification Email</label>
+              <input type="email" class="form-control form-control-lg" id="setAdminEmail" placeholder="admin@bvcgroup.in">
+              <div class="form-text">System alerts, logs digests, and warnings will route here.</div>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Default Table Rows Limit</label>
+              <select class="form-select" id="setPagination">
+                <option value="10">10 Rows per page</option>
+                <option value="25">25 Rows per page</option>
+                <option value="50">50 Rows per page</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">UI Theme Style</label>
+              <select class="form-select" id="setTheme">
+                <option value="light">Enterprise Light</option>
+                <option value="dark">Vibrant Dark Mode</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">System Locale Language</label>
+              <select class="form-select" id="setLanguage">
+                <option value="en">English (US/UK)</option>
+                <option value="te">Telugu (India)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="form-check form-switch p-3 bg-light rounded shadow-sm">
+              <input class="form-check-input ms-0 me-3" type="checkbox" role="switch" id="setNotificationsEnabled" checked>
+              <label class="form-check-label fw-semibold text-dark" for="setNotificationsEnabled">Enable Global Email Notifications</label>
+              <div class="form-text ms-5">Automated confirmation emails are sent to coordinators and students during events.</div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end border-top pt-3">
+            <button type="submit" class="btn btn-primary px-5 btn-lg shadow-sm"><i class="bi bi-save me-2"></i>Save General Settings</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Panel 2: Attendance Rules -->
+      <div class="tab-pane fade" id="rules-panel" role="tabpanel" aria-labelledby="rules-tab">
+        <form id="attendanceRulesForm" novalidate>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold text-secondary">Required Attendance Threshold (%)</label>
+              <div class="input-group">
+                <input type="number" class="form-control form-control-lg" id="setAttendanceThreshold" min="50" max="100" required placeholder="75">
+                <span class="input-group-text">%</span>
+              </div>
+              <div class="form-text">Students with overall rate below this boundary are flagged in critical red panels.</div>
+              <div class="invalid-feedback">Threshold must be a valid number between 50 and 100.</div>
+            </div>
+            
+            <div class="col-md-6">
+              <label class="form-label fw-semibold text-secondary">Active Academic Years Configuration</label>
+              <input type="text" class="form-control form-control-lg" id="setAcademicYears" placeholder="e.g. 2024-25, 2025-26">
+              <div class="form-text">Comma-separated active year ranges displayed in filters.</div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end border-top pt-3">
+            <button type="submit" class="btn btn-primary px-5 btn-lg shadow-sm"><i class="bi bi-save me-2"></i>Save System Rules</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Panel: Department & Academic Structure -->
+      <div class="tab-pane fade" id="departments-panel" role="tabpanel" aria-labelledby="departments-tab">
+        <form id="departmentStructureForm" novalidate>
+          <h6 class="fw-bold text-primary mb-3"><i class="bi bi-building-gear me-2"></i>Department Modifications & Info</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Department Name</label>
+              <input type="text" class="form-control" id="hodDeptName" required placeholder="Computer Science & Engineering">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Department Code</label>
+              <input type="text" class="form-control" id="hodDeptCode" required placeholder="CSE">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Department Contact Email</label>
+              <input type="email" class="form-control" id="hodDeptEmail" placeholder="hod.cse@bvcgroup.in">
+            </div>
+          </div>
+
+          <h6 class="fw-bold text-primary mb-3 mt-4"><i class="bi bi-diagram-3-fill me-2"></i>Academic Structure</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Available Branches / Specializations</label>
+              <input type="text" class="form-control" id="hodDeptBranches" placeholder="e.g. CSE, CSE-AIML, CSE-DS">
+              <div class="form-text">Comma-separated branch codes for this department.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Available Academic Years</label>
+              <input type="text" class="form-control" id="hodDeptYears" readonly value="2, 3, 4">
+              <div class="form-text">Departmental HOD scope covers Years 2, 3, and 4.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold text-secondary">Available Sections</label>
+              <input type="text" class="form-control" id="hodDeptSections" placeholder="e.g. A, B, C">
+              <div class="form-text">Comma-separated section identifiers.</div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end border-top pt-3">
+            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-save me-2"></i>Save Department Structure</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Panel 3: Maintenance & Clear System -->
+      <div class="tab-pane fade" id="maintenance-panel" role="tabpanel" aria-labelledby="maintenance-tab">
+        <div class="alert alert-warning border border-warning-subtle rounded-4 p-4 mb-4">
+          <h6 class="fw-bold text-dark mb-2"><i class="bi bi-shield-fill-exclamation me-2 text-warning fs-5"></i>Administrative Zone Controls</h6>
+          <p class="mb-0 small text-secondary">Warning: Actions in this segment delete critical logs and alter system state. Make sure you back up datasets before executing truncation operations.</p>
+        </div>
+
+        <div class="row g-4 mb-4">
+          <div class="col-md-6">
+            <div class="card border p-4 h-100 rounded-4 shadow-sm">
+              <h6 class="fw-bold text-dark"><i class="bi bi-download me-2 text-primary"></i>Export System Backups</h6>
+              <p class="text-muted small">Download the entire database context sheets roster to local disk files.</p>
+              <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-outline-secondary w-100" id="btnBackupExcel"><i class="bi bi-file-earmark-excel me-2"></i>Roster Backup (CSV)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="card border border-danger-subtle p-4 h-100 rounded-4 shadow-sm">
+              <h6 class="fw-bold text-danger"><i class="bi bi-trash-fill me-2"></i>Danger Zone Operations</h6>
+              <p class="text-muted small">Wipe out event registers or attendance check-ins directly from the database.</p>
+              <div class="d-flex flex-column gap-2 mt-3">
+                <button class="btn btn-outline-danger btn-sm text-start" id="btnWipeAttendance"><i class="bi bi-trash-fill me-2"></i>Clear Attendance Check-In Logs</button>
+                <button class="btn btn-danger btn-sm text-start" id="btnResetAll"><i class="bi bi-exclamation-triangle-fill me-2"></i>Reset System (Wipe Attendance, Participants, & Events)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 4: System Audit Logs -->
+      <div class="tab-pane fade" id="audit-panel" role="tabpanel" aria-labelledby="audit-tab">
+        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
+          <div class="d-flex gap-2 flex-grow-1" style="max-width: 400px;">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white text-muted"><i class="bi bi-search"></i></span>
+              <input type="text" class="form-control" id="auditSearchInput" placeholder="Filter by User, Module, Action...">
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" id="auditExportBtn"><i class="bi bi-download me-2"></i>Export Audit Trails</button>
+        </div>
+
+        <div class="table-responsive border rounded-3">
+          <table class="table table-hover align-middle mb-0" id="auditLogsTable">
+            <thead class="table-light text-muted small text-uppercase">
+              <tr>
+                <th>Timestamp</th>
+                <th>User ID</th>
+                <th>Module</th>
+                <th>Action</th>
+                <th>Description</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="auditLogsTableBody" class="small">
+              <tr><td colspan="6" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading audit logs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Audit Pagination -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <span class="text-muted small" id="auditTableInfo">Showing 0 to 0 of 0 records</span>
+          <nav aria-label="Audit navigation">
+            <ul class="pagination pagination-sm mb-0" id="auditPagination">
+              <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+              <li class="page-item active"><a class="page-link" href="#">1</a></li>
+              <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Panel 5: Departments Configuration -->
+      <div class="tab-pane fade" id="departments-panel" role="tabpanel" aria-labelledby="departments-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold text-secondary mb-0">Manage Academic Departments</h6>
+          <button type="button" class="btn btn-primary btn-sm" id="btnAddDepartment"><i class="bi bi-plus-lg me-1"></i>Add Department</button>
+        </div>
+        <div class="table-responsive border rounded-3">
+          <table class="table table-hover align-middle mb-0" id="departmentsTable">
+            <thead class="table-light text-muted small text-uppercase">
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>HOD Name</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="departmentsTableBody" class="small">
+              <tr>
+                <td colspan="5" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading departments...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Department Modal -->
+<div class="modal fade" id="departmentModal" tabindex="-1" aria-labelledby="departmentModalLabel" aria-hidden="true" style="z-index: 1060;">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <form id="departmentForm" novalidate>
+        <div class="modal-header border-bottom-0 pb-0">
+          <h5 class="modal-title fw-bold" id="departmentModalLabel">Add Department</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="deptFormMode" value="add">
+          <input type="hidden" id="deptFormId" value="">
+          <div class="mb-3">
+            <label for="deptCode" class="form-label fw-semibold text-secondary">Department Code <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="deptCode" required placeholder="e.g. CSE">
+            <div class="invalid-feedback">Department code is required.</div>
+          </div>
+          <div class="mb-3">
+            <label for="deptName" class="form-label fw-semibold text-secondary">Department Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="deptName" required placeholder="e.g. Computer Science & Engineering">
+            <div class="invalid-feedback">Department name is required.</div>
+          </div>
+          <div class="mb-3">
+            <label for="deptHOD" class="form-label fw-semibold text-secondary">HOD Name</label>
+            <input type="text" class="form-control" id="deptHOD" placeholder="e.g. Dr. K. Prasanna">
+          </div>
+          <div class="mb-3">
+            <label for="deptStatus" class="form-label fw-semibold text-secondary">Status</label>
+            <select class="form-select" id="deptStatus">
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-top-0 pt-0">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveDept">Save Department</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<?!= include('settings_js'); ?>

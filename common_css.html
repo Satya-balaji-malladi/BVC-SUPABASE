@@ -1,0 +1,166 @@
+<style>
+/* =======================================================
+   ENTERPRISE DESIGN SYSTEM TOKENS & RESET
+   ======================================================= */
+:root {
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Spacing (8-point System) */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 48px;
+  --space-6: 64px;
+
+  /* Typography Scale */
+  --font-title: 32px;
+  --font-section: 24px;
+  --font-card: 18px;
+  --font-body: 15px;
+  --font-caption: 13px;
+
+  /* Border Radiuses */
+  --radius-btn: 12px;
+  --radius-input: 12px;
+  --radius-card: 16px;
+  --radius-dialog: 18px;
+  --radius-table: 12px;
+
+  /* Color Palette (Light Theme Default) */
+  --bg-app: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #0F172A;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --border-color: #E2E8F0;
+  --primary-color: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-light: #DBEAFE;
+  --status-draft: #64748B;
+  --status-pending: #F59E0B;
+  --status-active: #22C55E;
+  --status-completed: #2563EB;
+  --status-cancelled: #EF4444;
+  
+  --elevation-subtle: 0 2px 10px rgba(0,0,0,0.06);
+  --bvc-sidebar-width: 260px;
+  --bvc-header-height: 70px;
+  --bvc-transition: all 0.2s ease-in-out;
+}
+
+/* Dark Theme Overrides */
+[data-theme="dark"] {
+  --bg-app: #0B1220;
+  --bg-card: #111827;
+  --bg-sidebar: #020617;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --border-color: #1F2937;
+  --primary-light: rgba(37, 99, 235, 0.15);
+  --elevation-subtle: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* Reset and Globals */
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  transition: background-color var(--bvc-transition), color var(--bvc-transition);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+.wrapper {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: calc(100% - var(--bvc-sidebar-width));
+  transition: var(--bvc-transition);
+  margin-left: var(--bvc-sidebar-width);
+}
+
+.content-area {
+  flex-grow: 1;
+}
+
+/* =======================================================
+   ENTERPRISE COMPONENTS SYSTEM STYLES
+   ======================================================= */
+.card {
+  background-color: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--elevation-subtle);
+  transition: var(--bvc-transition);
+}
+
+.card-header {
+  background-color: transparent;
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--space-2) var(--space-3);
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  border-radius: var(--radius-btn);
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: var(--bvc-transition);
+}
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.form-control, .form-select {
+  border-radius: var(--radius-input);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: var(--font-body);
+  transition: var(--bvc-transition);
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.loader-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(11, 18, 32, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+</style>

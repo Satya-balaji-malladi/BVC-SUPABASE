@@ -1,0 +1,2778 @@
+<script>
+/**
+ * ==========================================
+ * EVENTS MODULE
+ * ==========================================
+ */
+App.Modules.events = {
+  eventsData: [],
+  filteredData: [],
+  coordinatorsData: [],
+  departmentsData: new Set(),
+  sectionsData: new Set(),
+  currentPage: 1,
+  itemsPerPage: 10,
+  editingEventId: null,
+  isFormDirty: false,
+  
+  init: function() {
+    App.Logger.info('Events init');
+    this.bindEvents();
+    this.loadDependencies()
+      .then(() => {
+        this.load();
+      })
+      .catch(err => {
+        App.Logger.error("Failed to load dependencies: " + err.message);
+        this.load(); // try to load events anyway
+      });
+  },
+
+  loadDependencies: function() {
+    return Promise.all([
+      App.API.getAllUsers().catch(() => []),
+      App.API.getAllStudents().catch(() => [])
+    ]).then(([users, students]) => {
+      const uData = (users && (users.users || users.data || (Array.isArray(users) ? users : []))) || [];
+      // Users from sheet have 'Role' key (Config.COLUMNS.USER_ROLE = 'Role'), not lowercase 'role'
+      this.coordinatorsData = (Array.isArray(uData) ? uData : []).filter(u => {
+        if (!u) return false;
+        const role = String(u.role || u['Role'] || u['User Role'] || '').toUpperCase().trim();
+        // TC-43: Exclude HOD from coordinator/event-admin dropdown — only Coordinators, Event Admins, and Admins
+        return role === 'COORDINATOR' || role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'ADMIN';
+      });
+      
+      const defaultDepts = ['FIRST YEAR DEPARTMENT', 'CSE DEPARTMENT', 'AI&ML DEPARTMENT', 'ECE DEPARTMENT', 'EEE DEPARTMENT', 'CIVIL DEPARTMENT'];
+      defaultDepts.forEach(d => this.departmentsData.add(d));
+
+      const sData = (students && (students.students || students.data || (Array.isArray(students) ? students : []))) || [];
+      const studList = Array.isArray(sData) ? sData : [];
+      studList.forEach(s => {
+        if (s && s.department && s.department !== 'N/A') this.departmentsData.add(s.department);
+      });
+
+      this.populateDependencyDropdowns();
+    });
+  },
+  populateDependencyDropdowns: function() {
+    const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
+    const isAdmin = (currentUserRole === 'ADMIN');
+    // TC-26: Determine if current user is HOD or Super Admin — they cannot create inline coordinator accounts
+    const isHOD = (currentUserRole === 'HOD');
+    const isSuperAdmin = (currentUserRole === 'SUPER ADMIN' || currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'SUPERADMIN');
+    const canCreateCoordinator = !isHOD && !isSuperAdmin; // Only Event Admin role can create inline coordinator
+
+    // Update labels and placeholder text based on role
+    const coordinatorLabelEl = document.querySelector('#eventCoordinatorGroup label[for="eventCoordinator"]');
+    const createAdminInlineBtn = document.getElementById('btnCreateAdminInline');
+    const feedbackEl = document.querySelector('#eventCoordinatorGroup .invalid-feedback');
+    const inlineHeaderEl = document.querySelector('#new-coordinator-fields h6');
+
+    // Button is always shown — only the dropdown NEW_COORDINATOR option is restricted by role
+    if (isAdmin) {
+      if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Coordinator <span class="text-danger">*</span>';
+      if (createAdminInlineBtn) createAdminInlineBtn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>+ Create Coordinator';
+      if (feedbackEl) feedbackEl.textContent = 'Please assign a Coordinator.';
+      if (inlineHeaderEl) inlineHeaderEl.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Create New Coordinator / User';
+    } else {
+      if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Event Admin <span class="text-danger">*</span>';
+      if (createAdminInlineBtn) createAdminInlineBtn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>+ Create Admin';
+      if (feedbackEl) feedbackEl.textContent = 'Please assign an Event Admin.';
+      if (inlineHeaderEl) inlineHeaderEl.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Create New Event Admin / User';
+    }
+
+    // Coordinators Filter and Form
+    const coordFilter = document.getElementById('events-coord-filter');
+    const coordSelect = document.getElementById('eventCoordinator');
+    let coordHtml = isAdmin ? '<option value="">Select Coordinator</option>' : '<option value="">Select Event Admin</option>';
+    let coordFilterHtml = '<option value="">All Admins</option>';
+    
+    this.coordinatorsData.forEach(c => {
+      if (!c) return;
+      const role = String(c.role || c['Role'] || c['User Role'] || '').toUpperCase().trim();
+      
+      // TC-43: If current user is ADMIN, only show COORDINATOR role options
+      if (isAdmin && role !== 'COORDINATOR') {
+        return;
+      }
+
+      // Support both sheet column keys ('User ID','First Name') and sanitized camelCase keys
+      const uid = c.user_id || c['User ID'] || c.userId || c.id || '';
+      const firstName = c.full_name || c['First Name'] || c.firstName || '';
+      const lastName = c['Last Name'] || c.lastName || '';
+      const displayName = firstName + (lastName ? ' ' + lastName : '') || uid || 'Unknown';
+      coordHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
+      coordFilterHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
+    });
+    
+    // TC-26: Only add the NEW_COORDINATOR option if current user is allowed to create coordinators
+    if (canCreateCoordinator) {
+      coordHtml += isAdmin 
+        ? '<option value="NEW_COORDINATOR">+ Create New Coordinator / User</option>' 
+        : '<option value="NEW_COORDINATOR">+ Create New Admin / User</option>';
+    }
+      
+    if (coordFilter) coordFilter.innerHTML = coordFilterHtml;
+    if (coordSelect) coordSelect.innerHTML = coordHtml;
+    // Departments Filter and Custom Checkbox Form
+    const deptFilter = document.getElementById('events-dept-filter');
+    const deptList = document.getElementById('eventDepartmentsList');
+    
+    let deptFilterHtml = '<option value="">All Depts</option>';
+    let deptCheckboxHtml = '';
+    
+    Array.from(this.departmentsData).sort().forEach((d, idx) => {
+      deptFilterHtml += `<option value="${App.Utils.escapeHtml(d)}">${App.Utils.escapeHtml(d)}</option>`;
+      deptCheckboxHtml += `
+        <div class="form-check event-department-item">
+          <input class="form-check-input event-dept-check" type="checkbox" value="${App.Utils.escapeHtml(d)}" id="deptCheck${idx}">
+          <label class="form-check-label department-label" for="deptCheck${idx}">${App.Utils.escapeHtml(d)}</label>
+        </div>
+      `;
+    });
+    
+    if (deptFilter) deptFilter.innerHTML = deptFilterHtml;
+    if (deptList) deptList.innerHTML = deptCheckboxHtml;
+
+    // Populate Access Restriction - Department Tick Checkboxes
+    const allowedDeptsGroup = document.getElementById('allowedDeptsCheckboxGroup');
+    if (allowedDeptsGroup) {
+      let allowedDeptsHtml = '';
+      Array.from(this.departmentsData).sort().forEach((d, idx) => {
+        allowedDeptsHtml += `
+          <div class="form-check me-3">
+            <input class="form-check-input allowed-dept-check" type="checkbox" value="${App.Utils.escapeHtml(d)}" id="allowDeptCheck${idx}">
+            <label class="form-check-label small" for="allowDeptCheck${idx}">${App.Utils.escapeHtml(d)}</label>
+          </div>
+        `;
+      });
+      allowedDeptsGroup.innerHTML = allowedDeptsHtml;
+    }
+
+    // Populate Access Restriction - Specific Coordinators Tick Checkboxes List
+    const allowedCoordsList = document.getElementById('allowedCoordsList');
+    if (allowedCoordsList) {
+      let coordsListHtml = '';
+      this.coordinatorsData.forEach((c, idx) => {
+        if (!c) return;
+        const uid = c.user_id || c['User ID'] || c.userId || c.id || '';
+        const firstName = c.full_name || c['First Name'] || c.firstName || '';
+        const lastName = c['Last Name'] || c.lastName || '';
+        const email = c.email || c['Email'] || c.Email || '';
+        const displayName = (firstName + (lastName ? ' ' + lastName : '')).trim() || uid || 'Unknown';
+        
+        coordsListHtml += `
+          <div class="form-check p-1 px-2 hover-bg rounded allowed-coord-item" data-search="${App.Utils.escapeHtml((displayName + ' ' + email).toLowerCase())}">
+            <input class="form-check-input allowed-coord-check me-2" type="checkbox" value="${App.Utils.escapeHtml(uid)}" id="allowCoordCheck${idx}">
+            <label class="form-check-label small w-100" for="allowCoordCheck${idx}">
+              <span class="fw-semibold text-dark">${App.Utils.escapeHtml(displayName)}</span>
+              ${email ? `<small class="text-muted d-block">${App.Utils.escapeHtml(email)}</small>` : ''}
+            </label>
+          </div>
+        `;
+      });
+      allowedCoordsList.innerHTML = coordsListHtml || '<div class="text-muted small p-2">No coordinators available</div>';
+    }
+  },
+
+  load: function() {
+    const tbody = document.getElementById('events-table-body');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>Loading events...</td></tr>';
+    
+    App.API.getAllEvents()
+      .then(res => {
+        const data = res.data || res;
+        this.eventsData = Array.isArray(data) ? data : [];
+        
+        // Normalize fields based on Attendance Module requirement list
+        this.eventsData = this.eventsData.map(e => ({
+          ...e,
+          event_id: e.event_id || e.EventID || e.eventId || e.id || 'N/A',
+          event_name: e.event_name || e.EventName || e.eventName || e.title || 'N/A',
+          description: e.description || e.Description || e.event_description || '',
+          start_date: e.start_date || e.StartDate || e.startDate || e.event_date || 'N/A',
+          end_date: e.end_date || e.EndDate || e.endDate || e.event_date || 'N/A',
+          start_time: e.start_time || e.StartTime || e.startTime || 'N/A',
+          end_time: e.end_time || e.EndTime || e.endTime || 'N/A',
+          venue: e.venue || e.Venue || 'N/A',
+          coordinator_id: e.coordinator_id || e.CoordinatorID || e.coordinatorId || e.coordinator || 'N/A',
+          departments: e.departments || e.Departments || e.department || e.dept || '',
+          years: e.years || e.Years || e.year || '',
+          capacity: e.capacity || e.MaximumCapacity || e.max_capacity || 'N/A',
+          status: e.status || e.Status || e.event_status || 'Upcoming',
+          created_at: e.created_at || e.CreatedAt || e.createdAt || 'N/A',
+          completed_at: e.completed_at || e['Completed At'] || e.event_completed_at || '',
+          archive_status: e.archive_status || e['Archive Status'] || e.event_archive_status || ''
+        }));
+        
+        // Auto-complete expired events
+        this.eventsData = this.eventsData.map(e => {
+          let d = new Date(e.end_date);
+          if (isNaN(d.getTime())) return e;
+          
+          let t = new Date(e.end_time);
+          if (isNaN(t.getTime())) {
+            let match = String(e.end_time).match(/^(\d{1,2}):(\d{2})/);
+            if (match) {
+              d.setHours(parseInt(match[1], 10), parseInt(match[2], 10), 0, 0);
+            } else {
+              d.setHours(23, 59, 59, 999);
+            }
+          } else {
+            d.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), t.getMilliseconds());
+          }
+          
+          const now = new Date();
+          if ((e.status === 'Active' || e.status === 'Upcoming') && d < now) {
+            e.status = 'Completed';
+          }
+          return e;
+        });
+        
+        this.applyFilters();
+      })
+      .catch(err => {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-5">Failed to load events</td></tr>';
+        App.ErrorHandler.handle(err, "Failed to load events in Events module");
+      });
+  },
+
+  bindEvents: function() {
+    const searchInput = document.getElementById('events-search-input');
+    const deptFilter = document.getElementById('events-dept-filter');
+    const coordFilter = document.getElementById('events-coord-filter');
+    const statusFilter = document.getElementById('events-status-filter');
+    const monthFilter = document.getElementById('events-month-filter');
+    const yearFilter = document.getElementById('events-year-filter');
+    const perPageSelect = document.getElementById('events-per-page');
+
+    if (searchInput) searchInput.addEventListener('input', () => this.applyFilters());
+    if (deptFilter) deptFilter.addEventListener('change', () => this.applyFilters());
+    if (coordFilter) coordFilter.addEventListener('change', () => this.applyFilters());
+    if (statusFilter) statusFilter.addEventListener('change', () => this.applyFilters());
+    if (monthFilter) monthFilter.addEventListener('change', () => this.applyFilters());
+    if (yearFilter) yearFilter.addEventListener('change', () => this.applyFilters());
+    
+    // Setup Year Filter dynamically for the last 5 years + next 2
+    if (yearFilter) {
+      const currentYear = new Date().getFullYear();
+      let yearHtml = '<option value="">Year</option>';
+      for (let i = currentYear - 5; i <= currentYear + 2; i++) {
+        yearHtml += `<option value="${i}">${i}</option>`;
+      }
+      yearFilter.innerHTML = yearHtml;
+    }
+    
+    if (perPageSelect) {
+      perPageSelect.addEventListener('change', (e) => {
+        this.itemsPerPage = parseInt(e.target.value, 10);
+        this.currentPage = 1;
+        this.renderTable();
+      });
+    }
+
+    const tbody = document.getElementById('events-table-body');
+    if (tbody) {
+      tbody.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        const id = btn.getAttribute('data-id');
+        
+        if (action === 'view-event') this.openViewEventModal(id);
+        else if (action === 'edit-event') this.openEditEventModal(id);
+        else if (action === 'delete-event') this.openDeleteEventModal(id);
+        else if (action === 'manage-participants') this.openManageParticipantsModal(id);
+        else if (action === 'stop-event') this.handleQuickStatusUpdate(id, 'Stopped');
+        else if (action === 'cancel-event') this.handleQuickStatusUpdate(id, 'Cancelled');
+        else if (action === 'extend-duration') this.handleDurationAdjustment(id, 1);
+        else if (action === 'shorten-duration') this.handleDurationAdjustment(id, -1);
+      });
+    }
+
+    const addBtn = document.querySelector('button[data-action="create-event"]');
+    if (addBtn) addBtn.addEventListener('click', () => this.openAddEventModal());
+
+    const eventForm = document.getElementById('eventForm');
+    if (eventForm) eventForm.addEventListener('submit', (e) => this.handleEventSubmit(e));
+
+    const confirmDeleteBtn = document.getElementById('eventConfirmDeleteBtn');
+    if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', () => this.handleDeleteEvent());
+    
+    const btnPublish = document.getElementById('btnLifecyclePublish');
+    if (btnPublish) btnPublish.addEventListener('click', () => this.handleLifecycleClick('Publish'));
+    
+    const btnStop = document.getElementById('btnLifecycleStop');
+    if (btnStop) btnStop.addEventListener('click', () => this.handleLifecycleClick('Stop'));
+    
+    const btnCancel = document.getElementById('btnLifecycleCancel');
+    if (btnCancel) btnCancel.addEventListener('click', () => this.handleLifecycleClick('Cancel'));
+    const createAdminInlineBtn = document.getElementById('btnCreateAdminInline');
+    if (createAdminInlineBtn) {
+      createAdminInlineBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (coordSelect) coordSelect.value = 'NEW_COORDINATOR';
+        if (newCoordFields) newCoordFields.classList.remove('d-none');
+        ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
+          const input = document.getElementById(id);
+          if (input) input.required = true;
+        });
+      });
+    }
+
+    const coordSelect = document.getElementById('eventCoordinator');
+    const newCoordFields = document.getElementById('new-coordinator-fields');
+    if (coordSelect) {
+      coordSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'NEW_COORDINATOR') {
+          if (newCoordFields) newCoordFields.classList.remove('d-none');
+          ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.required = true;
+          });
+        } else {
+          if (newCoordFields) newCoordFields.classList.add('d-none');
+          ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) {
+              input.required = false;
+              input.value = '';
+            }
+          });
+        }
+      });
+    }
+
+    const btnCreateAdmin = document.getElementById('btnCreateAdminInline');
+    if (btnCreateAdmin) {
+      btnCreateAdmin.addEventListener('click', () => {
+        if (coordSelect) {
+          coordSelect.value = 'NEW_COORDINATOR';
+          coordSelect.dispatchEvent(new Event('change'));
+        }
+      });
+    }
+
+    this.setupCustomDropdowns();
+    this.setupCreateEventFormToggles();
+    this.setupAccessRestrictionToggles();
+    
+    // Dirty form checking
+    if (eventForm) {
+      eventForm.addEventListener('change', () => {
+        this.isFormDirty = true;
+      });
+      eventForm.addEventListener('input', () => {
+        this.isFormDirty = true;
+      });
+    }
+
+    // Stepper wizard navigation
+    this.currentStep = 1;
+    this.goToStep(1);
+    
+    const btnPrev = document.getElementById('btnWizardPrev');
+    if (btnPrev) {
+      btnPrev.addEventListener('click', () => {
+        if (this.currentStep > 1) {
+          const attType = document.getElementById('eventAttendanceType') ? document.getElementById('eventAttendanceType').value : 'Fixed';
+          if (this.currentStep === 3 && attType === 'Open') {
+            this.goToStep(1);
+          } else {
+            this.goToStep(this.currentStep - 1);
+          }
+        }
+      });
+    }
+    
+    const btnNext = document.getElementById('btnWizardNext');
+    if (btnNext) {
+      btnNext.addEventListener('click', () => {
+        if (this.currentStep === 1) {
+          if (this.validateStep1()) {
+            const attType = document.getElementById('eventAttendanceType') ? document.getElementById('eventAttendanceType').value : 'Fixed';
+            if (attType === 'Open') {
+              this.goToStep(3);
+            } else {
+              this.goToStep(2);
+            }
+          }
+        } else if (this.currentStep === 2) {
+          if (this.validateStep2()) {
+            this.goToStep(3);
+          }
+        }
+      });
+    }
+
+    const attTypeSelect = document.getElementById('eventAttendanceType');
+    if (attTypeSelect) {
+      attTypeSelect.addEventListener('change', (e) => {
+        const checkboxEnable = document.getElementById('eventEnableRegistration');
+        const regContainer = document.getElementById('eventRegSettingsContainer');
+        const fixedOpt = document.getElementById('fixed-event-options');
+        const openOpt = document.getElementById('open-event-options');
+
+        if (e.target.value === 'Open') {
+          if (fixedOpt) fixedOpt.classList.add('d-none');
+          if (openOpt) openOpt.classList.remove('d-none');
+          if (checkboxEnable) checkboxEnable.checked = false;
+          if (regContainer) regContainer.classList.add('d-none');
+          this.setStep2Required(false);
+        } else {
+          if (fixedOpt) fixedOpt.classList.remove('d-none');
+          if (openOpt) openOpt.classList.add('d-none');
+        }
+        this.goToStep(this.currentStep);
+      });
+    }
+
+    const openTargetSelect = document.getElementById('openEventTargetGroup');
+    if (openTargetSelect) {
+      openTargetSelect.addEventListener('change', (e) => {
+        const bvcNote = document.getElementById('open-bvc-note');
+        const allFields = document.getElementById('open-all-colleges-fields');
+        if (e.target.value === 'BVC') {
+          if (bvcNote) bvcNote.classList.remove('d-none');
+          if (allFields) allFields.classList.add('d-none');
+        } else {
+          if (bvcNote) bvcNote.classList.add('d-none');
+          if (allFields) allFields.classList.remove('d-none');
+        }
+      });
+    }
+
+    const btnOpenSelectAll = document.getElementById('openFieldsSelectAll');
+    if (btnOpenSelectAll) {
+      btnOpenSelectAll.addEventListener('click', () => {
+        document.querySelectorAll('.open-field-chk').forEach(cb => cb.checked = true);
+      });
+    }
+
+    const btnOpenClearAll = document.getElementById('openFieldsClearAll');
+    if (btnOpenClearAll) {
+      btnOpenClearAll.addEventListener('click', () => {
+        document.querySelectorAll('.open-field-chk').forEach(cb => {
+          if (cb.value !== 'Roll / Registration Number' && cb.value !== 'Student Full Name') {
+            cb.checked = false;
+          }
+        });
+      });
+    }
+
+    // Copy Registration URL
+    const btnCopyUrl = document.getElementById('edBtnCopyRegUrl');
+    if (btnCopyUrl) {
+      btnCopyUrl.addEventListener('click', () => {
+        const urlInput = document.getElementById('edRegUrlInput');
+        if (urlInput && urlInput.value) {
+          navigator.clipboard.writeText(urlInput.value)
+            .then(() => {
+              App.UI.showSuccess("Registration URL copied to clipboard!");
+            })
+            .catch(() => {
+              urlInput.select();
+              document.execCommand('copy');
+              App.UI.showSuccess("Registration URL copied to clipboard!");
+            });
+        }
+      });
+    }
+    
+    // Enable Registration switch toggle
+    const checkboxEnable = document.getElementById('eventEnableRegistration');
+    const regContainer = document.getElementById('eventRegSettingsContainer');
+    if (checkboxEnable && regContainer) {
+      checkboxEnable.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          regContainer.classList.remove('d-none');
+          this.setStep2Required(true);
+        } else {
+          regContainer.classList.add('d-none');
+          this.setStep2Required(false);
+          const errEl = document.getElementById('eventModalError');
+          if (errEl) errEl.classList.add('d-none');
+        }
+      });
+    }
+
+    // Bidirectional sync for Enable Spot Registration switches
+    const spotStep1 = document.getElementById('eventAllowSpotRegStep1');
+    const spotStep2 = document.getElementById('eventAllowSpotReg');
+    if (spotStep1 && spotStep2) {
+      spotStep1.addEventListener('change', (e) => {
+        spotStep2.checked = e.target.checked;
+      });
+      spotStep2.addEventListener('change', (e) => {
+        spotStep1.checked = e.target.checked;
+      });
+    }
+    
+    // Add custom field button
+    const btnAddField = document.getElementById('btnRegAddCustomField');
+    if (btnAddField) {
+      btnAddField.addEventListener('click', () => {
+        this.addCustomFieldRow();
+      });
+    }
+
+    const modalEl = document.getElementById('eventModal');
+    if (modalEl) {
+      modalEl.addEventListener('hide.bs.modal', (e) => {
+        if (this.isFormDirty) {
+          if (!confirm("You have unsaved changes. Do you really want to close?")) {
+            e.preventDefault();
+          } else {
+            this.isFormDirty = false;
+            this.editingEventId = null;
+          }
+        } else {
+          this.editingEventId = null;
+        }
+      });
+    }
+  },
+
+  currentStep: 1,
+  
+  goToStep: function(step) {
+    document.querySelectorAll('.wizard-step-panel').forEach(p => p.classList.add('d-none'));
+    const panel = document.getElementById('eventModalStep' + step);
+    if (panel) panel.classList.remove('d-none');
+    
+    const attType = document.getElementById('eventAttendanceType') ? document.getElementById('eventAttendanceType').value : 'Fixed';
+    const isOpen = attType === 'Open';
+    
+    const navItem2 = document.getElementById('stepNavItem2');
+    if (navItem2) {
+      if (isOpen) {
+        navItem2.classList.add('d-none');
+      } else {
+        navItem2.classList.remove('d-none');
+      }
+    }
+    
+    for (let i = 1; i <= 3; i++) {
+      const navItem = document.getElementById('stepNavItem' + i);
+      const badge = document.getElementById('stepBadge' + i);
+      if (navItem && badge) {
+        if (i === 3 && isOpen) {
+          badge.textContent = '2';
+        } else {
+          badge.textContent = String(i);
+        }
+        
+        if (i === step) {
+          navItem.className = 'flex-fill fw-bold text-primary step-nav-item' + (i === 2 && isOpen ? ' d-none' : '');
+          badge.className = 'badge bg-primary rounded-circle me-1';
+        } else if (i < step) {
+          navItem.className = 'flex-fill text-success step-nav-item' + (i === 2 && isOpen ? ' d-none' : '');
+          badge.className = 'badge bg-success rounded-circle me-1';
+        } else {
+          navItem.className = 'flex-fill text-muted step-nav-item' + (i === 2 && isOpen ? ' d-none' : '');
+          badge.className = 'badge bg-secondary rounded-circle me-1';
+        }
+      }
+    }
+    
+    const btnCancel = document.getElementById('btnWizardCancel');
+    const btnPrev = document.getElementById('btnWizardPrev');
+    const btnNext = document.getElementById('btnWizardNext');
+    const btnSave = document.getElementById('eventSaveBtn');
+    
+    if (step === 1) {
+      if (btnCancel) btnCancel.classList.remove('d-none');
+      if (btnPrev) btnPrev.classList.add('d-none');
+      if (btnNext) btnNext.classList.remove('d-none');
+      if (btnSave) btnSave.classList.add('d-none');
+    } else if (step === 2) {
+      if (btnCancel) btnCancel.classList.add('d-none');
+      if (btnPrev) btnPrev.classList.remove('d-none');
+      if (btnNext) btnNext.classList.remove('d-none');
+      if (btnSave) btnSave.classList.add('d-none');
+    } else if (step === 3) {
+      if (btnCancel) btnCancel.classList.add('d-none');
+      if (btnPrev) btnPrev.classList.remove('d-none');
+      if (btnNext) btnNext.classList.add('d-none');
+      if (btnSave) btnSave.classList.remove('d-none');
+      this.renderStep3Review();
+    }
+    this.currentStep = step;
+  },
+
+  validateStep1: function() {
+    const form = document.getElementById('eventForm');
+    this.setStep2Required(false);
+    
+    const isCreateMode = !document.getElementById('eventOriginalId').value;
+    let step1Fields = [];
+    if (isCreateMode) {
+      step1Fields = ['eventName', 'eventCoordinator'];
+    } else {
+      step1Fields = ['eventName', 'eventStartDate', 'eventEndDate', 'eventStartTime', 'eventEndTime', 'eventVenue', 'eventCoordinator'];
+    }
+    
+    let valid = true;
+    step1Fields.forEach(id => {
+      const input = document.getElementById(id);
+      if (input && !input.checkValidity()) {
+        valid = false;
+      }
+    });
+
+    
+    if (!isCreateMode) {
+      const depts = Array.from(document.querySelectorAll('.event-dept-check:checked')).map(cb => cb.value).join(',');
+      if (!depts) {
+        valid = false;
+        const deptBtn = document.getElementById('eventDepartmentsDropdownBtn');
+        if (deptBtn) deptBtn.classList.add('is-invalid');
+      } else {
+        const deptBtn = document.getElementById('eventDepartmentsDropdownBtn');
+        if (deptBtn) deptBtn.classList.remove('is-invalid');
+      }
+    }
+    
+    if (!valid) {
+      form.classList.add('was-validated');
+      const errEl = document.getElementById('eventModalError');
+      if (errEl) {
+        errEl.textContent = isCreateMode ? "Please fill all required event creation fields correctly." : "Please fill all required fields in Step 1 correctly.";
+        errEl.classList.remove('d-none');
+      }
+    } else {
+      const errEl = document.getElementById('eventModalError');
+      if (errEl) errEl.classList.add('d-none');
+    }
+    return valid;
+  },
+
+  validateStep2: function() {
+    const enableReg = document.getElementById('eventEnableRegistration').checked;
+    if (!enableReg) return true;
+    
+    this.setStep2Required(true);
+    
+    let valid = true;
+    const openTime = document.getElementById('eventRegOpen').value;
+    const closeTime = document.getElementById('eventRegClose').value;
+    const maxSeats = document.getElementById('eventRegMaxSeats').value;
+    
+    if (!openTime || !closeTime || !maxSeats || parseInt(maxSeats, 10) < 1) {
+      valid = false;
+    }
+    
+    if (openTime && closeTime && openTime >= closeTime) {
+      valid = false;
+      const errEl = document.getElementById('eventModalError');
+      if (errEl) {
+        errEl.textContent = "Registration Close Date & Time must be after Open Date & Time.";
+        errEl.classList.remove('d-none');
+      }
+      return false;
+    }
+    
+    document.querySelectorAll('.reg-cf-name').forEach(inp => {
+      if (!inp.value.trim()) {
+        valid = false;
+        inp.classList.add('is-invalid');
+      } else {
+        inp.classList.remove('is-invalid');
+      }
+    });
+    
+    if (!valid) {
+      const form = document.getElementById('eventForm');
+      form.classList.add('was-validated');
+      const errEl = document.getElementById('eventModalError');
+      if (errEl && errEl.classList.contains('d-none')) {
+        errEl.textContent = "Please fill all required registration settings correctly.";
+        errEl.classList.remove('d-none');
+      }
+    } else {
+      const errEl = document.getElementById('eventModalError');
+      if (errEl) errEl.classList.add('d-none');
+    }
+    return valid;
+  },
+
+  setupAccessRestrictionToggles: function() {
+    const radioList = document.querySelectorAll('input[name="accessRestrictionType"]');
+    const specificContainer = document.getElementById('specificCoordinatorsContainer');
+    const deptContainer = document.getElementById('allowedDeptsContainer');
+
+    const updateVisibility = () => {
+      const selectedMode = document.querySelector('input[name="accessRestrictionType"]:checked')?.value || 'ALL_COORDINATORS';
+      if (specificContainer) {
+        if (selectedMode === 'SPECIFIC_COORDINATORS') specificContainer.classList.remove('d-none');
+        else specificContainer.classList.add('d-none');
+      }
+      if (deptContainer) {
+        if (selectedMode === 'DEPT_ONLY') deptContainer.classList.remove('d-none');
+        else deptContainer.classList.add('d-none');
+      }
+    };
+
+    radioList.forEach(r => r.addEventListener('change', updateVisibility));
+
+    // Specific Coordinators dropdown tick-box search & helper buttons
+    const coordsSearch = document.getElementById('allowedCoordsSearch');
+    if (coordsSearch) {
+      coordsSearch.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase().trim();
+        document.querySelectorAll('.allowed-coord-item').forEach(item => {
+          const searchStr = item.getAttribute('data-search') || '';
+          item.style.display = searchStr.includes(q) ? 'block' : 'none';
+        });
+      });
+    }
+
+    const updateCoordsDropdownBtnText = () => {
+      const checkedCount = document.querySelectorAll('.allowed-coord-check:checked').length;
+      const textSpan = document.getElementById('allowedCoordsDropdownText');
+      if (textSpan) {
+        textSpan.textContent = checkedCount > 0 ? `Selected Coordinators (${checkedCount})` : 'Select Coordinators...';
+      }
+    };
+
+    const allowedCoordsList = document.getElementById('allowedCoordsList');
+    if (allowedCoordsList) {
+      allowedCoordsList.addEventListener('change', (e) => {
+        if (e.target.classList.contains('allowed-coord-check')) {
+          updateCoordsDropdownBtnText();
+        }
+      });
+    }
+
+    const selectAllBtn = document.getElementById('allowedCoordsSelectAll');
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', () => {
+        document.querySelectorAll('.allowed-coord-check').forEach(cb => cb.checked = true);
+        updateCoordsDropdownBtnText();
+      });
+    }
+
+    const clearAllBtn = document.getElementById('allowedCoordsClearAll');
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', () => {
+        document.querySelectorAll('.allowed-coord-check').forEach(cb => cb.checked = false);
+        updateCoordsDropdownBtnText();
+      });
+    }
+  },
+
+  setStep2Required: function(req) {
+    const fields = ['eventRegOpen', 'eventRegClose', 'eventRegMaxSeats'];
+    fields.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.required = req;
+    });
+  },
+
+  addCustomFieldRow: function(fieldData) {
+    const container = document.getElementById('regCustomFieldsContainer');
+    if (!container) return;
+    
+    const id = 'cf_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+    const nameVal = fieldData ? (fieldData.name || '') : '';
+    const typeVal = fieldData ? (fieldData.type || 'text') : 'text';
+    const reqVal = fieldData ? (fieldData.required ?? true) : true;
+    const optsVal = fieldData ? (fieldData.options ? fieldData.options.join(', ') : '') : '';
+    
+    const optionsHiddenClass = typeVal === 'dropdown' ? '' : 'd-none';
+    
+    const div = document.createElement('div');
+    div.className = 'cf-row border p-2 bg-light rounded shadow-sm d-flex align-items-center gap-2 mb-1';
+    div.id = id;
+    div.innerHTML = `
+      <div style="flex: 2;">
+        <input type="text" class="form-control form-control-sm reg-cf-name" placeholder="Field Label" value="${App.Utils.escapeHtml(nameVal)}" required>
+      </div>
+      <div style="flex: 1.2;">
+        <select class="form-select form-select-sm reg-cf-type">
+          <option value="text" ${typeVal === 'text' ? 'selected' : ''}>Text</option>
+          <option value="number" ${typeVal === 'number' ? 'selected' : ''}>Number</option>
+          <option value="dropdown" ${typeVal === 'dropdown' ? 'selected' : ''}>Dropdown</option>
+          <option value="checkbox" ${typeVal === 'checkbox' ? 'selected' : ''}>Checkbox</option>
+        </select>
+      </div>
+      <div class="reg-cf-options-container ${optionsHiddenClass}" style="flex: 2;">
+        <input type="text" class="form-control form-control-sm reg-cf-options" placeholder="Options (comma separated)" value="${App.Utils.escapeHtml(optsVal)}">
+      </div>
+      <div class="d-flex align-items-center px-1" style="white-space: nowrap;">
+        <input class="form-check-input reg-cf-required me-1" type="checkbox" ${reqVal ? 'checked' : ''}> <span class="small text-muted">Required</span>
+      </div>
+      <div>
+        <button type="button" class="btn btn-sm btn-link text-danger p-0 reg-cf-remove"><i class="bi bi-trash fs-6"></i></button>
+      </div>
+    `;
+    
+    container.appendChild(div);
+    
+    const typeSelect = div.querySelector('.reg-cf-type');
+    const optsContainer = div.querySelector('.reg-cf-options-container');
+    const optsInput = div.querySelector('.reg-cf-options');
+    
+    typeSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'dropdown') {
+        optsContainer.classList.remove('d-none');
+        optsInput.required = true;
+      } else {
+        optsContainer.classList.add('d-none');
+        optsInput.required = false;
+        optsInput.value = '';
+      }
+    });
+    
+    div.querySelector('.reg-cf-remove').addEventListener('click', () => {
+      div.remove();
+    });
+  },
+
+  getCustomFieldsData: function() {
+    const rows = document.querySelectorAll('.cf-row');
+    const fields = [];
+    rows.forEach(row => {
+      const name = row.querySelector('.reg-cf-name').value.trim();
+      const type = row.querySelector('.reg-cf-type').value;
+      const required = row.querySelector('.reg-cf-required').checked;
+      const optionsStr = row.querySelector('.reg-cf-options').value;
+      
+      if (name) {
+        const fieldObj = { name, type, required };
+        if (type === 'dropdown' && optionsStr) {
+          fieldObj.options = optionsStr.split(',').map(o => o.trim()).filter(Boolean);
+        }
+        fields.push(fieldObj);
+      }
+    });
+    return JSON.stringify(fields);
+  },
+
+  renderStep3Review: function() {
+    document.getElementById('reviewEventName').textContent = document.getElementById('eventName').value || 'Unnamed Event';
+    
+    const startD = document.getElementById('eventStartDate').value;
+    const startT = document.getElementById('eventStartTime').value;
+    document.getElementById('reviewEventStart').textContent = startD + ' ' + startT;
+    
+    const endD = document.getElementById('eventEndDate').value;
+    const endT = document.getElementById('eventEndTime').value;
+    document.getElementById('reviewEventEnd').textContent = endD + ' ' + endT;
+    
+    document.getElementById('reviewEventVenue').textContent = document.getElementById('eventVenue').value || '--';
+    
+    const coordSelect = document.getElementById('eventCoordinator');
+    const coordText = coordSelect.options[coordSelect.selectedIndex] ? coordSelect.options[coordSelect.selectedIndex].text : '--';
+    document.getElementById('reviewEventCoord').textContent = coordText;
+    
+    const depts = Array.from(document.querySelectorAll('.event-dept-check:checked')).map(cb => cb.value).join(', ');
+    document.getElementById('reviewEventDepts').textContent = depts || 'None selected';
+    
+    document.getElementById('reviewEventCapacity').textContent = document.getElementById('eventCapacity').value || 'Unlimited';
+
+    const restType = document.querySelector('input[name="accessRestrictionType"]:checked') ? document.querySelector('input[name="accessRestrictionType"]:checked').value : 'ALL_COORDINATORS';
+    let restText = 'All Coordinators';
+    if (restType === 'SPECIFIC_COORDINATORS') {
+      const selectedCoordsCount = document.querySelectorAll('.allowed-coord-check:checked').length;
+      restText = `Specific Coordinators (${selectedCoordsCount} selected)`;
+    } else if (restType === 'DEPT_ONLY') {
+      const selectedDeptsCount = document.querySelectorAll('.allowed-dept-check:checked').length;
+      restText = `Department Coordinators (${selectedDeptsCount} selected)`;
+    }
+    const reviewAccessEl = document.getElementById('reviewEventAccessRestriction');
+    if (reviewAccessEl) reviewAccessEl.textContent = restText;
+    
+    const attTypeVal = document.getElementById('eventAttendanceType') ? document.getElementById('eventAttendanceType').value : 'Fixed';
+    let attTypeSummary = attTypeVal;
+    if (attTypeVal === 'Open') {
+      const openTargetVal = document.getElementById('openEventTargetGroup') ? document.getElementById('openEventTargetGroup').value : 'BVC';
+      if (openTargetVal === 'BVC') {
+        attTypeSummary = 'Open Event (BVC Students - Auto-fetch Details)';
+      } else {
+        const checkedOpenFieldsCount = document.querySelectorAll('.open-field-chk:checked').length;
+        attTypeSummary = `Open Event (All Colleges - ${checkedOpenFieldsCount} Fields)`;
+      }
+    }
+    const reviewAttTypeEl = document.getElementById('reviewEventAttendanceType');
+    if (reviewAttTypeEl) reviewAttTypeEl.textContent = attTypeSummary;
+    
+    const enableReg = document.getElementById('eventEnableRegistration').checked;
+    const badge = document.getElementById('reviewRegStatus');
+    if (enableReg) {
+      badge.className = 'badge bg-success';
+      badge.textContent = 'Enabled';
+      
+      document.getElementById('reviewRegWindowCont').style.display = 'block';
+      document.getElementById('reviewRegSeatsCont').style.display = 'block';
+      document.getElementById('reviewRegSpotCont').style.display = 'block';
+      document.getElementById('reviewRegFieldsCont').style.display = 'block';
+      
+      const rOpen = document.getElementById('eventRegOpen').value.replace('T', ' ');
+      const rClose = document.getElementById('eventRegClose').value.replace('T', ' ');
+      document.getElementById('reviewRegWindow').textContent = rOpen + ' to ' + rClose;
+      document.getElementById('reviewRegMaxSeats').textContent = document.getElementById('eventRegMaxSeats').value || '--';
+      document.getElementById('reviewRegSpot').textContent = document.getElementById('eventAllowSpotReg').checked ? 'Yes' : 'No';
+      
+      const customFieldsCount = document.querySelectorAll('.cf-row').length;
+      const list = document.getElementById('reviewRegFieldsList');
+      list.innerHTML = `
+        <span class="badge bg-secondary">6 Default Fields</span>
+        <span class="badge bg-primary">${customFieldsCount} Custom Fields</span>
+      `;
+    } else {
+      badge.className = 'badge bg-secondary';
+      badge.textContent = 'Disabled';
+      
+      document.getElementById('reviewRegWindowCont').style.display = 'none';
+      document.getElementById('reviewRegSeatsCont').style.display = 'none';
+      document.getElementById('reviewRegSpotCont').style.display = 'none';
+      document.getElementById('reviewRegFieldsCont').style.display = 'none';
+    }
+  },
+
+
+
+  setupCreateEventFormToggles: function() {
+    const attendanceType = document.getElementById('eventAttendanceType');
+    const fixedOptions = document.getElementById('fixed-event-options');
+    if (attendanceType && fixedOptions) {
+      attendanceType.addEventListener('change', (e) => {
+        if (e.target.value === 'Fixed') {
+          fixedOptions.classList.remove('d-none');
+        } else {
+          fixedOptions.classList.add('d-none');
+        }
+      });
+    }
+
+    const radAllColleges = document.getElementById('groupAllColleges');
+    const radBvc = document.getElementById('groupBVC');
+    const infoAllColleges = document.getElementById('info-fields-all-colleges');
+    const infoBvc = document.getElementById('info-fields-bvc-only');
+
+    const toggleFixedFields = () => {
+      if (radAllColleges && radAllColleges.checked) {
+        if (infoAllColleges) {
+          infoAllColleges.classList.remove('d-none');
+          infoAllColleges.classList.add('d-flex');
+        }
+        if (infoBvc) {
+          infoBvc.classList.remove('d-flex');
+          infoBvc.classList.add('d-none');
+        }
+      } else if (radBvc && radBvc.checked) {
+        if (infoAllColleges) {
+          infoAllColleges.classList.remove('d-flex');
+          infoAllColleges.classList.add('d-none');
+        }
+        if (infoBvc) {
+          infoBvc.classList.remove('d-none');
+          infoBvc.classList.add('d-flex');
+        }
+      }
+    };
+
+    if (radAllColleges) radAllColleges.addEventListener('change', toggleFixedFields);
+    if (radBvc) radBvc.addEventListener('change', toggleFixedFields);
+  },
+
+  applyFilters: function() {
+    const searchInput = document.getElementById('events-search-input');
+    const deptFilter = document.getElementById('events-dept-filter');
+    const coordFilter = document.getElementById('events-coord-filter');
+    const statusFilter = document.getElementById('events-status-filter');
+    const monthFilter = document.getElementById('events-month-filter');
+    const yearFilter = document.getElementById('events-year-filter');
+
+    const searchStr = (searchInput ? searchInput.value : '').toLowerCase().trim();
+    const deptVal = deptFilter ? deptFilter.value : '';
+    const coordVal = coordFilter ? coordFilter.value : '';
+    const statusVal = statusFilter ? statusFilter.value : '';
+    const monthVal = monthFilter ? monthFilter.value : '';
+    const yearVal = yearFilter ? yearFilter.value : '';
+
+    const currentUser = App.State && App.State.currentUser;
+    const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
+    const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
+    const isHOD = (userRole === 'HOD');
+
+    if (isHOD && deptFilter) {
+      deptFilter.disabled = true;
+      deptFilter.style.display = 'none';
+    }
+
+    this.filteredData = this.eventsData.filter(e => {
+      let match = true;
+      
+      if (isHOD && userDept) {
+        const evDept = String(e.departments || e.department || '').toUpperCase().trim();
+        const hodDept = String(userDept).toUpperCase().trim();
+        if (!evDept.includes(hodDept) && !hodDept.includes(evDept)) {
+          return false;
+        }
+      }
+
+      if (deptVal && !(e.departments || '').includes(deptVal)) match = false;
+      if (coordVal && e.coordinator_id !== coordVal) match = false;
+      if (statusVal && e.status !== statusVal) match = false;
+      if (yearVal && !(e.years || '').includes(yearVal)) match = false;
+      
+      if (e.start_date && e.start_date !== 'N/A') {
+        const [evYear, evMonth] = String(e.start_date).split('-');
+        if (monthVal && evMonth !== monthVal) match = false;
+      } else if (monthVal) {
+        match = false;
+      }
+      
+      if (match && searchStr) {
+        const coordEmployee = e.coordinator_employee_id || e.coordinator_id || 'N/A';
+        
+        const searchable = [
+          e.event_id,
+          e.event_name,
+          e.venue,
+          coordEmployee,
+          e.departments,
+          e.years,
+          e.status
+        ].join(' ').toLowerCase();
+        
+        if (!searchable.includes(searchStr)) {
+          match = false;
+        }
+      }
+      return match;
+    });
+
+    this.currentPage = 1;
+    this.updateStats();
+    this.renderTable();
+  },
+
+  updateStats: function() {
+    const total = this.filteredData.length;
+    let upcoming = 0, active = 0, stopped = 0, completed = 0, cancelled = 0;
+    
+    this.filteredData.forEach(e => {
+      const stat = (e.status || '').toLowerCase();
+      if (stat === 'upcoming') upcoming++;
+      else if (stat === 'active') active++;
+      else if (stat === 'stopped') stopped++;
+      else if (stat === 'completed') completed++;
+      else if (stat === 'cancelled') cancelled++;
+    });
+
+    const elTotal = document.getElementById('events-stat-total');
+    if(elTotal) elTotal.textContent = total;
+    
+    const elUpcoming = document.getElementById('events-stat-upcoming');
+    if(elUpcoming) elUpcoming.textContent = upcoming;
+    
+    const elActive = document.getElementById('events-stat-active');
+    if(elActive) elActive.textContent = active;
+
+    const elStopped = document.getElementById('events-stat-stopped');
+    if(elStopped) elStopped.textContent = stopped;
+    
+    const elCompleted = document.getElementById('events-stat-completed');
+    if(elCompleted) elCompleted.textContent = completed;
+    
+    const elCancelled = document.getElementById('events-stat-cancelled');
+    if(elCancelled) elCancelled.textContent = cancelled;
+  },
+
+  renderTable: function() {
+    const tbody = document.getElementById('events-table-body');
+    if (!tbody) return;
+
+    if (this.filteredData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5">No events found</td></tr>';
+      this.renderPagination(0);
+      return;
+    }
+
+    // Sort by Start Date DESC as default
+    this.filteredData.sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+
+    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    const endIndex = Math.min(startIndex + this.itemsPerPage, this.filteredData.length);
+    const pageData = this.filteredData.slice(startIndex, endIndex);
+
+    const isSuper = App.State && App.State.currentUser && 
+                    (App.State.currentUser.role === App.Constants.ROLES.ADMIN || 
+                     App.State.currentUser.role === App.Constants.ROLES.SUPER_ADMIN);
+
+    let html = '';
+    pageData.forEach(evt => {
+      const stat = (evt.status || '').toLowerCase();
+      let badge = 'bg-secondary text-white';
+      if (stat === 'upcoming') badge = 'bg-primary text-white';
+      else if (stat === 'active') badge = 'bg-success text-white';
+      else if (stat === 'stopped') badge = 'bg-dark text-white';
+      else if (stat === 'completed') badge = 'bg-info text-white';
+      else if (stat === 'cancelled') badge = 'bg-danger text-white';
+
+      const coordEmployee = evt.coordinator_employee_id || evt.coordinator_id || 'N/A';
+      
+      const formattedStart = App.Utils.formatDate(evt.start_date);
+      const formattedEnd = App.Utils.formatDate(evt.end_date);
+      const dateDisplay = formattedStart === formattedEnd ? App.Utils.escapeHtml(formattedStart) : `${App.Utils.escapeHtml(formattedStart)} to ${App.Utils.escapeHtml(formattedEnd)}`;
+
+      const currentUser = App.State && App.State.currentUser;
+      const roleStr = String(currentUser && (currentUser.role || currentUser['Role'] || '')).toUpperCase().trim();
+      const showManageParticipants = roleStr === 'COORDINATOR';
+
+      let lifecycleControlHtml = '';
+      if (stat === 'active') {
+        lifecycleControlHtml += `<button class="btn btn-sm btn-outline-danger me-1" data-action="stop-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Stop Event"><i class="bi bi-stop-circle-fill"></i> Stop</button>`;
+      } else if (stat === 'upcoming') {
+        lifecycleControlHtml += `<button class="btn btn-sm btn-outline-warning me-1" data-action="cancel-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Cancel Event"><i class="bi bi-x-circle"></i> Cancel</button>`;
+      }
+
+      lifecycleControlHtml += `
+        <button class="btn btn-sm btn-light text-secondary me-1" data-action="extend-duration" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Extend Duration (+1 hr)"><i class="bi bi-plus-circle"></i> +1h</button>
+        <button class="btn btn-sm btn-light text-secondary me-1" data-action="shorten-duration" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Shorten Duration (-1 hr)"><i class="bi bi-dash-circle"></i> -1h</button>
+      `;
+
+      let actionsHtml = `
+        ${lifecycleControlHtml}
+        <button class="btn btn-sm btn-light text-primary me-1" data-action="view-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="View"><i class="bi bi-eye"></i></button>
+        <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Edit"><i class="bi bi-pencil"></i></button>
+        ${showManageParticipants ? `<button class="btn btn-sm btn-light text-success me-1" data-action="manage-participants" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Manage Participants"><i class="bi bi-people"></i></button>` : ''}
+        <button class="btn btn-sm btn-light text-danger" data-action="delete-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Delete"><i class="bi bi-trash"></i></button>
+      `;
+
+      const resType = evt.access_restriction_type || evt['Access Restriction Type'] || 'ALL_COORDINATORS';
+      let restBadge = '';
+      if (resType === 'SPECIFIC_COORDINATORS') {
+        restBadge = '<span class="badge bg-warning text-dark me-1" title="Restricted to Specific Coordinators"><i class="bi bi-person-check-fill me-1"></i>Restricted</span>';
+      } else if (resType === 'DEPT_ONLY') {
+        restBadge = '<span class="badge bg-info text-dark me-1" title="Restricted to Dept Coordinators"><i class="bi bi-building-lock me-1"></i>Dept Only</span>';
+      }
+
+      html += `
+        <tr>
+          <td class="text-muted small">${App.Utils.escapeHtml(evt.event_id)}</td>
+          <td class="fw-bold">${App.Utils.escapeHtml(evt.event_name)}</td>
+          <td>${dateDisplay}</td>
+          <td>${App.Utils.escapeHtml(App.Utils.formatTime(evt.start_time))}</td>
+          <td>${App.Utils.escapeHtml(App.Utils.formatTime(evt.end_time))}</td>
+          <td>${App.Utils.escapeHtml(evt.venue)}</td>
+          <td>${App.Utils.escapeHtml(coordEmployee)}</td>
+          <td>${App.Utils.escapeHtml(evt.departments)}</td>
+          <td>${restBadge}<span class="badge ${badge} rounded-pill">${App.Utils.escapeHtml(evt.status)}</span></td>
+          <td class="text-end">
+            ${actionsHtml}
+          </td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+    this.renderPagination(Math.ceil(this.filteredData.length / this.itemsPerPage));
+  },
+
+  renderPagination: function(totalPages) {
+    const nav = document.getElementById('events-pagination');
+    if (!nav) return;
+
+    if (totalPages <= 1) {
+      nav.innerHTML = `
+        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
+        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+        <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+      `;
+      return;
+    }
+
+    let html = '';
+    const prevDisabled = this.currentPage === 1 ? 'disabled' : '';
+    html += `<li class="page-item ${prevDisabled}"><a class="page-link" href="#" data-page="${this.currentPage - 1}">Previous</a></li>`;
+
+    let startPage = Math.max(1, this.currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    
+    if (endPage - startPage < 4) {
+      startPage = Math.max(1, endPage - 4);
+    }
+
+    if (startPage > 1) {
+      html += `<li class="page-item"><a class="page-link" href="#" data-page="1">1</a></li>`;
+      if (startPage > 2) html += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      const active = i === this.currentPage ? 'active' : '';
+      html += `<li class="page-item ${active}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+      html += `<li class="page-item"><a class="page-link" href="#" data-page="${totalPages}">${totalPages}</a></li>`;
+    }
+
+    const nextDisabled = this.currentPage === totalPages ? 'disabled' : '';
+    html += `<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${this.currentPage + 1}">Next</a></li>`;
+
+    nav.innerHTML = html;
+
+    const links = nav.querySelectorAll('a.page-link');
+    links.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const parent = e.target.closest('.page-item');
+        if (parent && parent.classList.contains('disabled')) return;
+        
+        const page = e.target.getAttribute('data-page');
+        if (page) {
+          this.currentPage = parseInt(page, 10);
+          this.renderTable();
+        }
+      });
+    });
+  },
+
+  openAddEventModal: function() {
+    const form = document.getElementById('eventForm');
+    if (form) {
+      form.reset();
+      form.classList.remove('was-validated');
+      Array.from(form.elements).forEach(el => {
+        if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+          el.disabled = false;
+          el.readOnly = false;
+        }
+      });
+      const attendanceTypeSelect = document.getElementById('eventAttendanceType');
+      if (attendanceTypeSelect) {
+        attendanceTypeSelect.disabled = false;
+        attendanceTypeSelect.value = 'Fixed';
+      }
+    }
+    
+    // Reset custom form options
+    const fixedOptions = document.getElementById('fixed-event-options');
+    const openOptions = document.getElementById('open-event-options');
+    if (fixedOptions) fixedOptions.classList.remove('d-none');
+    if (openOptions) openOptions.classList.add('d-none');
+
+    const openTarget = document.getElementById('openEventTargetGroup');
+    if (openTarget) {
+      openTarget.value = 'BVC';
+      openTarget.dispatchEvent(new Event('change'));
+    }
+
+    const radAll = document.getElementById('groupAllColleges');
+    if (radAll) radAll.checked = true;
+
+    const infoAll = document.getElementById('info-fields-all-colleges');
+    if (infoAll) {
+      infoAll.classList.remove('d-none');
+      infoAll.classList.add('d-flex');
+    }
+
+    const infoBvc = document.getElementById('info-fields-bvc-only');
+    if (infoBvc) {
+      infoBvc.classList.remove('d-flex');
+      infoBvc.classList.add('d-none');
+    }
+
+    const newCoordFields = document.getElementById('new-coordinator-fields');
+    if (newCoordFields) newCoordFields.classList.add('d-none');
+
+    ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.required = false;
+    });
+
+    // Reset Registration settings wizard panel
+    const checkboxEnable = document.getElementById('eventEnableRegistration');
+    if (checkboxEnable) checkboxEnable.checked = false;
+    
+    const regContainer = document.getElementById('eventRegSettingsContainer');
+    if (regContainer) regContainer.classList.add('d-none');
+    
+    const cFieldsContainer = document.getElementById('regCustomFieldsContainer');
+    if (cFieldsContainer) cFieldsContainer.innerHTML = '';
+    
+    document.getElementById('eventRegOpen').value = '';
+    document.getElementById('eventRegClose').value = '';
+    document.getElementById('eventRegMaxSeats').value = '';
+    
+    const checkboxSpot = document.getElementById('eventAllowSpotReg');
+    const checkboxSpotStep1 = document.getElementById('eventAllowSpotRegStep1');
+    if (checkboxSpot) checkboxSpot.checked = true;
+    if (checkboxSpotStep1) checkboxSpotStep1.checked = true;
+    
+    document.getElementById('eventRegTerms').value = '';
+    
+    const regInputs = [
+      'eventEnableRegistration',
+      'eventRegOpen',
+      'eventRegClose',
+      'eventRegMaxSeats',
+      'eventAllowSpotReg',
+      'eventRegTerms',
+      'btnRegAddCustomField'
+    ];
+    regInputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = false;
+    });
+
+    const getTodayDateStr = () => {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    };
+    const getTodayDateTimeStr = () => {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    
+    const startInput = document.getElementById('eventStartDate');
+    const endInput = document.getElementById('eventEndDate');
+    if (startInput) startInput.setAttribute('min', getTodayDateStr());
+    if (endInput) endInput.setAttribute('min', getTodayDateStr());
+    
+    const regOpenInput = document.getElementById('eventRegOpen');
+    const regCloseInput = document.getElementById('eventRegClose');
+    if (regOpenInput) regOpenInput.setAttribute('min', getTodayDateTimeStr());
+    if (regCloseInput) regCloseInput.setAttribute('min', getTodayDateTimeStr());
+
+    this.goToStep(1);
+
+    document.getElementById('eventOriginalId').value = '';
+    document.getElementById('eventOriginalStatus').value = 'Draft';
+    document.getElementById('eventModalLabel').textContent = 'Create Event';
+    
+    // Simplify for Create Event Workflow
+    document.getElementById('eventModalStepsNav').classList.add('d-none');
+    document.getElementById('advancedEventFields').classList.add('d-none');
+    document.querySelectorAll('#advancedEventFields input, #advancedEventFields select').forEach(el => el.required = false);
+
+    document.getElementById('eventIdGroup').classList.add('d-none');
+    document.getElementById('eventCreatedAtGroup').classList.add('d-none');
+    document.getElementById('eventCurrentStatusGroup').classList.add('d-none');
+    document.getElementById('eventCreationActionGroup').classList.remove('d-none');
+    document.getElementById('lifecycleActionButtons').classList.add('d-none');
+    
+    const pContainer = document.getElementById('lifecyclePreviewContainer');
+    if (pContainer) pContainer.classList.add('d-none');
+    
+    // TC-44: In create (single-step) mode, show the Save button immediately on step 1
+    // goToStep(1) hides the save button by default (designed for wizard flow)
+    // Override: show save and hide next for single-step create mode
+    const saveBtn = document.getElementById('eventSaveBtn');
+    const btnNext = document.getElementById('btnWizardNext');
+    const btnPrev = document.getElementById('btnWizardPrev');
+    if (saveBtn) {
+      saveBtn.classList.remove('d-none');
+      document.getElementById('eventSaveBtnText').textContent = 'Create Event';
+    }
+    if (btnNext) btnNext.classList.add('d-none');
+    if (btnPrev) btnPrev.classList.add('d-none');
+    
+    const errorAlert = document.getElementById('eventModalError');
+    if (errorAlert) errorAlert.classList.add('d-none');
+    
+    const modalEl = document.getElementById('eventModal');
+    if (modalEl) {
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    }
+  },
+
+  openViewEventModal: function(id) {
+    const evt = this.eventsData.find(e => String(e.event_id) === String(id));
+    if (!evt) return;
+
+    this.currentEventDetails = evt;
+    this.selectedDayNumber = 1;
+    this.currentDayAttendance = [];
+
+    document.getElementById('eventDetailsTitle').textContent = evt.event_name || 'Event Details';
+    document.getElementById('eventDetailsIdSub').textContent = `ID: ${evt.event_id}`;
+    
+    const badgeMap = {
+      'Draft': 'bg-secondary', 'Upcoming': 'bg-primary', 'Active': 'bg-success',
+      'Stopped': 'bg-dark', 'Completed': 'bg-info', 'Cancelled': 'bg-danger'
+    };
+    const currentStatus = evt.status || 'Draft';
+    document.getElementById('eventDetailsStatusBadge').className = `badge ${badgeMap[currentStatus] || 'bg-secondary'} me-2`;
+    document.getElementById('eventDetailsStatusBadge').textContent = currentStatus;
+
+    const formattedStart = App.Utils.formatDate(evt.start_date);
+    const formattedEnd = App.Utils.formatDate(evt.end_date);
+    document.getElementById('edDatesLabel').textContent = formattedStart === formattedEnd ? formattedStart : `${formattedStart} - ${formattedEnd}`;
+    document.getElementById('edDeptLabel').textContent = evt.departments || 'N/A';
+    document.getElementById('edVenueLabel').textContent = `Venue: ${evt.venue || 'N/A'}`;
+
+    const coordEmployee = evt.coordinator_employee_id || evt.coordinator_id || 'N/A';
+    document.getElementById('edCoordLabel').textContent = coordEmployee;
+    document.getElementById('edCapLabel').textContent = `Capacity: ${evt.capacity || 'Unlimited'}`;
+
+    // Render Registration Settings Card
+    const isRegEnabled = evt['Enable Registration'] === 'Yes' || evt.enable_registration === 'Yes' || evt.enableRegistration === 'Yes';
+    const regBadge = document.getElementById('edRegEnabledBadge');
+    if (regBadge) {
+      regBadge.className = isRegEnabled ? 'badge bg-success' : 'badge bg-secondary';
+      regBadge.textContent = isRegEnabled ? 'Enabled' : 'Disabled';
+    }
+
+    if (isRegEnabled) {
+      const formatDT = (dt) => {
+        if (!dt || dt === 'N/A') return 'N/A';
+        const d = new Date(dt);
+        if (isNaN(d.getTime())) return dt;
+        const pad = (n) => String(n).padStart(2, '0');
+        let hours = d.getHours();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} ${pad(hours)}:${pad(d.getMinutes())} ${ampm}`;
+      };
+      
+      const rOpen = evt['Registration Open Date & Time'] || evt.registration_open || 'N/A';
+      const rClose = evt['Registration Close Date & Time'] || evt.registration_close || 'N/A';
+      document.getElementById('edRegWindowLabel').textContent = `${formatDT(rOpen)} to ${formatDT(rClose)}`;
+      
+      const regCount = evt['Registered Count'] || evt.registered_count || 0;
+      const maxSeats = evt['Maximum Seats'] || evt.maximum_seats || 'Unlimited';
+      document.getElementById('edRegMaxSeatsLabel').textContent = `${regCount} / ${maxSeats}`;
+      
+      const spot = evt['Allow Spot Registration'] || evt.allow_spot_registration || 'No';
+      document.getElementById('edRegSpotLabel').textContent = spot;
+      
+      // Fields
+      const fieldsList = document.getElementById('edRegFieldsList');
+      if (fieldsList) {
+        let fieldBadges = '<span class="badge bg-secondary rounded-pill px-3 py-1">6 Default Fields</span>';
+        const fJson = evt['Registration Fields'] || evt.registration_fields || '';
+        if (fJson) {
+          try {
+            const fArray = JSON.parse(fJson);
+            if (Array.isArray(fArray)) {
+              fArray.forEach(f => {
+                fieldBadges += ` <span class="badge bg-primary rounded-pill px-3 py-1">${App.Utils.escapeHtml(f.name)} (${App.Utils.escapeHtml(f.type)}${f.required ? '*' : ''})</span>`;
+              });
+            }
+          } catch(e) {}
+        }
+        fieldsList.innerHTML = fieldBadges;
+      }
+      
+      // Terms
+      const termsText = evt['Terms & Conditions'] || evt.terms || '';
+      const termsCont = document.getElementById('edRegTermsCont');
+      if (termsCont) {
+        if (termsText) {
+          termsCont.style.display = 'block';
+          document.getElementById('edRegTermsText').textContent = termsText;
+        } else {
+          termsCont.style.display = 'none';
+        }
+      }
+      
+      // URL block
+      const urlCont = document.getElementById('edRegUrlCont');
+      if (urlCont) {
+        urlCont.style.display = 'block';
+        const regUrl = evt['Registration URL'] || evt.registration_url || '';
+        const urlInput = document.getElementById('edRegUrlInput');
+        if (urlInput) urlInput.value = regUrl;
+        
+        const openLink = document.getElementById('edLinkOpenRegUrl');
+        if (openLink) openLink.href = regUrl;
+      }
+    } else {
+      document.getElementById('edRegWindowLabel').textContent = '--';
+      document.getElementById('edRegMaxSeatsLabel').textContent = '--';
+      document.getElementById('edRegSpotLabel').textContent = '--';
+      const fieldsList = document.getElementById('edRegFieldsList');
+      if (fieldsList) fieldsList.innerHTML = '<span class="text-muted small">None</span>';
+      
+      document.getElementById('edRegTermsCont').style.display = 'none';
+      document.getElementById('edRegUrlCont').style.display = 'none';
+    }
+
+    const modalEl = document.getElementById('eventDetailsModal');
+    if (modalEl) {
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    }
+
+    this.loadEventTimeline(evt.event_id);
+    this.bindEventDetailsHandlers();
+  },
+
+  loadEventTimeline: function(eventId) {
+    const timelineContainer = document.getElementById('eventDayTimelineContainer');
+    if (timelineContainer) timelineContainer.innerHTML = '<span class="text-muted small"><i class="spinner-border spinner-border-sm me-1"></i>Calculating timeline...</span>';
+
+    App.API.getEventDetailsWithTimeline(eventId)
+      .then(res => {
+        if (res && res.success && res.days) {
+          document.getElementById('edTotalDaysLabel').textContent = `Duration: ${res.totalDays} Day${res.totalDays > 1 ? 's' : ''}`;
+          this.renderDayTimeline(res.days);
+          const activeOrCompleted = res.days.find(d => d.status === 'ACTIVE') || res.days.find(d => d.status === 'COMPLETED') || res.days[0];
+          if (activeOrCompleted) {
+            this.selectDay(activeOrCompleted.dayNumber, activeOrCompleted.dateLabel);
+          }
+        } else {
+          this.renderFallbackTimeline();
+        }
+      })
+      .catch(err => {
+        App.Logger.error('Timeline error: ' + err.message);
+        this.renderFallbackTimeline();
+      });
+  },
+
+  renderDayTimeline: function(days) {
+    const container = document.getElementById('eventDayTimelineContainer');
+    if (!container) return;
+
+    let html = '';
+    days.forEach(d => {
+      let btnClass = 'btn-outline-secondary opacity-50 pe-none';
+      let badgeText = 'Future';
+      let icon = 'bi-hourglass';
+
+      if (d.status === 'COMPLETED') {
+        btnClass = 'btn-success text-white shadow-sm';
+        badgeText = 'Done';
+        icon = 'bi-check-circle-fill';
+      } else if (d.status === 'ACTIVE') {
+        btnClass = 'btn-primary text-white shadow-sm fw-bold border-3 border-dark';
+        badgeText = 'Active Today';
+        icon = 'bi-play-circle-fill';
+      }
+
+      html += `
+        <button type="button" class="btn ${btnClass} btn-sm px-3 py-2 text-start day-timeline-btn" data-day="${d.dayNumber}" data-date="${App.Utils.escapeHtml(d.dateLabel)}" ${d.isSelectable ? '' : 'disabled'}>
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi ${icon}"></i>
+            <div>
+              <div class="fw-bold fs-6">Day ${d.dayNumber}</div>
+              <div class="small opacity-75">${App.Utils.escapeHtml(d.dateLabel)}</div>
+            </div>
+            <span class="badge bg-white text-dark ms-2 small">${badgeText}</span>
+          </div>
+        </button>
+      `;
+    });
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('.day-timeline-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const dayNum = parseInt(btn.getAttribute('data-day'), 10);
+        const dateLbl = btn.getAttribute('data-date');
+        this.selectDay(dayNum, dateLbl);
+      });
+    });
+  },
+
+  renderFallbackTimeline: function() {
+    const container = document.getElementById('eventDayTimelineContainer');
+    if (!container) return;
+    container.innerHTML = `
+      <button type="button" class="btn btn-primary btn-sm px-3 py-2 day-timeline-btn" data-day="1" data-date="${App.Utils.escapeHtml(this.currentEventDetails.start_date || '')}">
+        <i class="bi bi-calendar-check me-1"></i> Day 1 (Active)
+      </button>
+    `;
+    this.selectDay(1, this.currentEventDetails.start_date || '');
+  },
+
+  selectDay: function(dayNumber, dateLabel) {
+    this.selectedDayNumber = dayNumber;
+    document.getElementById('selectedDayTitle').innerHTML = `<i class="bi bi-person-check me-2 text-success"></i>Day ${dayNumber} Attendance`;
+    document.getElementById('selectedDayDateSub').textContent = `Date: ${dateLabel || '--'}`;
+
+    const container = document.getElementById('eventDayTimelineContainer');
+    if (container) {
+      container.querySelectorAll('.day-timeline-btn').forEach(b => {
+        if (parseInt(b.getAttribute('data-day'), 10) === dayNumber) {
+          b.classList.add('border-dark');
+        } else {
+          b.classList.remove('border-dark');
+        }
+      });
+    }
+
+    this.loadDayAttendance(this.currentEventDetails.event_id, dayNumber);
+  },
+
+  loadDayAttendance: function(eventId, dayNumber) {
+    const tbody = document.getElementById('edAttendanceTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted"><i class="spinner-border spinner-border-sm me-2"></i>Loading Day ' + dayNumber + ' attendance...</td></tr>';
+
+    App.API.getEventDayAttendance(eventId, dayNumber)
+      .then(res => {
+        if (res && res.success && res.attendance) {
+          this.currentDayAttendance = res.attendance || [];
+          this.updateDayStats(res.summary);
+          this.renderDayAttendanceTable(this.currentDayAttendance);
+        } else {
+          this.updateDayStats({ totalRegistered: 0, totalMarked: 0, presentCount: 0, absentCount: 0, attendancePercentage: 0 });
+          if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No attendance records found for Day ' + dayNumber + '</td></tr>';
+        }
+      })
+      .catch(err => {
+        App.Logger.error('Day attendance error: ' + err.message);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-danger">Failed to load Day ' + dayNumber + ' attendance</td></tr>';
+      });
+  },
+
+  updateDayStats: function(s) {
+    s = s || {};
+    document.getElementById('dayStatRegistered').textContent = s.totalRegistered || 0;
+    document.getElementById('dayStatMarked').textContent = s.totalMarked || 0;
+    document.getElementById('dayStatPresent').textContent = s.presentCount || 0;
+    document.getElementById('dayStatAbsent').textContent = s.absentCount || 0;
+    document.getElementById('dayStatPercentage').textContent = (s.attendancePercentage || 0) + '%';
+  },
+
+  renderDayAttendanceTable: function(records) {
+    const tbody = document.getElementById('edAttendanceTableBody');
+    if (!tbody) return;
+
+    if (records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">No attendance scans recorded for this day</td></tr>';
+      return;
+    }
+
+    const searchInput = document.getElementById('edStudentSearchInput');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    const filtered = records.filter(r => {
+      if (!query) return true;
+      const roll = String(r['Roll Number'] || r.roll_number || r.rollNumber || '').toLowerCase();
+      const name = String(r['Student Name'] || r.student_name || r.name || '').toLowerCase();
+      return roll.includes(query) || name.includes(query);
+    });
+
+    let html = '';
+    filtered.forEach(r => {
+      const status = String(r['Attendance Status'] || r.status || 'PRESENT').toUpperCase();
+      let badgeClass = 'bg-success';
+      if (status === 'ABSENT') badgeClass = 'bg-danger';
+      else if (status === 'LATE') badgeClass = 'bg-warning text-dark';
+
+      const roll = App.Utils.escapeHtml(r['Roll Number'] || r.roll_number || r.rollNumber || '--');
+      const name = App.Utils.escapeHtml(r['Student Name'] || r.student_name || r.name || '--');
+      const dept = App.Utils.escapeHtml(r['Department ID'] || r.department_id || r.department || '--');
+      const year = App.Utils.escapeHtml(r['Year'] || r.year || '--');
+      const sec = App.Utils.escapeHtml(r['Section'] || r.section || '--');
+      const time = App.Utils.escapeHtml(r['Timestamp'] || r.timestamp || r.created_at || '--');
+
+      html += `
+        <tr>
+          <td class="fw-bold">${roll}</td>
+          <td>${name}</td>
+          <td>${dept}</td>
+          <td>${year}</td>
+          <td>${sec}</td>
+          <td><span class="badge ${badgeClass}">${status}</span></td>
+          <td class="small text-muted">${time}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+  },
+
+  bindEventDetailsHandlers: function() {
+    const searchInput = document.getElementById('edStudentSearchInput');
+    if (searchInput) {
+      searchInput.oninput = () => this.renderDayAttendanceTable(this.currentDayAttendance);
+    }
+
+    const btnPDF = document.getElementById('btnExportPDF');
+    if (btnPDF) btnPDF.onclick = () => App.ExportBuilder.open('attendance');
+
+    const btnExcel = document.getElementById('btnExportExcel');
+    if (btnExcel) btnExcel.onclick = () => App.ExportBuilder.open('attendance');
+
+    const btnCSV = document.getElementById('btnExportCSV');
+    if (btnCSV) btnCSV.onclick = () => App.ExportBuilder.open('attendance');
+
+    const btnPrint = document.getElementById('btnPrintReport');
+    if (btnPrint) btnPrint.onclick = () => window.print();
+  },
+
+  triggerReportExport: function(format) {
+    const isDayOnly = document.getElementById('scopeSelectedDay') && document.getElementById('scopeSelectedDay').checked;
+    const scopeLabel = isDayOnly ? `Day ${this.selectedDayNumber}` : 'Full Event';
+    const eventName = this.currentEventDetails.event_name || 'Event';
+    const cols = ['Roll Number', 'Student Name', 'Department ID', 'Year', 'Section', 'Attendance Status', 'Timestamp'];
+    const rows = (this.currentDayAttendance || []).map(r => ({
+      'Roll Number': r['Roll Number'] || r.roll_number || r.rollNumber || '--',
+      'Student Name': r['Student Name'] || r.student_name || r.name || '--',
+      'Department ID': r['Department ID'] || r.department_id || r.department || '--',
+      'Year': r['Year'] || r.year || '--',
+      'Section': r['Section'] || r.section || '--',
+      'Attendance Status': r['Attendance Status'] || r.status || 'PRESENT',
+      'Timestamp': r['Timestamp'] || r.timestamp || r.created_at || '--'
+    }));
+
+    if (format === 'CSV' || format === 'EXCEL') {
+      App.API.exportToCsv(cols, rows)
+        .then(csvStr => {
+          const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.setAttribute('download', `${eventName}_${scopeLabel.replace(/\s+/g, '_')}_Report.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        })
+        .catch(err => alert('CSV export failed: ' + err.message));
+    } else {
+      App.API.generatePrintablePdfHtml(`${eventName} - ${scopeLabel} Report`, { scope: scopeLabel }, cols, rows, {
+        'Total Scans': rows.length,
+        'Present': rows.filter(r => r['Attendance Status'] === 'PRESENT').length,
+        'Absent': rows.filter(r => r['Attendance Status'] === 'ABSENT').length
+      }).then(htmlStr => {
+        const printWin = window.open('', '_blank');
+        if (printWin) {
+          printWin.document.write(htmlStr);
+          printWin.document.close();
+        }
+      }).catch(err => alert('PDF export failed: ' + err.message));
+    }
+  },
+
+  openEditEventModal: function(id) {
+    App.Logger.info("FRONTEND: Edit Click " + id);
+    this.setModalLoading(true);
+    App.API.getEventById(id)
+      .then(evt => {
+        this.setModalLoading(false);
+        if (!evt || (Array.isArray(evt) && evt.length === 0)) {
+          App.UI.showError("Event not found.");
+          return;
+        }
+        
+        App.Logger.info("FRONTEND: Event Loaded " + id);
+        
+        // Handle if backend returns an array instead of an object
+        if (Array.isArray(evt)) evt = evt[0];
+        
+        this.editingEventId = evt.event_id;
+        this.isFormDirty = false;
+        
+        const form = document.getElementById('eventForm');
+        if (form) {
+          form.reset();
+          form.classList.remove('was-validated');
+          
+          Array.from(form.elements).forEach(el => {
+            if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+              el.disabled = false;
+              el.readOnly = false;
+            }
+          });
+        }
+
+        // Configure Layout and Fields for Edit mode
+        document.getElementById('eventModalStepsNav').classList.remove('d-none');
+        document.getElementById('advancedEventFields').classList.remove('d-none');
+        ['eventStartDate', 'eventEndDate', 'eventStartTime', 'eventEndTime', 'eventVenue'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.required = true;
+        });
+
+        // Creator Identity Lock checks
+        const currentUserId = localStorage.getItem('userId') || (App.State && App.State.currentUser && (App.State.currentUser.user_id || App.State.currentUser['User ID'])) || '';
+        const creatorId = evt.created_by || evt['Created By'] || '';
+        const isCreator = String(currentUserId).trim() === String(creatorId).trim();
+        
+        const nameInput = document.getElementById('eventName');
+        const descInput = document.getElementById('eventDescription');
+        if (nameInput) nameInput.disabled = !isCreator;
+        if (descInput) descInput.disabled = !isCreator;
+
+        ['eventStartDate', 'eventEndDate', 'eventRegOpen', 'eventRegClose'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.removeAttribute('min');
+        });
+        
+        document.getElementById('eventModalLabel').textContent = 'Edit Event';
+        const tlContainer = document.getElementById('eventTimelineContainer');
+        if (tlContainer) tlContainer.classList.add('d-none');
+        
+        document.getElementById('eventOriginalId').value = evt.event_id;
+        document.getElementById('eventId').value = evt.event_id;
+        document.getElementById('eventId').readOnly = true;
+        document.getElementById('eventId').disabled = true;
+        
+        const formatDateTimeFriendly = (isoString) => {
+          if (!isoString || isoString === 'N/A') return 'N/A';
+          const d = new Date(isoString);
+          if (isNaN(d.getTime())) return isoString;
+          const pad = (n) => n.toString().padStart(2, '0');
+          let hours = d.getHours();
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          hours = hours % 12;
+          hours = hours ? hours : 12;
+          return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} ${pad(hours)}:${pad(d.getMinutes())} ${ampm}`;
+        };
+
+        document.getElementById('eventCreatedAt').value = formatDateTimeFriendly(evt.created_at);
+        document.getElementById('eventCreatedAt').readOnly = true;
+        document.getElementById('eventCreatedAt').disabled = true;
+        
+        const formatDateForInput = (dateVal) => {
+          if (!dateVal || dateVal === 'N/A') return '';
+          if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) return dateVal;
+          if (typeof dateVal === 'string' && dateVal.includes('T')) return dateVal.split('T')[0];
+          const d = new Date(dateVal);
+          if (isNaN(d.getTime())) return '';
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        };
+
+        const formatTimeForInput = (timeVal) => {
+          if (!timeVal || timeVal === 'N/A') return '';
+          const tStr = String(timeVal).trim();
+          const match = tStr.match(/^(\d{1,2}):(\d{2})/);
+          if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
+          const d = new Date(timeVal);
+          if (!isNaN(d.getTime())) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          return '';
+        };
+
+        document.getElementById('eventName').value = evt.event_name || '';
+        document.getElementById('eventDescription').value = evt.description || '';
+        document.getElementById('eventStartDate').value = formatDateForInput(evt.start_date);
+        document.getElementById('eventEndDate').value = formatDateForInput(evt.end_date);
+        document.getElementById('eventStartTime').value = formatTimeForInput(evt.start_time);
+        document.getElementById('eventEndTime').value = formatTimeForInput(evt.end_time);
+        document.getElementById('eventCapacity').value = evt.capacity || '';
+
+        // Populate Registration settings
+        const regEnabled = evt['Enable Registration'] === 'Yes' || evt.enable_registration === 'Yes' || evt.enableRegistration === 'Yes';
+        const checkboxEnable = document.getElementById('eventEnableRegistration');
+        if (checkboxEnable) {
+          checkboxEnable.checked = regEnabled;
+          const container = document.getElementById('eventRegSettingsContainer');
+          if (regEnabled) {
+            if (container) container.classList.remove('d-none');
+          } else {
+            if (container) container.classList.add('d-none');
+          }
+        }
+
+        const formatDateTimeLocal = (dateVal) => {
+          if (!dateVal || dateVal === 'N/A') return '';
+          const d = new Date(dateVal);
+          if (isNaN(d.getTime())) return dateVal;
+          const pad = (num) => String(num).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+
+        const openTimeVal = evt['Registration Open Date & Time'] || evt.registration_open || '';
+        const closeTimeVal = evt['Registration Close Date & Time'] || evt.registration_close || '';
+        document.getElementById('eventRegOpen').value = formatDateTimeLocal(openTimeVal);
+        document.getElementById('eventRegClose').value = formatDateTimeLocal(closeTimeVal);
+        document.getElementById('eventRegMaxSeats').value = evt['Maximum Seats'] || evt.maximum_seats || '';
+        
+        const spotEnabled = evt['Allow Spot Registration'] === 'Yes' || evt.allow_spot_registration === 'Yes' || evt.allowSpot === 'Yes';
+        const checkboxSpot = document.getElementById('eventAllowSpotReg');
+        const checkboxSpotStep1 = document.getElementById('eventAllowSpotRegStep1');
+        if (checkboxSpot) checkboxSpot.checked = spotEnabled;
+        if (checkboxSpotStep1) checkboxSpotStep1.checked = spotEnabled;
+
+        document.getElementById('eventRegTerms').value = evt['Terms & Conditions'] || evt.terms || '';
+
+        // Render dynamic custom fields
+        const cFieldsContainer = document.getElementById('regCustomFieldsContainer');
+        if (cFieldsContainer) cFieldsContainer.innerHTML = '';
+        
+        const fieldsJsonStr = evt['Registration Fields'] || evt.registration_fields || '';
+        if (fieldsJsonStr) {
+          try {
+            const fieldsArray = JSON.parse(fieldsJsonStr);
+            if (Array.isArray(fieldsArray)) {
+              fieldsArray.forEach(f => {
+                this.addCustomFieldRow(f);
+              });
+            }
+          } catch(jsonErr) {
+            App.Logger.error("Failed to parse custom fields JSON during edit: " + jsonErr.message);
+          }
+        }
+
+        // Enforce lock if registration has already closed
+        const closeTime = new Date(closeTimeVal);
+        const isRegClosed = regEnabled && !isNaN(closeTime.getTime()) && closeTime < new Date();
+        
+        const regInputsList = [
+          'eventEnableRegistration',
+          'eventRegOpen',
+          'eventRegClose',
+          'eventRegMaxSeats',
+          'eventAllowSpotReg',
+          'eventRegTerms',
+          'btnRegAddCustomField'
+        ];
+        regInputsList.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = isRegClosed;
+        });
+
+        // Initialize wizard step
+        this.goToStep(1);
+
+        document.getElementById('eventVenue').value = evt.venue || '';
+        document.getElementById('eventCoordinator').value = evt.coordinator_id || '';
+        
+        const dptArr = (evt.departments || '').split(',').map(s=>s.trim());
+        document.querySelectorAll('.event-dept-check').forEach(cb => {
+          cb.checked = dptArr.includes(cb.value);
+        });
+        
+        const yrArr = (evt.years || '').split(',').map(s=>s.trim());
+        document.querySelectorAll('.event-year-check').forEach(cb => {
+          cb.checked = yrArr.includes(cb.value);
+        });
+        
+        // Update Dropdown Text
+        const updateText = (checks, spanId, defaultText) => {
+          const selected = Array.from(checks).filter(c => c.checked);
+          document.getElementById(spanId).textContent = selected.length > 0 ? `Selected (${selected.length})` : defaultText;
+        };
+        updateText(document.querySelectorAll('.event-dept-check'), 'eventDepartmentsDropdownText', 'Select Departments');
+        updateText(document.querySelectorAll('.event-year-check'), 'eventYearsDropdownText', 'Select Years');
+        
+        document.getElementById('eventCapacity').value = evt.capacity || '';
+
+        // Populate Attendance Access Restrictions
+        const resType = evt.access_restriction_type || evt['Access Restriction Type'] || 'ALL_COORDINATORS';
+        const radAll = document.getElementById('accessTypeAll');
+        const radSpec = document.getElementById('accessTypeSpecific');
+        const radDept = document.getElementById('accessTypeDept');
+
+        if (resType === 'SPECIFIC_COORDINATORS' && radSpec) radSpec.checked = true;
+        else if (resType === 'DEPT_ONLY' && radDept) radDept.checked = true;
+        else if (radAll) radAll.checked = true;
+
+        let allowedCoords = evt.allowed_coordinator_ids || evt['Allowed Coordinator IDs'] || [];
+        if (typeof allowedCoords === 'string') {
+          try { allowedCoords = JSON.parse(allowedCoords); } catch(e) { allowedCoords = allowedCoords.split(',').map(s=>s.trim()); }
+        }
+        if (!Array.isArray(allowedCoords)) allowedCoords = [];
+
+        document.querySelectorAll('.allowed-coord-check').forEach(cb => {
+          cb.checked = allowedCoords.includes(cb.value);
+        });
+
+        let allowedDepts = evt.allowed_departments || evt['Allowed Departments'] || [];
+        if (typeof allowedDepts === 'string') {
+          try { allowedDepts = JSON.parse(allowedDepts); } catch(e) { allowedDepts = allowedDepts.split(',').map(s=>s.trim()); }
+        }
+        if (!Array.isArray(allowedDepts)) allowedDepts = [];
+
+        document.querySelectorAll('.allowed-dept-check').forEach(cb => {
+          cb.checked = allowedDepts.includes(cb.value);
+        });
+
+        const checkedCoordsCount = document.querySelectorAll('.allowed-coord-check:checked').length;
+        const textSpan = document.getElementById('allowedCoordsDropdownText');
+        if (textSpan) {
+          textSpan.textContent = checkedCoordsCount > 0 ? `Selected Coordinators (${checkedCoordsCount})` : 'Select Coordinators...';
+        }
+
+        const specContainer = document.getElementById('specificCoordinatorsContainer');
+        const deptContainer = document.getElementById('allowedDeptsContainer');
+        if (specContainer) {
+          if (resType === 'SPECIFIC_COORDINATORS') specContainer.classList.remove('d-none');
+          else specContainer.classList.add('d-none');
+        }
+        if (deptContainer) {
+          if (resType === 'DEPT_ONLY') deptContainer.classList.remove('d-none');
+          else deptContainer.classList.add('d-none');
+        }
+
+        // Show/hide fixed options vs open options
+        const attType = evt['Attendance Type'] || evt.attendance_type || 'Fixed';
+        document.getElementById('eventAttendanceType').value = attType;
+        const fixedOptions = document.getElementById('fixed-event-options');
+        const openOptions = document.getElementById('open-event-options');
+
+        if (attType === 'Fixed') {
+          if (fixedOptions) fixedOptions.classList.remove('d-none');
+          if (openOptions) openOptions.classList.add('d-none');
+
+          const subgroup = evt['Fixed Subgroup'] || evt.fixedSubgroup || 'ALL';
+          const radAll = document.getElementById('groupAllColleges');
+          const radBvc = document.getElementById('groupBVC');
+          if (subgroup === 'ALL') {
+            if (radAll) radAll.checked = true;
+          } else {
+            if (radBvc) radBvc.checked = true;
+          }
+
+          // Update checkboxes visibility
+          const infoAll = document.getElementById('info-fields-all-colleges');
+          const infoBvc = document.getElementById('info-fields-bvc-only');
+          if (subgroup === 'ALL') {
+            if (infoAll) { infoAll.classList.remove('d-none'); infoAll.classList.add('d-flex'); }
+            if (infoBvc) { infoBvc.classList.remove('d-flex'); infoBvc.classList.add('d-none'); }
+          } else {
+            if (infoAll) { infoAll.classList.remove('d-flex'); infoAll.classList.add('d-none'); }
+            if (infoBvc) { infoBvc.classList.remove('d-none'); infoBvc.classList.add('d-flex'); }
+          }
+
+          // Check required checkboxes
+          const gatherFields = (evt['Required Info Fields'] || evt.gatherFields || '').split(',').map(s => s.trim());
+          document.querySelectorAll('.info-field-chk').forEach(cb => {
+            if (cb.value !== 'Name' && cb.value !== 'Roll Number') {
+              cb.checked = gatherFields.includes(cb.value);
+            }
+          });
+        } else {
+          if (fixedOptions) fixedOptions.classList.add('d-none');
+          if (openOptions) openOptions.classList.remove('d-none');
+
+          const openTargetVal = evt.open_target_group || evt['Open Target Group'] || 'BVC';
+          const openTargetSelect = document.getElementById('openEventTargetGroup');
+          if (openTargetSelect) {
+            openTargetSelect.value = openTargetVal;
+            openTargetSelect.dispatchEvent(new Event('change'));
+          }
+
+          let openFields = evt.open_required_fields || evt['Open Required Fields'] || '';
+          if (typeof openFields === 'string') {
+            try { openFields = JSON.parse(openFields); } catch(e) { openFields = openFields.split(',').map(s=>s.trim()); }
+          }
+          if (!Array.isArray(openFields)) openFields = [];
+
+          document.querySelectorAll('.open-field-chk').forEach(cb => {
+            if (cb.value !== 'Roll / Registration Number' && cb.value !== 'Student Full Name') {
+              cb.checked = openFields.includes(cb.value);
+            }
+          });
+        }
+
+        // Hide new coordinator fields
+        const newCoordFields = document.getElementById('new-coordinator-fields');
+        if (newCoordFields) newCoordFields.classList.add('d-none');
+        ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
+          const input = document.getElementById(id);
+          if (input) input.required = false;
+        });
+
+        document.getElementById('eventOriginalStatus').value = evt.status || 'Draft';
+        
+        document.getElementById('eventCreationActionGroup').classList.add('d-none');
+        document.getElementById('eventCurrentStatusGroup').classList.remove('d-none');
+        
+        // Status Badge
+        const badgeMap = {
+          'Draft': 'bg-secondary',
+          'Upcoming': 'bg-primary',
+          'Active': 'bg-success',
+          'Stopped': 'bg-dark',
+          'Completed': 'bg-info',
+          'Cancelled': 'bg-danger'
+        };
+        const currentStatus = evt.status || 'Draft';
+        const badgeClass = badgeMap[currentStatus] || 'bg-secondary';
+        document.getElementById('eventCurrentStatusBadge').innerHTML = `<span class="badge ${badgeClass}">${currentStatus}</span>`;
+        
+        document.getElementById('eventIdGroup').classList.remove('d-none');
+        document.getElementById('eventCreatedAtGroup').classList.remove('d-none');
+        
+        const banner = document.getElementById('eventLockedBanner');
+        const saveBtn = document.getElementById('eventSaveBtn');
+        
+        // Check lock conditions
+        const stat = (evt.status || '').toLowerCase();
+        let isLocked = stat === 'cancelled';
+        
+        if (stat === 'completed') {
+          const completedAtStr = evt.completed_at || '';
+          if (completedAtStr) {
+            const completedTime = new Date(completedAtStr).getTime();
+            const nowTime = new Date().getTime();
+            const diffDays = (nowTime - completedTime) / (1000 * 60 * 60 * 24);
+            if (diffDays > 7 || evt.archive_status === 'ReadOnly') {
+              isLocked = true;
+            }
+          } else {
+            isLocked = true;
+          }
+        }
+        
+        if (isLocked) {
+          if (banner) banner.classList.remove('d-none');
+          if (saveBtn) saveBtn.classList.add('d-none');
+          if (tlContainer) tlContainer.classList.add('d-none'); // Hide preview just in case
+          // Disable all form elements
+          Array.from(form.elements).forEach(el => {
+            if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+              el.disabled = true;
+            }
+          });
+        } else {
+          if (banner) banner.classList.add('d-none');
+          if (saveBtn) {
+            document.getElementById('eventSaveBtnText').textContent = 'Update Event';
+          }
+          this.evaluateLifecycleActions(stat);
+        }
+        
+        const errorAlert = document.getElementById('eventModalError');
+        if (errorAlert) errorAlert.classList.add('d-none');
+        
+        const modalEl = document.getElementById('eventModal');
+        if (modalEl) {
+          const modal = new bootstrap.Modal(modalEl);
+          modal.show();
+        }
+      })
+      .catch(err => {
+        this.setModalLoading(false);
+        App.UI.showError(err.message || "Failed to fetch event data.");
+      });
+  },
+
+  openDeleteEventModal: function(id) {
+    document.getElementById('deleteEventId').value = id;
+    const modalEl = document.getElementById('eventDeleteModal');
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.show();
+    }
+  },
+
+  setModalLoading: function(isLoading) {
+    const btn = document.getElementById('eventSaveBtn');
+    const spinner = document.getElementById('eventSaveSpinner');
+    if (btn) btn.disabled = isLoading;
+    if (spinner) {
+      if (isLoading) spinner.classList.remove('d-none');
+      else spinner.classList.add('d-none');
+    }
+  },
+
+  handleEventSubmit: function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const errorAlert = document.getElementById('eventModalError');
+    
+    if (!form.checkValidity()) {
+      e.stopPropagation();
+      form.classList.add('was-validated');
+      return;
+    }
+    
+    // Custom Validations
+    const stTime = document.getElementById('eventStartTime').value;
+    const enTime = document.getElementById('eventEndTime').value;
+    const eventStartDateStr = document.getElementById('eventStartDate').value;
+    const eventEndDateStr = document.getElementById('eventEndDate').value;
+
+    if (stTime && enTime && eventStartDateStr === eventEndDateStr && stTime >= enTime) {
+      if (errorAlert) {
+        errorAlert.textContent = "End Time must be strictly after Start Time on the same day.";
+        errorAlert.classList.remove('d-none');
+      }
+      return;
+    }
+
+    const isEdit = !!document.getElementById('eventOriginalId').value;
+    
+    if (eventStartDateStr && eventEndDateStr && eventStartDateStr > eventEndDateStr) {
+      if (errorAlert) {
+        errorAlert.textContent = "End Date must be greater than or equal to Start Date.";
+        errorAlert.classList.remove('d-none');
+      }
+      return;
+    }
+    
+    if (!isEdit && eventStartDateStr) {
+      // Past Date validation only on Create
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const evDate = new Date(eventStartDateStr);
+      if (evDate < today) {
+        if (errorAlert) {
+          errorAlert.textContent = "Cannot create an event in the past.";
+          errorAlert.classList.remove('d-none');
+        }
+        return;
+      }
+    }
+    
+    this.setModalLoading(true);
+    if (errorAlert) errorAlert.classList.add('d-none');
+    
+    const originalId = document.getElementById('eventOriginalId').value;
+    
+    const depts = Array.from(document.querySelectorAll('.event-dept-check:checked')).map(cb => cb.value).join(',');
+    const years = Array.from(document.querySelectorAll('.event-year-check:checked')).map(cb => cb.value).join(',');
+    
+    if (isEdit) {
+      document.getElementById('eventDepartments').value = depts;
+      document.getElementById('eventYears').value = years;
+
+      if (!depts) {
+        if (errorAlert) {
+          errorAlert.textContent = "At least one Department is required.";
+          errorAlert.classList.remove('d-none');
+        }
+        this.setModalLoading(false);
+        return;
+      }
+    } else {
+      // Create path: default department to coordinator's or current HOD's department
+      const userDept = localStorage.getItem('userDept') || '';
+      document.getElementById('eventDepartments').value = userDept;
+      document.getElementById('eventYears').value = '1,2,3,4';
+    }
+    
+    let currentTargetStatus = '';
+    if (!isEdit) {
+      currentTargetStatus = document.getElementById('eventCreationAction').value;
+    } else {
+      const pendingAction = document.getElementById('eventSaveBtn').getAttribute('data-pending-action');
+      const origStatus = document.getElementById('eventOriginalStatus').value || 'Draft';
+      if (pendingAction === 'Publish') currentTargetStatus = 'Upcoming';
+      else if (pendingAction === 'Cancel') currentTargetStatus = 'Cancelled';
+      else if (pendingAction === 'Stop') currentTargetStatus = 'Stopped';
+      else currentTargetStatus = origStatus;
+    }
+    
+    const attType = document.getElementById('eventAttendanceType') ? document.getElementById('eventAttendanceType').value : 'Fixed';
+    let subgroup = '';
+    let requiredFields = '';
+
+    if (attType === 'Fixed') {
+      subgroup = document.querySelector('input[name="fixedSubgroup"]:checked') ? document.querySelector('input[name="fixedSubgroup"]:checked').value : 'ALL';
+      const infoFieldsGroup = (subgroup === 'ALL') ? '#info-fields-all-colleges' : '#info-fields-bvc-only';
+      requiredFields = Array.from(document.querySelectorAll(infoFieldsGroup + ' .info-field-chk:checked')).map(cb => cb.value).join(',');
+    }
+
+    const accessRestrictionType = document.querySelector('input[name="accessRestrictionType"]:checked')?.value || 'ALL_COORDINATORS';
+    const allowedCoordinatorIds = Array.from(document.querySelectorAll('.allowed-coord-check:checked')).map(cb => cb.value);
+    const allowedDepartments = Array.from(document.querySelectorAll('.allowed-dept-check:checked')).map(cb => cb.value);
+
+    const openTargetGroup = document.getElementById('openEventTargetGroup') ? document.getElementById('openEventTargetGroup').value : 'BVC';
+    const openRequiredFields = Array.from(document.querySelectorAll('.open-field-chk:checked')).map(cb => cb.value);
+
+    const eventData = {
+      event_name: document.getElementById('eventName').value.trim(),
+      description: document.getElementById('eventDescription').value.trim(),
+      start_date: eventStartDateStr,
+      end_date: eventEndDateStr,
+      start_time: stTime,
+      end_time: enTime,
+      venue: document.getElementById('eventVenue').value.trim(),
+      coordinator_id: document.getElementById('eventCoordinator').value,
+      departments: depts,
+      years: years,
+      capacity: document.getElementById('eventCapacity').value,
+      status: currentTargetStatus,
+
+      access_restriction_type: accessRestrictionType,
+      allowed_coordinator_ids: allowedCoordinatorIds,
+      allowed_departments: allowedDepartments,
+
+      open_target_group: openTargetGroup,
+      open_required_fields: openRequiredFields,
+      
+      attendance_type: attType,
+      'Attendance Type': attType,
+      'Fixed Subgroup': subgroup,
+      'Required Info Fields': requiredFields,
+      
+      enable_registration: document.getElementById('eventEnableRegistration').checked ? 'Yes' : 'No',
+      registration_open: document.getElementById('eventEnableRegistration').checked ? document.getElementById('eventRegOpen').value : '',
+      registration_close: document.getElementById('eventEnableRegistration').checked ? document.getElementById('eventRegClose').value : '',
+      maximum_seats: document.getElementById('eventEnableRegistration').checked ? document.getElementById('eventRegMaxSeats').value : '',
+      allow_spot_registration: (document.getElementById('eventAllowSpotRegStep1')?.checked || document.getElementById('eventAllowSpotReg')?.checked) ? 'Yes' : 'No',
+      registration_fields: document.getElementById('eventEnableRegistration').checked ? this.getCustomFieldsData() : '[]',
+      terms_and_conditions: document.getElementById('eventEnableRegistration').checked ? document.getElementById('eventRegTerms').value.trim() : '',
+
+      created_by: App.State && App.State.currentUser ? App.State.currentUser.user_id : 'Unknown',
+      action_by: App.State && App.State.currentUser ? App.State.currentUser.user_id : 'Unknown',
+      stop_reason: document.getElementById('stopReason') ? document.getElementById('stopReason').value : '',
+      resume_reason: document.getElementById('resumeReason') ? document.getElementById('resumeReason').value : '',
+      cancel_reason: document.getElementById('cancelReason') ? document.getElementById('cancelReason').value : ''
+    };
+    
+    const saveEventFunc = (finalEventData) => {
+      if (isEdit) {
+        App.Logger.info("FRONTEND: Update Submitted");
+        App.API.updateEvent(originalId, finalEventData)
+          .then(res => {
+            App.Logger.info("FRONTEND: Update Success");
+            this.setModalLoading(false);
+            this.isFormDirty = false;
+            this.editingEventId = null;
+            
+            const modalEl = document.getElementById('eventModal');
+            if (modalEl) {
+              const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+              modal.hide();
+            }
+            
+            if (App.Modules.dashboard) {
+              App.Modules.dashboard.load(true);
+            }
+            
+            App.UI.showSuccess("Event updated successfully!");
+            
+            // Inline array update for snappy UI
+            const updatedIndex = this.eventsData.findIndex(e => String(e.event_id) === String(originalId));
+            if (updatedIndex > -1) {
+              if (res.data && res.data.event) {
+                this.eventsData[updatedIndex] = { ...this.eventsData[updatedIndex], ...res.data.event };
+              } else {
+                this.eventsData[updatedIndex] = { ...this.eventsData[updatedIndex], ...finalEventData };
+              }
+            }
+            this.applyFilters();
+          })
+          .catch(err => {
+            App.Logger.info("FRONTEND: Update Failed");
+            this.setModalLoading(false);
+            if (errorAlert) {
+              errorAlert.textContent = err.message || "Failed to update event.";
+              errorAlert.classList.remove('d-none');
+            }
+            App.UI.showError(err.message || "Failed to update event.");
+          });
+      } else {
+        App.API.createEvent(finalEventData)
+          .then(res => {
+            this.setModalLoading(false);
+            const modalEl = document.getElementById('eventModal');
+            if (modalEl) {
+              const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+              modal.hide();
+            }
+            
+            if (App.Modules.dashboard) {
+              App.Modules.dashboard.load(true);
+            }
+            
+            App.UI.showSuccess("Event created successfully!");
+            this.load();
+          })
+          .catch(err => {
+            this.setModalLoading(false);
+            if (errorAlert) {
+              errorAlert.textContent = err.message || "Failed to create event.";
+              errorAlert.classList.remove('d-none');
+            }
+            App.UI.showError(err.message || "Failed to create event.");
+          });
+      }
+    };
+
+    // If new coordinator is selected, register them first!
+    if (!isEdit && document.getElementById('eventCoordinator').value === 'NEW_COORDINATOR') {
+      const emailVal = document.getElementById('newCoordEmail').value.trim();
+      const usernameVal = (emailVal.split('@')[0] || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
+      const inlineRole = (currentUserRole === 'ADMIN') ? 'Coordinator' : 'Admin';
+      const newCoordPayload = {
+        first_name: document.getElementById('newCoordFirstName').value.trim().toUpperCase(),
+        last_name: document.getElementById('newCoordLastName').value.trim().toUpperCase(),
+        email: emailVal,
+        employee_id: document.getElementById('newCoordEmployeeId').value.trim().toUpperCase(),
+        username: usernameVal.toLowerCase(),
+        role: inlineRole,
+        status: 'Active'
+      };
+
+      App.API.createUser(newCoordPayload)
+        .then(res => {
+          const userObj = (res && res.user) ? res.user : (res && res.data && res.data.user ? res.data.user : res);
+          if (userObj && (userObj.user_id || userObj['User ID'] || userObj.userId)) {
+            const newCoordId = userObj.user_id || userObj['User ID'] || userObj.userId;
+            eventData.coordinator_id = newCoordId;
+            saveEventFunc(eventData);
+          } else {
+            this.setModalLoading(false);
+            const msg = (res && res.message) ? res.message : "Failed to create inline coordinator account.";
+            if (errorAlert) {
+              errorAlert.textContent = msg;
+              errorAlert.classList.remove('d-none');
+            }
+            App.UI.showError(msg);
+          }
+        })
+        .catch(err => {
+          this.setModalLoading(false);
+          if (errorAlert) {
+            errorAlert.textContent = err.message || "Failed to create coordinator account.";
+            errorAlert.classList.remove('d-none');
+          }
+          App.UI.showError(err.message || "Failed to create coordinator account.");
+        });
+    } else {
+      saveEventFunc(eventData);
+    }
+  },
+
+  handleDeleteEvent: function() {
+    const id = document.getElementById('deleteEventId').value;
+    if (!id) return;
+    
+    const btn = document.getElementById('eventConfirmDeleteBtn');
+    const spinner = document.getElementById('eventDeleteSpinner');
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.classList.remove('d-none');
+    
+    App.API.deleteEvent(id)
+      .then(() => {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.classList.add('d-none');
+        
+        const modalEl = document.getElementById('eventDeleteModal');
+        if (modalEl) {
+          const modal = bootstrap.Modal.getInstance(modalEl);
+          if (modal) modal.hide();
+        }
+        
+        // TC-22: Optimistic UI — remove immediately from local data before async reload
+        this.eventsData = this.eventsData.filter(e => String(e.event_id) !== String(id));
+        this.applyFilters();
+        
+        if (App.Modules.dashboard) {
+           App.Modules.dashboard.load(true);
+        }
+        
+        App.UI.showSuccess("Event deleted successfully!");
+        // Reload in background to sync with server
+        this.load();
+      })
+      .catch(err => {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.classList.add('d-none');
+        App.UI.showError(err.message || "Failed to delete event.");
+      });
+  },
+
+  refresh: function() {
+    this.loadDependencies().then(() => this.load());
+  },
+  
+  destroy: function() {
+    App.Logger.info('Events destroy');
+  },
+  
+  setupCustomDropdowns: function() {
+    const attachDropdownEvents = (prefix, defaultText) => {
+      const search = document.getElementById(`${prefix}Search`);
+      const selectAll = document.getElementById(`${prefix}SelectAll`);
+      const clearAll = document.getElementById(`${prefix}ClearAll`);
+      const spanText = document.getElementById(`${prefix}DropdownText`);
+      
+      const updateText = () => {
+        const checked = document.querySelectorAll(`.event-${prefix.replace('event','').toLowerCase().replace('years','year').replace('departments','dept')}-check:checked`);
+        spanText.textContent = checked.length > 0 ? `Selected (${checked.length})` : defaultText;
+        // Update hidden inputs for validation
+        const hiddenInput = document.getElementById(prefix);
+        if (hiddenInput) {
+          hiddenInput.value = Array.from(checked).map(c => c.value).join(',');
+        }
+      };
+
+      if (search) {
+        search.addEventListener('input', (e) => {
+          const term = e.target.value.toLowerCase();
+          document.querySelectorAll(`.event-${prefix.replace('event','').toLowerCase().replace('years','year').replace('departments','dept')}-item`).forEach(div => {
+            const label = div.querySelector('label').textContent.toLowerCase();
+            div.style.display = label.includes(term) ? 'block' : 'none';
+          });
+        });
+      }
+
+      if (selectAll) {
+        selectAll.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.querySelectorAll(`.event-${prefix.replace('event','').toLowerCase().replace('years','year').replace('departments','dept')}-check`).forEach(cb => {
+            if (cb.closest('.form-check').style.display !== 'none') cb.checked = true;
+          });
+          updateText();
+        });
+      }
+
+      if (clearAll) {
+        clearAll.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.querySelectorAll(`.event-${prefix.replace('event','').toLowerCase().replace('years','year').replace('departments','dept')}-check`).forEach(cb => cb.checked = false);
+          updateText();
+        });
+      }
+
+      document.body.addEventListener('change', (e) => {
+        if (e.target.classList.contains(`event-${prefix.replace('event','').toLowerCase().replace('years','year').replace('departments','dept')}-check`)) {
+          updateText();
+        }
+      });
+    };
+
+    attachDropdownEvents('eventDepartments', 'Select Departments');
+    attachDropdownEvents('eventYears', 'Select Years');
+  },
+
+  evaluateLifecycleActions: function(status) {
+    const actionBtns = document.getElementById('lifecycleActionButtons');
+    const btnPublish = document.getElementById('btnLifecyclePublish');
+    const btnStop = document.getElementById('btnLifecycleStop');
+    const btnCancel = document.getElementById('btnLifecycleCancel');
+    
+    const previewContainer = document.getElementById('lifecyclePreviewContainer');
+    const previewText = document.getElementById('lifecyclePreviewText');
+    const stopGroup = document.getElementById('stopReasonGroup');
+    const resumeGroup = document.getElementById('resumeReasonGroup');
+    const cancelGroup = document.getElementById('cancelReasonGroup');
+    
+    if (actionBtns) actionBtns.classList.remove('d-none');
+    if (btnPublish) btnPublish.classList.add('d-none');
+    if (btnStop) btnStop.classList.add('d-none');
+    if (btnCancel) btnCancel.classList.add('d-none');
+    
+    if (previewContainer) previewContainer.classList.add('d-none');
+    if (stopGroup) stopGroup.classList.add('d-none');
+    if (resumeGroup) resumeGroup.classList.add('d-none');
+    if (cancelGroup) cancelGroup.classList.add('d-none');
+    
+    // Clear required attributes
+    if (document.getElementById('stopReason')) document.getElementById('stopReason').required = false;
+    if (document.getElementById('cancelReason')) document.getElementById('cancelReason').required = false;
+    
+    // We store the "pending Action" in a data attribute on the save button to know what we are submitting
+    if (saveBtn) saveBtn.removeAttribute('data-pending-action');
+    
+    if (status === 'draft') {
+      if (btnPublish) btnPublish.classList.remove('d-none');
+    } else if (status === 'upcoming') {
+      if (btnCancel) btnCancel.classList.remove('d-none');
+    } else if (status === 'active') {
+      if (btnStop) btnStop.classList.remove('d-none');
+    } else if (status === 'stopped') {
+      if (btnCancel) btnCancel.classList.remove('d-none');
+    }
+  },
+
+  handleLifecycleClick: function(action) {
+    const previewContainer = document.getElementById('lifecyclePreviewContainer');
+    const previewText = document.getElementById('lifecyclePreviewText');
+    const stopGroup = document.getElementById('stopReasonGroup');
+    const cancelGroup = document.getElementById('cancelReasonGroup');
+    const saveBtn = document.getElementById('eventSaveBtn');
+    
+    // Reset
+    if (previewContainer) previewContainer.classList.remove('d-none');
+    if (stopGroup) stopGroup.classList.add('d-none');
+    if (cancelGroup) cancelGroup.classList.add('d-none');
+    if (document.getElementById('stopReason')) document.getElementById('stopReason').required = false;
+    if (document.getElementById('cancelReason')) document.getElementById('cancelReason').required = false;
+    
+    if (saveBtn) {
+      saveBtn.setAttribute('data-pending-action', action);
+      document.getElementById('eventSaveBtnText').textContent = 'Confirm ' + action;
+    }
+    
+    if (action === 'Publish') {
+      previewText.innerHTML = `<strong>Action:</strong> This event will be published.<br><span class="text-muted small">Status will change to Upcoming.</span>`;
+    } else if (action === 'Cancel') {
+      previewText.innerHTML = `<strong>Action:</strong> This event will be cancelled.<br><span class="text-muted small">Cancel Reason is required.</span>`;
+      if (cancelGroup) cancelGroup.classList.remove('d-none');
+      if (document.getElementById('cancelReason')) document.getElementById('cancelReason').required = true;
+    } else if (action === 'Stop') {
+      previewText.innerHTML = `<strong>Action:</strong> This event will be stopped.<br><span class="text-muted small">Stop Reason is required.</span>`;
+      if (stopGroup) stopGroup.classList.remove('d-none');
+      if (document.getElementById('stopReason')) document.getElementById('stopReason').required = true;
+    }
+  },
+
+  openManageParticipantsModal: function(eventId) {
+    const event = this.eventsData.find(e => String(e.event_id) === String(eventId));
+    if (!event) return;
+    
+    document.getElementById('mpEventId').value = eventId;
+    document.getElementById('mpEventName').textContent = event.event_name;
+    document.getElementById('mpEligibilityMessage').textContent = '';
+    document.getElementById('mpSearchRoll').value = '';
+    
+    // Bind Add button
+    const addBtn = document.getElementById('mpAddBtn');
+    addBtn.replaceWith(addBtn.cloneNode(true));
+    document.getElementById('mpAddBtn').addEventListener('click', () => this.addParticipant(eventId));
+
+    // Hide Add Participant container for Admin and Super Admin roles
+    const addCont = document.getElementById('mpAddContainer');
+    const summaryCol = addCont ? addCont.previousElementSibling : null;
+    const currentUser = App.State && App.State.currentUser;
+    if (currentUser) {
+      const role = String(currentUser.role || '').toUpperCase().trim();
+      const isAdminOrSuper = role === 'ADMIN' || role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN';
+      if (isAdminOrSuper) {
+        if (addCont) addCont.style.setProperty('display', 'none', 'important');
+        if (summaryCol) {
+          summaryCol.classList.remove('col-md-4');
+          summaryCol.classList.add('col-md-12');
+        }
+      } else {
+        if (addCont) addCont.style.display = '';
+        if (summaryCol) {
+          summaryCol.classList.remove('col-md-12');
+          summaryCol.classList.add('col-md-4');
+        }
+      }
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('manageParticipantsModal'));
+    modal.show();
+    
+    this.loadParticipants(eventId, event);
+  },
+
+  loadParticipants: function(eventId, eventObj) {
+    document.getElementById('mpTableBody').innerHTML = '<tr><td colspan="7" class="text-center py-3">Loading participants...</td></tr>';
+    
+    App.API._call('getEventParticipants', eventId).then(res => {
+      const parts = res || [];
+      const isFixed = (eventObj.attendance_type || 'Fixed') === 'Fixed';
+      const activeCount = parts.filter(p => p.status === 'Active').length;
+      
+      const counterEl = document.getElementById('mpParticipantCounter');
+      if (isFixed) {
+        if (eventObj.capacity) {
+          counterEl.textContent = `${activeCount} / ${eventObj.capacity}`;
+        } else {
+          counterEl.textContent = `${activeCount} Participants`;
+        }
+      } else {
+        counterEl.textContent = 'Unlimited Participants';
+      }
+
+      const tbody = document.getElementById('mpTableBody');
+      if (parts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5">No participants found</td></tr>';
+        return;
+      }
+      
+      let html = '';
+      parts.forEach(p => {
+        const badge = p.status === 'Active' ? 'bg-success' : 'bg-danger';
+        const actionBtn = p.status === 'Active' 
+          ? `<button class="btn btn-sm btn-outline-danger" onclick="App.Modules.events.removeParticipant('${eventId}', '${p.roll_number}')">Remove</button>`
+          : `<button class="btn btn-sm btn-outline-success" onclick="App.Modules.events.addParticipant('${eventId}', '${p.roll_number}')">Restore</button>`;
+          
+        html += `
+          <tr>
+            <td class="fw-bold">${App.Utils.escapeHtml(p.roll_number)}</td>
+            <td>${App.Utils.escapeHtml(p.student_name)}</td>
+            <td>${App.Utils.escapeHtml(p.department)}</td>
+            <td>${App.Utils.escapeHtml(p.year)}</td>
+            <td>${App.Utils.escapeHtml(p.section)}</td>
+            <td><span class="badge ${badge}">${App.Utils.escapeHtml(p.status)}</span></td>
+            <td class="text-end">${actionBtn}</td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }).catch(err => {
+      document.getElementById('mpTableBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger py-3">Error loading participants</td></tr>';
+      App.ErrorHandler.handle(err);
+    });
+  },
+
+  addParticipant: function(eventId, rollNumberOpt) {
+    const roll = rollNumberOpt || document.getElementById('mpSearchRoll').value.trim();
+    if (!roll) {
+      document.getElementById('mpEligibilityMessage').textContent = 'Please enter a Roll Number.';
+      document.getElementById('mpEligibilityMessage').className = 'small mt-1 fw-bold text-danger';
+      return;
+    }
+    
+    document.getElementById('mpEligibilityMessage').textContent = 'Validating...';
+    document.getElementById('mpEligibilityMessage').className = 'small mt-1 fw-bold text-info';
+    
+    App.API._call('addParticipant', eventId, roll).then(res => {
+      document.getElementById('mpEligibilityMessage').textContent = res.message || 'Added successfully';
+      document.getElementById('mpEligibilityMessage').className = 'small mt-1 fw-bold text-success';
+      const event = this.eventsData.find(e => String(e.event_id) === String(eventId));
+      this.loadParticipants(eventId, event);
+    }).catch(err => {
+      document.getElementById('mpEligibilityMessage').textContent = err.message || 'Error adding participant';
+      document.getElementById('mpEligibilityMessage').className = 'small mt-1 fw-bold text-danger';
+    });
+  },
+
+  removeParticipant: function(eventId, roll) {
+    App.API._call('removeParticipant', eventId, roll).then(res => {
+      App.UI.showSuccess('Participant removed');
+      const event = this.eventsData.find(e => String(e.event_id) === String(eventId));
+      this.loadParticipants(eventId, event);
+    }).catch(err => {
+      App.ErrorHandler.handle(err);
+    });
+  },
+
+  handleQuickStatusUpdate: function(eventId, newStatus) {
+    const event = this.eventsData.find(e => String(e.event_id) === String(eventId));
+    if (!event) return;
+
+    if (!confirm(`Are you sure you want to mark event "${event.event_name}" as ${newStatus}?`)) return;
+
+    event.status = newStatus;
+    App.LoadingManager.show();
+    App.API.updateEvent(event)
+      .then(() => {
+        App.LoadingManager.hide();
+        App.UI.showSuccess(`Event marked as ${newStatus}.`);
+        this.applyFilters();
+      })
+      .catch(err => {
+        App.LoadingManager.hide();
+        App.UI.showError(`Failed to update status: ${err.message}`);
+      });
+  },
+
+  handleDurationAdjustment: function(eventId, hoursDelta) {
+    const event = this.eventsData.find(e => String(e.event_id) === String(eventId));
+    if (!event) return;
+
+    let endD = new Date(event.end_date + 'T' + (event.end_time !== 'N/A' ? event.end_time : '23:59:00'));
+    if (isNaN(endD.getTime())) endD = new Date();
+
+    endD.setHours(endD.getHours() + hoursDelta);
+
+    event.end_date = endD.toISOString().split('T')[0];
+    event.end_time = endD.toTimeString().split(' ')[0];
+
+    App.LoadingManager.show();
+    App.API.updateEvent(event)
+      .then(() => {
+        App.LoadingManager.hide();
+        App.UI.showSuccess(`Duration adjusted by ${hoursDelta > 0 ? '+' : ''}${hoursDelta} hour(s).`);
+        this.applyFilters();
+      })
+      .catch(err => {
+        App.LoadingManager.hide();
+        App.UI.showError(`Failed to adjust duration: ${err.message}`);
+      });
+  }
+};
+
+// Auto-initialize module on direct injection trigger (guard against double-init from SPA double-load)
+if (typeof App !== 'undefined' && App.Modules && App.Modules.events && !App.Modules.events._initialized) {
+  App.Modules.events._initialized = true;
+  App.Modules.events.init();
+}
+</script>

@@ -1,0 +1,262 @@
+<script>
+  /**
+   * ==========================================
+   * PROFILE MODULE JAVASCRIPT CONTROLLER
+   * ==========================================
+   */
+  (function () {
+    const Profile = {
+      userId: null,
+      currentUserData: null,
+
+      init: function () {
+        console.log('Initializing Profile Module...');
+        
+        let currentUserId = null;
+        if (typeof App !== 'undefined' && App.State && App.State.currentUser) {
+          console.log("Profile Current User Object:", App.State.currentUser);
+          currentUserId = App.State.currentUser['User ID'] || App.State.currentUser.user_id || App.State.currentUser.userId;
+        }
+
+        if (!currentUserId) {
+          console.log("User ID not found in App.State.currentUser. Resolving from session...");
+          const token = localStorage.getItem('sessionToken');
+          if (!token) {
+            App.UI.showError("Failed to identify current user session. Please log in again.");
+            return;
+          }
+          
+          App.LoadingManager.show();
+          App.API._call('authenticate', token)
+            .then(res => {
+              if (res && res.success && res.user) {
+                App.State.currentUser = res.user;
+                this.userId = res.user['User ID'] || res.user.user_id || res.user.userId;
+                this.bindEvents();
+                this.loadProfileData();
+              } else {
+                App.LoadingManager.hide();
+                App.UI.showError("Session expired or invalid. Please log in again.");
+              }
+            })
+            .catch(err => {
+              App.LoadingManager.hide();
+              console.error("Session validation error", err);
+              App.UI.showError("Error validating session: " + err.message);
+            });
+          return;
+        }
+
+        this.userId = currentUserId;
+        this.bindEvents();
+        this.loadProfileData();
+      },
+
+      bindEvents: function () {
+        const detailsForm = document.getElementById('profileDetailsForm');
+        if (detailsForm) {
+          detailsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveDetails();
+          });
+        }
+
+        const passwordForm = document.getElementById('profilePasswordForm');
+        if (passwordForm) {
+          passwordForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.changePassword();
+          });
+        }
+      },
+
+      loadProfileData: function () {
+        App.LoadingManager.show();
+
+        const token = localStorage.getItem('sessionToken');
+        Promise.all([
+          App.API._call('getUserById', this.userId),
+          App.API._call('getAllDepartments', token)
+        ])
+        .then(([user, deptsRes]) => {
+          App.LoadingManager.hide();
+          if (!user || !user['User ID']) {
+            App.UI.showError("Failed to retrieve profile record from server.");
+            return;
+          }
+
+          let departmentsList = [];
+          if (Array.isArray(deptsRes)) {
+            departmentsList = deptsRes;
+          } else if (deptsRes && deptsRes.data && Array.isArray(deptsRes.data.departments)) {
+            departmentsList = deptsRes.data.departments;
+          } else if (deptsRes && deptsRes.data && Array.isArray(deptsRes.data)) {
+            departmentsList = deptsRes.data;
+          } else if (deptsRes && Array.isArray(deptsRes.departments)) {
+            departmentsList = deptsRes.departments;
+          }
+
+          const deptVal = String(user['Department'] || user.department || '').trim();
+          let deptName = deptVal || '--';
+          if (deptVal && deptVal !== '--') {
+            const matched = departmentsList.find(d => 
+              String(d['Department ID'] || d.department_id || d.id || '').trim().toUpperCase() === deptVal.toUpperCase() ||
+              String(d['Department Code'] || d.department_code || '').trim().toUpperCase() === deptVal.toUpperCase()
+            );
+            if (matched) {
+              deptName = matched['Department Name'] || matched.department_name || matched['Department Code'] || deptVal;
+            }
+          }
+          user._resolvedDepartmentName = deptName;
+
+          this.currentUserData = user;
+          this.renderProfile(user);
+        })
+        .catch(err => {
+          App.LoadingManager.hide();
+          console.error("Failed to load profile", err);
+          App.UI.showError("Error loading profile data: " + (err.message || ''));
+        });
+      },
+
+      renderProfile: function (user) {
+        // Map spreadsheet columns with fallback checks
+        const firstName = user['First Name'] || user.first_name || '';
+        const lastName = user['Last Name'] || user.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        const designation = user['Title/Designation'] || user.designation || 'Staff Member';
+        const role = user['Role'] || user.role || 'User';
+        const username = user['Username'] || user.username || '--';
+        const employeeId = user['Employee ID'] || user.employee_id || '--';
+        const department = user._resolvedDepartmentName || user['Department'] || user.department || '--';
+        const lastLogin = user['Last Login Timestamp'] || user.last_login_timestamp || '--';
+
+        // Render Summary Sidebar Card
+        document.getElementById('profileSummaryName').textContent = fullName || 'Unnamed User';
+        document.getElementById('profileSummaryTitle').textContent = designation;
+        document.getElementById('profileSummaryRole').textContent = role;
+        document.getElementById('profileMetaUsername').textContent = username;
+        document.getElementById('profileMetaEmployeeId').textContent = employeeId;
+        document.getElementById('profileMetaDepartment').textContent = department;
+        document.getElementById('profileMetaLastLogin').textContent = lastLogin !== '--' ? new Date(lastLogin).toLocaleString() : '--';
+
+        // Render Details Fields
+        document.getElementById('profileFirstName').value = firstName;
+        document.getElementById('profileLastName').value = lastName;
+        document.getElementById('profileEmail').value = user['Email Address'] || user.email_address || user.email || '';
+        document.getElementById('profilePhone').value = user['Phone Number'] || user.phone_number || user.phone || '';
+        document.getElementById('profileDesignation').value = designation;
+        document.getElementById('profileDepartmentDisplay').value = department;
+      },
+
+      saveDetails: function () {
+        const email = document.getElementById('profileEmail').value.trim();
+        const phone = document.getElementById('profilePhone').value.trim();
+        const firstName = document.getElementById('profileFirstName').value.trim();
+        const lastName = document.getElementById('profileLastName').value.trim();
+        const designation = document.getElementById('profileDesignation').value.trim();
+
+        if (phone && phone.length !== 10) {
+          App.UI.showError("Phone number must be a 10-digit number.");
+          return;
+        }
+
+        const spinner = document.getElementById('saveProfileSpinner');
+        const saveBtn = document.getElementById('saveProfileDetailsBtn');
+
+        if (spinner) spinner.classList.remove('d-none');
+        if (saveBtn) saveBtn.disabled = true;
+
+        // Construct update payload mapping precisely to spreadsheet headers
+        const payload = {};
+        payload['First Name'] = firstName;
+        payload['Last Name'] = lastName;
+        payload['Email Address'] = email;
+        payload['Phone Number'] = phone;
+        payload['Title/Designation'] = designation;
+
+        App.API._call('updateUser', this.userId, payload)
+          .then(res => {
+            if (spinner) spinner.classList.add('d-none');
+            if (saveBtn) saveBtn.disabled = false;
+
+            if (res && res.success) {
+              App.UI.showSuccess("Profile details updated successfully.");
+              
+              // Dynamically refresh sidebar username display
+              const navbarFullnameEl = document.querySelector('.user-fullname');
+              if (navbarFullnameEl) {
+                navbarFullnameEl.textContent = `${firstName} ${lastName}`.trim();
+              }
+              const navbarRoleEl = document.querySelector('.user-role');
+              if (navbarRoleEl) {
+                navbarRoleEl.textContent = designation || 'Administrator';
+              }
+
+              this.loadProfileData();
+            } else {
+              App.UI.showError(res.message || "Failed to update profile details.");
+            }
+          })
+          .catch(err => {
+            if (spinner) spinner.classList.add('d-none');
+            if (saveBtn) saveBtn.disabled = false;
+            console.error("Profile update error", err);
+            App.UI.showError("Error updating details: " + (err.message || ''));
+          });
+      },
+
+      changePassword: function () {
+        const currentPassword = document.getElementById('profileCurrentPassword').value;
+        const newPassword = document.getElementById('profileNewPassword').value;
+        const confirmPassword = document.getElementById('profileConfirmPassword').value;
+
+        if (newPassword !== confirmPassword) {
+          App.UI.showError("New passwords do not match.");
+          return;
+        }
+
+        if (newPassword.length < 6) {
+          App.UI.showError("New password must be at least 6 characters long.");
+          return;
+        }
+
+        const spinner = document.getElementById('changePasswordSpinner');
+        const changeBtn = document.getElementById('changePasswordBtn');
+
+        if (spinner) spinner.classList.remove('d-none');
+        if (changeBtn) changeBtn.disabled = true;
+
+        App.API._call('changePassword', this.userId, currentPassword, newPassword)
+          .then(res => {
+            if (spinner) spinner.classList.add('d-none');
+            if (changeBtn) changeBtn.disabled = false;
+
+            if (res && res.success) {
+              App.UI.showSuccess("Password updated successfully.");
+              document.getElementById('profilePasswordForm').reset();
+            } else {
+              App.UI.showError(res.message || "Failed to update password.");
+            }
+          })
+          .catch(err => {
+            if (spinner) spinner.classList.add('d-none');
+            if (changeBtn) changeBtn.disabled = false;
+            console.error("Password update error", err);
+            App.UI.showError("Error updating password: " + (err.message || ''));
+          });
+      },
+
+      destroy: function () {
+        console.log('Destroying Profile Module...');
+      }
+    };
+
+    App.Modules.profile = Profile;
+  })();
+
+  // Auto-initialize module on direct injection trigger
+  if (typeof App !== 'undefined' && App.Modules && App.Modules.profile) {
+    App.Modules.profile.init();
+  }
+</script>

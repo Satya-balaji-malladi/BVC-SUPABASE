@@ -1,0 +1,268 @@
+<script>
+/**
+ * ==========================================
+ * USERS MODULE
+ * ==========================================
+ */
+console.log("Users Module Registered");
+App.Modules.users = {
+  usersData: [],
+  userModalInstance: null,
+  
+  init: function() {
+    console.log("Users Init");
+    App.Logger.info('Users init');
+    this.bindEvents();
+    this.load();
+  },
+  
+  load: function() {
+    console.log("Users Load");
+    const tbody = document.getElementById('users-table-body');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>Loading users...</td></tr>';
+    
+    App.API.getAllUsers()
+      .then(users => {
+        // Safe mapping to handle capitalization or mismatched properties
+        const mappedUsers = (users || []).map(u => ({
+          ...u,
+          user_id: u.user_id || u.UserID || u.userId || u.id || 'N/A',
+          full_name: u.full_name || u.FullName || u.fullName || u.name || 'N/A',
+          email: u.email || u.Email || 'N/A',
+          role: u.role || u.Role || 'N/A',
+          department: u.department || u.Department || u.dept || 'N/A',
+          status: u.status || u.Status || 'N/A'
+        }));
+        
+        this.usersData = mappedUsers;
+        this.populateDepartmentFilter();
+        this.applyFilters();
+      })
+      .catch(err => {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-5">Failed to load users</td></tr>';
+        App.ErrorHandler.handle(err, "Failed to load users in Users module");
+      });
+  },
+
+  bindEvents: function() {
+    const searchInput = document.getElementById('users-search-input');
+    const roleFilter = document.getElementById('users-role-filter');
+    const deptFilter = document.getElementById('users-dept-filter');
+    const statusFilter = document.getElementById('users-status-filter');
+
+    if (searchInput) searchInput.addEventListener('input', () => this.applyFilters());
+    if (roleFilter) roleFilter.addEventListener('change', () => this.applyFilters());
+    if (deptFilter) deptFilter.addEventListener('change', () => this.applyFilters());
+    if (statusFilter) statusFilter.addEventListener('change', () => this.applyFilters());
+
+    const addUserBtn = document.querySelector('button[data-action="add-user"]');
+    if (addUserBtn) {
+      addUserBtn.addEventListener('click', () => this.openAddUserModal());
+    }
+
+    const userForm = document.getElementById('userForm');
+    if (userForm) {
+      userForm.addEventListener('submit', (e) => this.handleUserSubmit(e));
+    }
+  },
+
+  openAddUserModal: function() {
+    const form = document.getElementById('userForm');
+    if (form) {
+      form.reset();
+      form.classList.remove('was-validated');
+    }
+    
+    const errorAlert = document.getElementById('userModalError');
+    if (errorAlert) errorAlert.classList.add('d-none');
+    
+    if (!this.userModalInstance) {
+      const modalEl = document.getElementById('userModal');
+      if (modalEl) {
+        this.userModalInstance = new bootstrap.Modal(modalEl);
+      }
+    }
+    
+    if (this.userModalInstance) {
+      this.userModalInstance.show();
+    }
+  },
+
+  handleUserSubmit: function(e) {
+    e.preventDefault();
+    const form = e.target;
+    
+    // Custom validation for passwords matching
+    const pwd = document.getElementById('userPassword').value;
+    const confirmPwd = document.getElementById('userConfirmPassword').value;
+    const confirmInput = document.getElementById('userConfirmPassword');
+    
+    if (pwd !== confirmPwd) {
+      confirmInput.setCustomValidity("Passwords do not match");
+    } else {
+      confirmInput.setCustomValidity("");
+    }
+    
+    if (!form.checkValidity()) {
+      e.stopPropagation();
+      form.classList.add('was-validated');
+      return;
+    }
+    
+    // Pass validation, submit
+    console.log("FRONTEND STEP 1: handleUserSubmit triggered");
+    this.setModalLoading(true);
+    
+    const emailVal = document.getElementById('userEmail').value.trim();
+    const userData = {
+      full_name: document.getElementById('userName').value.trim(),
+      email: emailVal,
+      username: emailVal.split('@')[0],
+      department: document.getElementById('userDepartment').value,
+      role: document.getElementById('userRole').value,
+      status: document.getElementById('userStatus').value,
+      password: pwd
+    };
+    
+    console.log("FRONTEND STEP 2: App.API.createUser called with:", userData);
+    App.API.createUser(userData)
+      .then(res => {
+        console.log("FRONTEND STEP 3: Promise resolved successfully", res);
+        this.setModalLoading(false);
+        if (this.userModalInstance) {
+          this.userModalInstance.hide();
+        }
+        App.UI.showSuccess("User created successfully!");
+        this.load(); // Refresh the list and stats
+      })
+      .catch(err => {
+        console.log("FRONTEND STEP 4: Promise rejected", err);
+        this.setModalLoading(false);
+        const errorAlert = document.getElementById('userModalError');
+        if (errorAlert) {
+          errorAlert.textContent = err.message || "Failed to create user.";
+          errorAlert.classList.remove('d-none');
+        }
+        App.UI.showError(err.message || "Failed to create user.");
+      });
+  },
+
+  setModalLoading: function(isLoading) {
+    const btn = document.getElementById('userSaveBtn');
+    const spinner = document.getElementById('userSaveSpinner');
+    if (!btn || !spinner) return;
+    
+    btn.disabled = isLoading;
+    if (isLoading) {
+      spinner.classList.remove('d-none');
+    } else {
+      spinner.classList.add('d-none');
+    }
+  },
+
+  populateDepartmentFilter: function() {
+    const deptFilter = document.getElementById('users-dept-filter');
+    if (!deptFilter) return;
+
+    // Extract unique departments, removing 'N/A' or empties for the filter list if desired
+    const depts = [...new Set(this.usersData.map(u => String(u.department).trim()).filter(d => d && d !== 'N/A'))].sort();
+    
+    // Keep the "All Depts" default option
+    deptFilter.innerHTML = '<option value="">All Depts</option>';
+    depts.forEach(dept => {
+      deptFilter.innerHTML += `<option value="${dept}">${dept}</option>`;
+    });
+  },
+
+  applyFilters: function() {
+    const searchTerm = (document.getElementById('users-search-input')?.value || '').toLowerCase().trim();
+    const roleVal = (document.getElementById('users-role-filter')?.value || '').toLowerCase();
+    const deptVal = (document.getElementById('users-dept-filter')?.value || '').toLowerCase();
+    const statusVal = (document.getElementById('users-status-filter')?.value || '').toLowerCase();
+
+    const filtered = this.usersData.filter(user => {
+      // Search
+      const matchesSearch = !searchTerm || 
+        String(user.user_id).toLowerCase().includes(searchTerm) ||
+        String(user.full_name).toLowerCase().includes(searchTerm) ||
+        String(user.email).toLowerCase().includes(searchTerm);
+
+      // Role
+      const matchesRole = !roleVal || String(user.role).toLowerCase() === roleVal;
+      
+      // Department
+      const matchesDept = !deptVal || String(user.department).toLowerCase() === deptVal;
+      
+      // Status
+      const matchesStatus = !statusVal || String(user.status).toLowerCase() === statusVal;
+
+      return matchesSearch && matchesRole && matchesDept && matchesStatus;
+    });
+
+    this.renderStats(filtered);
+    this.renderUsers(filtered);
+  },
+
+  renderStats: function(users) {
+    const total = users.length;
+    const active = users.filter(u => String(u.status).toLowerCase() === 'active').length;
+    const inactive = users.filter(u => String(u.status).toLowerCase() === 'inactive').length;
+    const coordinators = users.filter(u => String(u.role).toLowerCase() === 'coordinator').length;
+
+    const elTotal = document.getElementById('users-stat-total');
+    const elActive = document.getElementById('users-stat-active');
+    const elInactive = document.getElementById('users-stat-inactive');
+    const elCoordinators = document.getElementById('users-stat-coordinators');
+
+    if (elTotal) elTotal.innerText = total;
+    if (elActive) elActive.innerText = active;
+    if (elInactive) elInactive.innerText = inactive;
+    if (elCoordinators) elCoordinators.innerText = coordinators;
+  },
+  
+  renderUsers: function(users) {
+    const tbody = document.getElementById('users-table-body');
+    if (!tbody) {
+      console.error("users-table-body not found");
+      return;
+    }
+    
+    tbody.innerHTML = '';
+    
+    if (!users || users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5">No Users Found</td></tr>';
+      return;
+    }
+    
+    users.forEach(user => {
+      let statusBadge = String(user.status).toLowerCase() === 'active' ? 'bg-success' : 'bg-danger';
+      let roleBadge = String(user.role).toLowerCase() === 'admin' ? 'bg-dark' : 'bg-primary';
+                  
+      const rowHTML = `
+        <tr>
+          <td class="text-muted">${App.Utils.escapeHtml(String(user.user_id))}</td>
+          <td class="fw-medium">${App.Utils.escapeHtml(String(user.full_name))}</td>
+          <td>${App.Utils.escapeHtml(String(user.email))}</td>
+          <td><span class="badge ${roleBadge} rounded-pill">${App.Utils.escapeHtml(String(user.role))}</span></td>
+          <td>${App.Utils.escapeHtml(String(user.department))}</td>
+          <td><span class="badge ${statusBadge} rounded-pill">${App.Utils.escapeHtml(String(user.status))}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-light text-primary me-1" data-action="view-user" data-id="${App.Utils.escapeHtml(String(user.user_id))}" title="View"><i class="bi bi-eye"></i></button>
+            <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-user" data-id="${App.Utils.escapeHtml(String(user.user_id))}" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-light text-danger" data-action="delete-user" data-id="${App.Utils.escapeHtml(String(user.user_id))}" title="Delete"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>
+      `;
+      tbody.insertAdjacentHTML('beforeend', rowHTML);
+    });
+  },
+
+  refresh: function() {
+    this.load();
+  },
+  
+  destroy: function() {
+    App.Logger.info('Users destroy');
+  }
+};
+</script>

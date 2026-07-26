@@ -1,0 +1,1133 @@
+<div class="card h-100 border-0 shadow-sm module-card">
+  <!-- Stats Section -->
+  <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+    <div class="row g-2 mb-4" id="events-stats-container">
+      <div class="col">
+        <div class="p-3 bg-light rounded text-center h-100">
+          <h6 class="text-muted mb-1 small">Total Events</h6>
+          <h4 class="mb-0 fw-bold" id="events-stat-total">0</h4>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-3 bg-light rounded text-center h-100">
+          <h6 class="text-muted mb-1 small">Upcoming</h6>
+          <h4 class="mb-0 fw-bold text-primary" id="events-stat-upcoming">0</h4>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-3 bg-light rounded text-center h-100">
+          <h6 class="text-muted mb-1 small">Active</h6>
+          <h4 class="mb-0 fw-bold text-success" id="events-stat-active">0</h4>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-3 bg-light rounded text-center h-100">
+          <h6 class="text-muted mb-1 small">Stopped</h6>
+          <h4 class="mb-0 fw-bold text-dark" id="events-stat-stopped">0</h4>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-3 bg-light rounded text-center h-100">
+          <h6 class="text-muted mb-1 small">Completed</h6>
+          <h4 class="mb-0 fw-bold text-info" id="events-stat-completed">0</h4>
+        </div>
+      </div>
+      <div class="col">
+        <div class="p-3 bg-light rounded text-center h-100">
+          <h6 class="text-muted mb-1 small">Cancelled</h6>
+          <h4 class="mb-0 fw-bold text-danger" id="events-stat-cancelled">0</h4>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="row g-2 align-items-center pb-3 border-bottom">
+      <div class="col-md-2">
+        <input type="text" id="events-search-input" class="form-control" placeholder="Search events...">
+      </div>
+      <div class="col-md-2">
+        <select id="events-dept-filter" class="form-select">
+          <option value="">All Depts</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select id="events-coord-filter" class="form-select">
+          <option value="">All Admins</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select id="events-status-filter" class="form-select">
+          <option value="">All Statuses</option>
+          <option value="Draft">Draft</option>
+          <option value="Upcoming">Upcoming</option>
+          <option value="Active">Active</option>
+          <option value="Stopped">Stopped</option>
+          <option value="Completed">Completed</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <select id="events-month-filter" class="form-select">
+          <option value="">Month</option>
+          <option value="01">Jan</option><option value="02">Feb</option><option value="03">Mar</option>
+          <option value="04">Apr</option><option value="05">May</option><option value="06">Jun</option>
+          <option value="07">Jul</option><option value="08">Aug</option><option value="09">Sep</option>
+          <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <select id="events-year-filter" class="form-select">
+          <option value="">Year</option>
+        </select>
+      </div>
+      <div class="col-md-2 text-end">
+         <button class="btn btn-primary btn-sm w-100" data-action="create-event"><i class="bi bi-calendar-plus me-1"></i>Create Event</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card-body p-4 pt-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-4" id="events-table">
+        <thead class="table-light">
+          <tr>
+            <th>Event ID</th>
+            <th>Event Name</th>
+            <th>Dates</th>
+            <th>Start Time</th>
+            <th>End Time</th>
+            <th>Venue</th>
+            <th>Coordinator</th>
+            <th>Target Depts</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="events-table-body">
+          <tr><td colspan="10" class="text-center text-muted py-5">Loading events...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination UI -->
+    <div class="d-flex justify-content-between align-items-center mt-2">
+      <div class="d-flex align-items-center">
+        <span class="me-2 text-muted">Rows per page:</span>
+        <select id="events-per-page" class="form-select form-select-sm" style="width: auto;">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <nav aria-label="Events pagination">
+        <ul class="pagination mb-0" id="events-pagination">
+          <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
+          <li class="page-item active"><a class="page-link" href="#">1</a></li>
+          <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Event Modal (Add/Edit/View) -->
+  <div class="modal fade" id="eventModal" tabindex="-1" aria-labelledby="eventModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <form id="eventForm" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title" id="eventModalLabel">Create Event</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="eventModalError" class="alert alert-danger d-none"></div>
+            <div id="eventLockedBanner" class="alert alert-warning d-none">
+              <i class="bi bi-lock-fill me-2"></i> This event is locked because it has been completed/cancelled.
+            </div>
+            
+            <!-- Stepper Navigation -->
+            <div class="d-flex justify-content-between mb-4 border-bottom pb-3 text-center" id="eventModalStepsNav">
+              <div class="flex-fill fw-bold text-primary step-nav-item" id="stepNavItem1" style="cursor: pointer;">
+                <span class="badge bg-primary rounded-circle me-1" id="stepBadge1">1</span> Details
+              </div>
+              <div class="flex-fill text-muted step-nav-item" id="stepNavItem2" style="cursor: pointer;">
+                <span class="badge bg-secondary rounded-circle me-1" id="stepBadge2">2</span> Registration
+              </div>
+              <div class="flex-fill text-muted step-nav-item" id="stepNavItem3" style="cursor: pointer;">
+                <span class="badge bg-secondary rounded-circle me-1" id="stepBadge3">3</span> Review
+              </div>
+            </div>
+
+            <!-- Step 1 Panel: Event Details -->
+            <div id="eventModalStep1" class="wizard-step-panel">
+              <div class="row g-3">
+                <input type="hidden" id="eventOriginalId">
+                <input type="hidden" id="eventOriginalStatus">
+                
+                <div class="col-md-6 d-none" id="eventIdGroup">
+                  <label for="eventId" class="form-label">Event ID</label>
+                  <input type="text" class="form-control" id="eventId" readonly disabled>
+                </div>
+                <div class="col-md-6 d-none" id="eventCreatedAtGroup">
+                  <label for="eventCreatedAt" class="form-label">Created Date</label>
+                  <input type="text" class="form-control" id="eventCreatedAt" readonly disabled>
+                </div>
+                
+                <div class="col-md-12">
+                  <label for="eventName" class="form-label">Event Name <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" id="eventName" required>
+                  <div class="invalid-feedback">Event Name is required.</div>
+                </div>
+                
+                <div class="col-md-12">
+                  <label for="eventDescription" class="form-label">Description</label>
+                  <textarea class="form-control" id="eventDescription" rows="2"></textarea>
+                </div>
+
+                <div class="col-md-12 mt-3" id="eventCoordinatorGroup">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <label for="eventCoordinator" class="form-label mb-0">Assign Event Admin <span class="text-danger">*</span></label>
+                    <a href="javascript:void(0)" class="small text-decoration-none" id="btnCreateAdminInline"><i class="bi bi-person-plus-fill me-1"></i>+ Create Admin</a>
+                  </div>
+                  <select class="form-select mt-1" id="eventCoordinator" required>
+                    <option value="">Select Event Admin</option>
+                    <!-- Populated dynamically -->
+                  </select>
+                  <div class="invalid-feedback">Please assign an Event Admin.</div>
+                </div>
+
+                <!-- Inline Create Admin Sub-form -->
+                <div class="col-md-12 mt-3 d-none" id="new-coordinator-fields">
+                  <div class="card p-3 border-0 bg-light" style="border-radius: 12px; border: 1px solid var(--border-color) !important;">
+                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-person-plus-fill me-1"></i>Create New Event Admin / User</h6>
+                    <div class="row g-2">
+                      <div class="col-md-6">
+                        <label for="newCoordFirstName" class="form-label small mb-1">First Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordFirstName" placeholder="e.g. John">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="newCoordLastName" class="form-label small mb-1">Last Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordLastName" placeholder="e.g. Doe">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="newCoordEmail" class="form-label small mb-1">Email Address <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control form-control-sm" id="newCoordEmail" placeholder="e.g. john.doe@bvc.edu">
+                      </div>
+                      <div class="col-md-6">
+                        <label for="newCoordEmployeeId" class="form-label small mb-1">Employee ID <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordEmployeeId" placeholder="e.g. EMP1234">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+   
+                <div id="advancedEventFields" class="row g-3 px-0 mx-0">
+                  <div class="col-md-6">
+                    <label for="eventAttendanceType" class="form-label">Attendance Type <span class="text-danger">*</span></label>
+                    <select class="form-select" id="eventAttendanceType" required>
+                      <option value="Fixed">Fixed</option>
+                      <option value="Open">Open</option>
+                    </select>
+                    <div class="invalid-feedback">Attendance Type is required.</div>
+                    <div class="form-text small text-muted mt-1">
+                      <strong>Fixed</strong>: Only registered/specified college groups can record attendance.<br>
+                      <strong>Open</strong>: Any active student can scan and record attendance on the spot.
+                    </div>
+                  </div>
+    
+                  <!-- Conditional Fixed Attendance Options -->
+                  <div class="col-md-12 d-none" id="fixed-event-options">
+                    <div class="card bg-light border-0 p-3" style="border-radius: 12px;">
+                      <label class="form-label fw-bold text-primary mb-2">Fixed Attendance Constraints</label>
+                      
+                      <div class="mb-3">
+                        <label class="form-label small fw-bold text-secondary">Target Group</label>
+                        <div class="d-flex gap-4">
+                          <div class="form-check">
+                            <input class="form-check-input" type="radio" name="fixedSubgroup" id="groupAllColleges" value="ALL" checked>
+                            <label class="form-check-label small" for="groupAllColleges">All College Students</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input" type="radio" name="fixedSubgroup" id="groupBVC" value="BVC">
+                            <label class="form-check-label small" for="groupBVC">BVC Students Only</label>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="mb-0">
+                        <label class="form-label small fw-bold text-secondary mb-1">Required Information to Collect during Scan</label>
+                        
+                        <!-- Checkboxes for All Colleges -->
+                        <div id="info-fields-all-colleges" class="d-flex flex-wrap gap-3">
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Name" id="chkAllName" checked disabled>
+                            <label class="form-check-label small" for="chkAllName">Name</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Roll Number" id="chkAllRoll" checked disabled>
+                            <label class="form-check-label small" for="chkAllRoll">Roll Number</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="College Name" id="chkAllCollege" checked>
+                            <label class="form-check-label small" for="chkAllCollege">College Name</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Branch" id="chkAllBranch" checked>
+                            <label class="form-check-label small" for="chkAllBranch">Branch</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Year" id="chkAllYear" checked>
+                            <label class="form-check-label small" for="chkAllYear">Year</label>
+                          </div>
+                        </div>
+                        
+                        <!-- Checkboxes for BVC Students -->
+                        <div id="info-fields-bvc-only" class="d-none flex-wrap gap-3">
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Name" id="chkBvcName" checked disabled>
+                            <label class="form-check-label small" for="chkBvcName">Name</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Roll Number" id="chkBvcRoll" checked disabled>
+                            <label class="form-check-label small" for="chkBvcRoll">Roll Number</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Branch" id="chkBvcBranch" checked>
+                            <label class="form-check-label small" for="chkBvcBranch">Branch</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input info-field-chk" type="checkbox" value="Year" id="chkBvcYear" checked>
+                            <label class="form-check-label small" for="chkBvcYear">Year</label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Conditional Open Event Attendance Options -->
+                  <div class="col-md-12 d-none" id="open-event-options">
+                    <div class="card bg-light border-0 p-3" style="border-radius: 12px; border: 1px solid rgba(79,70,229,0.15) !important;">
+                      <label class="form-label fw-bold text-primary mb-2"><i class="bi bi-door-open-fill me-1"></i> Open Event Attendance Configuration</label>
+                      
+                      <div class="mb-3">
+                        <label for="openEventTargetGroup" class="form-label small fw-bold text-secondary">Target Student Audience <span class="text-danger">*</span></label>
+                        <select class="form-select" id="openEventTargetGroup">
+                          <option value="BVC">BVC Students Only (Details fetched automatically by Roll Number)</option>
+                          <option value="ALL_COLLEGES">All College Students (Configure details to collect below)</option>
+                        </select>
+                      </div>
+
+                      <!-- BVC Auto Fetch Banner -->
+                      <div id="open-bvc-note" class="alert alert-info py-2 mb-0">
+                        <i class="bi bi-info-circle-fill me-2"></i><strong>BVC Students Only:</strong> Student details (Name, Branch, Year, Section, Email, Phone) will be automatically fetched from the student database using their Roll Number.
+                      </div>
+
+                      <!-- All Colleges 15 Detail Checkboxes Section -->
+                      <div id="open-all-colleges-fields" class="d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-1">
+                          <label class="form-label small fw-bold text-dark mb-0">Select Information Fields for Coordinator to Collect (15 Options)</label>
+                          <div>
+                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-2" id="openFieldsSelectAll">Select All</button>
+                            <button type="button" class="btn btn-sm btn-link text-decoration-none text-danger p-0" id="openFieldsClearAll">Clear All</button>
+                          </div>
+                        </div>
+
+                        <div class="row g-2 bg-white p-3 rounded border">
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Roll / Registration Number" id="chkOpenRoll" checked disabled>
+                              <label class="form-check-label small fw-semibold" for="chkOpenRoll">1. Roll / Reg. Number *</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Student Full Name" id="chkOpenName" checked disabled>
+                              <label class="form-check-label small fw-semibold" for="chkOpenName">2. Full Name *</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="College / Institution Name" id="chkOpenCollege" checked>
+                              <label class="form-check-label small" for="chkOpenCollege">3. College Name</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Department / Branch" id="chkOpenDept" checked>
+                              <label class="form-check-label small" for="chkOpenDept">4. Department / Branch</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Academic Year" id="chkOpenYear" checked>
+                              <label class="form-check-label small" for="chkOpenYear">5. Academic Year</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Section" id="chkOpenSec" checked>
+                              <label class="form-check-label small" for="chkOpenSec">6. Section</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Email Address" id="chkOpenEmail" checked>
+                              <label class="form-check-label small" for="chkOpenEmail">7. Email Address</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Mobile / Phone Number" id="chkOpenPhone" checked>
+                              <label class="form-check-label small" for="chkOpenPhone">8. Mobile Number</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Gender" id="chkOpenGender">
+                              <label class="form-check-label small" for="chkOpenGender">9. Gender</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="City / Town" id="chkOpenCity">
+                              <label class="form-check-label small" for="chkOpenCity">10. City / Town</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="State" id="chkOpenState">
+                              <label class="form-check-label small" for="chkOpenState">11. State</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Emergency Contact Number" id="chkOpenEmerg">
+                              <label class="form-check-label small" for="chkOpenEmerg">12. Emergency Contact</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Accommodation Needed" id="chkOpenAcco">
+                              <label class="form-check-label small" for="chkOpenAcco">13. Accommodation Needed</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="Food Preference" id="chkOpenFood">
+                              <label class="form-check-label small" for="chkOpenFood">14. Food Preference</label>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="form-check">
+                              <input class="form-check-input open-field-chk" type="checkbox" value="ID Proof Number" id="chkOpenIdProof">
+                              <label class="form-check-label small" for="chkOpenIdProof">15. ID Proof Number</label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+    
+                  <div class="col-md-6">
+                    <label for="eventStartDate" class="form-label">Start Date <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="eventStartDate">
+                    <div class="invalid-feedback">Start Date is required.</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="eventEndDate" class="form-label">End Date <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" id="eventEndDate">
+                    <div class="invalid-feedback">End Date is required.</div>
+                  </div>
+      
+                  <div class="col-md-6">
+                    <label for="eventStartTime" class="form-label">Start Time <span class="text-danger">*</span></label>
+                    <input type="time" class="form-control" id="eventStartTime">
+                    <div class="invalid-feedback">Start Time is required.</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="eventEndTime" class="form-label">End Time <span class="text-danger">*</span></label>
+                    <input type="time" class="form-control" id="eventEndTime">
+                    <div class="invalid-feedback">End Time is required.</div>
+                  </div>
+      
+                  <div class="col-md-6">
+                    <label for="eventVenue" class="form-label">Venue <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="eventVenue">
+                    <div class="invalid-feedback">Venue is required.</div>
+                  </div>
+                  
+                  <div class="col-md-6">
+                    <label class="form-label">Target Departments <span class="text-danger">*</span></label>
+                    <div class="dropdown">
+                      <button class="btn btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center" type="button" id="eventDepartmentsDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <span id="eventDepartmentsDropdownText">Select Departments</span>
+                        <i class="bi bi-chevron-down"></i>
+                      </button>
+                      <div class="dropdown-menu w-100 p-2 shadow-sm" aria-labelledby="eventDepartmentsDropdownBtn">
+                        <div class="mb-2">
+                          <input type="text" class="form-control form-control-sm" id="eventDepartmentsSearch" placeholder="Search departments...">
+                        </div>
+                        <div class="mb-2 pb-2 border-bottom d-flex justify-content-between">
+                          <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" id="eventDepartmentsSelectAll">Select All</button>
+                          <button type="button" class="btn btn-sm btn-link text-decoration-none text-danger p-0" id="eventDepartmentsClearAll">Clear All</button>
+                        </div>
+                        <div id="eventDepartmentsList" style="max-height: 200px; overflow-y: auto;">
+                          <!-- Populated dynamically -->
+                        </div>
+                      </div>
+                    </div>
+                    <input type="hidden" id="eventDepartments">
+                    <div class="invalid-feedback">At least one Department is required.</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Target Years</label>
+                    <div class="dropdown">
+                      <button class="btn btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center" type="button" id="eventYearsDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <span id="eventYearsDropdownText">Select Years</span>
+                        <i class="bi bi-chevron-down"></i>
+                      </button>
+                      <div class="dropdown-menu w-100 p-2 shadow-sm" aria-labelledby="eventYearsDropdownBtn">
+                        <div class="mb-2 pb-2 border-bottom d-flex justify-content-between">
+                          <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" id="eventYearsSelectAll">Select All</button>
+                          <button type="button" class="btn btn-sm btn-link text-decoration-none text-danger p-0" id="eventYearsClearAll">Clear All</button>
+                        </div>
+                        <div id="eventYearsList">
+                          <div class="form-check">
+                            <input class="form-check-input event-year-check" type="checkbox" value="1" id="yearCheck1">
+                            <label class="form-check-label" for="yearCheck1">1</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input event-year-check" type="checkbox" value="2" id="yearCheck2">
+                            <label class="form-check-label" for="yearCheck2">2</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input event-year-check" type="checkbox" value="3" id="yearCheck3">
+                            <label class="form-check-label" for="yearCheck3">3</label>
+                          </div>
+                          <div class="form-check">
+                            <input class="form-check-input event-year-check" type="checkbox" value="4" id="yearCheck4">
+                            <label class="form-check-label" for="yearCheck4">4</label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <input type="hidden" id="eventYears">
+                  </div>
+    
+                  <div class="col-md-6">
+                    <label for="eventCapacity" class="form-label">Maximum Capacity</label>
+                    <input type="number" class="form-control" id="eventCapacity" min="1">
+                  </div>
+
+                  <!-- Attendance Access Restriction Options -->
+                  <div class="col-md-12">
+                    <div class="card border-0 bg-light p-3" style="border-radius: 12px; border: 1px solid rgba(0,0,0,0.08) !important;">
+                      <label class="form-label fw-bold text-primary mb-1"><i class="bi bi-shield-lock-fill me-1"></i> Attendance Access Restrictions</label>
+                      <div class="form-text small text-muted mb-3">Control which coordinators can record and modify attendance for this event.</div>
+                      
+                      <div class="row g-3">
+                        <div class="col-md-12">
+                          <label class="form-label small fw-bold text-secondary">Restriction Mode</label>
+                          <div class="d-flex flex-wrap gap-4">
+                            <div class="form-check">
+                              <input class="form-check-input" type="radio" name="accessRestrictionType" id="accessTypeAll" value="ALL_COORDINATORS" checked>
+                              <label class="form-check-label small" for="accessTypeAll">All Coordinators</label>
+                            </div>
+                            <div class="form-check">
+                              <input class="form-check-input" type="radio" name="accessRestrictionType" id="accessTypeSpecific" value="SPECIFIC_COORDINATORS">
+                              <label class="form-check-label small" for="accessTypeSpecific">Specific Coordinators Only (Tick boxes)</label>
+                            </div>
+                            <div class="form-check">
+                              <input class="form-check-input" type="radio" name="accessRestrictionType" id="accessTypeDept" value="DEPT_ONLY">
+                              <label class="form-check-label small" for="accessTypeDept">Department Coordinators Only</label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Specific Coordinators Tick Box Container -->
+                        <div class="col-md-12 d-none" id="specificCoordinatorsContainer">
+                          <label class="form-label small fw-bold text-dark mb-1">Select Allowed Coordinators (Tick boxes)</label>
+                          <div class="dropdown">
+                            <button class="btn btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center bg-white" type="button" id="allowedCoordsDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                              <span id="allowedCoordsDropdownText">Select Coordinators...</span>
+                              <i class="bi bi-chevron-down"></i>
+                            </button>
+                            <div class="dropdown-menu w-100 p-2 shadow-sm" aria-labelledby="allowedCoordsDropdownBtn">
+                              <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" id="allowedCoordsSearch" placeholder="Search coordinator name/email...">
+                              </div>
+                              <div class="mb-2 pb-2 border-bottom d-flex justify-content-between">
+                                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" id="allowedCoordsSelectAll">Select All</button>
+                                <button type="button" class="btn btn-sm btn-link text-decoration-none text-danger p-0" id="allowedCoordsClearAll">Clear All</button>
+                              </div>
+                              <div id="allowedCoordsList" style="max-height: 200px; overflow-y: auto;">
+                                <div class="text-muted small p-2 text-center">Loading coordinators...</div>
+                              </div>
+                            </div>
+                          </div>
+                          <input type="hidden" id="allowedCoordinatorIds">
+                        </div>
+
+                        <!-- Allowed Department Tick Box Container -->
+                        <div class="col-md-12 d-none" id="allowedDeptsContainer">
+                          <label class="form-label small fw-bold text-dark mb-1">Select Allowed Departments (Tick boxes)</label>
+                          <div id="allowedDeptsCheckboxGroup" class="d-flex flex-wrap gap-3 bg-white p-2 rounded border">
+                            <!-- Populated dynamically -->
+                          </div>
+                          <input type="hidden" id="allowedDepartments">
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Enable Spot Registration Option -->
+                  <div class="col-md-6">
+                    <div class="card border-0 bg-light p-3 h-100" style="border-radius: 12px; border: 1px solid rgba(0,0,0,0.08) !important;">
+                      <div class="form-check form-switch fs-6 mb-1">
+                        <input class="form-check-input" type="checkbox" id="eventAllowSpotRegStep1" value="Yes" checked>
+                        <label class="form-check-label fw-bold text-dark" for="eventAllowSpotRegStep1"><i class="bi bi-person-plus-fill me-1 text-primary"></i> Enable Spot Registrations</label>
+                      </div>
+                      <div class="form-text small text-muted">Allows unregistered/guest students to register on-the-spot during attendance/registration.</div>
+                    </div>
+                  </div>
+
+                  <!-- Creation Status (Only visible on Create) -->
+                  <div class="col-md-6" id="eventCreationActionGroup">
+                    <label for="eventCreationAction" class="form-label">Action <span class="text-danger">*</span></label>
+                    <select class="form-select" id="eventCreationAction">
+                      <option value="Upcoming">Create Now</option>
+                      <option value="Draft" selected>Schedule (Draft)</option>
+                    </select>
+                  </div>
+                </div>
+  
+                <!-- Current Status Badge (Only visible on Edit) -->
+                <div class="col-md-6 d-none" id="eventCurrentStatusGroup">
+                  <label class="form-label">Current Status</label>
+                  <div id="eventCurrentStatusBadge" class="fs-6 d-block pt-1">
+                    <!-- Injected via JS -->
+                  </div>
+                </div>
+  
+                <!-- Lifecycle Preview & Dynamic Fields (Only in Edit mode) -->
+                <div class="col-md-12 d-none" id="lifecyclePreviewContainer">
+                  <div class="card border-primary bg-light">
+                    <div class="card-body py-2 px-3">
+                      <h6 class="card-title text-primary fw-bold mb-1"><i class="bi bi-info-circle-fill me-1"></i>Lifecycle Preview</h6>
+                      <p class="card-text small mb-2" id="lifecyclePreviewText">No status change.</p>
+                      
+                      <div id="stopReasonGroup" class="d-none mb-2">
+                        <label for="stopReason" class="form-label small fw-bold mb-1">Stop Reason <span class="text-danger">*</span></label>
+                        <textarea class="form-control form-control-sm" id="stopReason" rows="2" minlength="10" maxlength="500"></textarea>
+                        <div class="invalid-feedback">A reason between 10 and 500 characters is required.</div>
+                      </div>
+  
+                      <div id="resumeReasonGroup" class="d-none mb-2">
+                        <label for="resumeReason" class="form-label small fw-bold mb-1">Resume Reason (Optional)</label>
+                        <textarea class="form-control form-control-sm" id="resumeReason" rows="2" maxlength="500"></textarea>
+                      </div>
+  
+                      <div id="cancelReasonGroup" class="d-none mb-2">
+                        <label for="cancelReason" class="form-label small fw-bold mb-1">Cancel Reason <span class="text-danger">*</span></label>
+                        <textarea class="form-control form-control-sm" id="cancelReason" rows="2" minlength="10" maxlength="500"></textarea>
+                        <div class="invalid-feedback">A reason between 10 and 500 characters is required.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Timeline Section for View Modal -->
+                <div class="col-md-12 d-none mt-4" id="eventTimelineContainer">
+                  <h6 class="border-bottom pb-2 mb-3 fw-bold text-primary"><i class="bi bi-clock-history me-2"></i>Event Timeline</h6>
+                  <div class="timeline position-relative ps-3 border-start border-2 border-primary" id="eventTimelineList">
+                    <!-- Timeline items populated dynamically -->
+                  </div>
+                </div>
+              </div>
+            </div> <!-- End Step 1 Panel -->
+
+            <!-- Step 2 Panel: Registration Settings -->
+            <div id="eventModalStep2" class="wizard-step-panel d-none">
+              <div class="row g-3">
+                <div class="col-md-12 mb-2">
+                  <div class="form-check form-switch fs-6">
+                    <input class="form-check-input" type="checkbox" id="eventEnableRegistration" value="Yes">
+                    <label class="form-check-label fw-bold text-dark" for="eventEnableRegistration">Enable Student Self-Registration</label>
+                  </div>
+                  <div class="form-text small text-muted">Allow students to register online for this event.</div>
+                </div>
+
+                <!-- Registration Settings Collapsible Area -->
+                <div class="col-md-12 d-none" id="eventRegSettingsContainer">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="eventRegOpen" class="form-label">Registration Open Date &amp; Time <span class="text-danger">*</span></label>
+                      <input type="datetime-local" class="form-control" id="eventRegOpen">
+                      <div class="invalid-feedback">Registration Open Date &amp; Time is required.</div>
+                    </div>
+                    <div class="col-md-6">
+                      <label for="eventRegClose" class="form-label">Registration Close Date &amp; Time <span class="text-danger">*</span></label>
+                      <input type="datetime-local" class="form-control" id="eventRegClose">
+                      <div class="invalid-feedback">Registration Close Date &amp; Time is required.</div>
+                    </div>
+
+                    <div class="col-md-6">
+                      <label for="eventRegMaxSeats" class="form-label">Maximum Seats <span class="text-danger">*</span></label>
+                      <input type="number" class="form-control" id="eventRegMaxSeats" min="1" placeholder="e.g. 120">
+                      <div class="invalid-feedback">Please enter a valid seat limit (minimum 1).</div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch pt-4">
+                        <input class="form-check-input" type="checkbox" id="eventAllowSpotReg" value="Yes" checked>
+                        <label class="form-check-label fw-bold text-secondary" for="eventAllowSpotReg">Allow Spot Registration</label>
+                      </div>
+                      <div class="form-text small text-muted">Allows students not in the system to register as guests.</div>
+                    </div>
+
+                    <!-- Custom Fields Builder -->
+                    <div class="col-md-12 border-top pt-3 mt-3">
+                      <label class="form-label fw-bold text-dark"><i class="bi bi-ui-checks me-1"></i>Registration Form Fields</label>
+                      
+                      <!-- Default list -->
+                      <div class="card bg-light border-0 p-3 mb-3" style="border-radius: 12px;">
+                        <span class="small fw-semibold text-muted d-block mb-2">Default Fields (Always collected):</span>
+                        <div class="d-flex flex-wrap gap-2">
+                          <span class="badge bg-secondary opacity-75 px-3 py-2 rounded-pill">Roll Number</span>
+                          <span class="badge bg-secondary opacity-75 px-3 py-2 rounded-pill">Student Name</span>
+                          <span class="badge bg-secondary opacity-75 px-3 py-2 rounded-pill">Email Address</span>
+                          <span class="badge bg-secondary opacity-75 px-3 py-2 rounded-pill">Department</span>
+                          <span class="badge bg-secondary opacity-75 px-3 py-2 rounded-pill">Year &amp; Section</span>
+                          <span class="badge bg-secondary opacity-75 px-3 py-2 rounded-pill">Phone Number</span>
+                        </div>
+                      </div>
+
+                      <!-- Custom List -->
+                      <div class="card border-primary border-opacity-25 p-3" style="border-radius: 12px;">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                          <span class="small fw-bold text-primary">Custom Fields Configuration</span>
+                          <button type="button" class="btn btn-outline-primary btn-sm" id="btnRegAddCustomField"><i class="bi bi-plus-circle me-1"></i>Add Field</button>
+                        </div>
+                        <div id="regCustomFieldsContainer" class="d-flex flex-column gap-2">
+                          <!-- Filled dynamically -->
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Terms & Conditions -->
+                    <div class="col-md-12 border-top pt-3 mt-3">
+                      <label for="eventRegTerms" class="form-label fw-bold text-dark">Terms &amp; Conditions (Optional)</label>
+                      <textarea class="form-control" id="eventRegTerms" rows="2" placeholder="e.g. By submitting this form, I agree to follow code of conduct..."></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div> <!-- End Step 2 Panel -->
+
+            <!-- Step 3 Panel: Review Details -->
+            <div id="eventModalStep3" class="wizard-step-panel d-none">
+              <div class="row g-3">
+                <div class="col-md-12">
+                  <div class="alert alert-info py-2">
+                    <i class="bi bi-info-circle-fill me-2"></i> Please review the event and registration details before finalizing.
+                  </div>
+                </div>
+                
+                <!-- Review Card -->
+                <div class="col-md-12">
+                  <div class="card border-0 shadow-sm bg-white p-3" style="border-radius: 12px;">
+                    <h5 class="fw-bold text-primary mb-3 border-bottom pb-2" id="reviewEventName">Event Name</h5>
+                    
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">START DATE &amp; TIME</span>
+                        <span class="fw-semibold text-dark" id="reviewEventStart">--</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">END DATE &amp; TIME</span>
+                        <span class="fw-semibold text-dark" id="reviewEventEnd">--</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">VENUE / LOCATION</span>
+                        <span class="fw-semibold text-dark" id="reviewEventVenue">--</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">COORDINATOR</span>
+                        <span class="fw-semibold text-dark" id="reviewEventCoord">--</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">TARGET DEPARTMENTS</span>
+                        <span class="fw-semibold text-dark" id="reviewEventDepts">--</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">CAPACITY LIMIT</span>
+                        <span class="fw-semibold text-dark" id="reviewEventCapacity">--</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">ATTENDANCE ACCESS RESTRICTION</span>
+                        <span class="fw-semibold text-primary" id="reviewEventAccessRestriction">All Coordinators</span>
+                      </div>
+                      <div class="col-md-6">
+                        <span class="small text-muted d-block">ATTENDANCE TYPE &amp; CONFIGURATION</span>
+                        <span class="fw-semibold text-dark" id="reviewEventAttendanceType">Fixed</span>
+                      </div>
+                      
+                      <!-- Registration Block -->
+                      <div class="col-md-12 border-top pt-3 mt-3">
+                        <h6 class="fw-bold text-dark mb-2">Registration Form Configuration</h6>
+                        <div class="row g-3">
+                          <div class="col-md-6">
+                            <span class="small text-muted d-block">REGISTRATION STATUS</span>
+                            <span id="reviewRegStatus" class="badge bg-secondary">Disabled</span>
+                          </div>
+                          <div class="col-md-6" id="reviewRegWindowCont">
+                            <span class="small text-muted d-block">REGISTRATION WINDOW</span>
+                            <span class="fw-semibold text-dark" id="reviewRegWindow">--</span>
+                          </div>
+                          <div class="col-md-6" id="reviewRegSeatsCont">
+                            <span class="small text-muted d-block">MAXIMUM SEATS</span>
+                            <span class="fw-semibold text-dark" id="reviewRegMaxSeats">--</span>
+                          </div>
+                          <div class="col-md-6" id="reviewRegSpotCont">
+                            <span class="small text-muted d-block">ALLOW SPOT REGISTRATION</span>
+                            <span class="fw-semibold text-dark" id="reviewRegSpot">--</span>
+                          </div>
+                          <div class="col-md-12" id="reviewRegFieldsCont">
+                            <span class="small text-muted d-block">CUSTOM FIELDS</span>
+                            <div class="d-flex flex-wrap gap-2 mt-1" id="reviewRegFieldsList">
+                              <!-- Dynamic badges -->
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div> <!-- End Step 3 Panel -->
+
+          </div>
+          <div class="modal-footer border-top-0 d-flex justify-content-between bg-light">
+            <div id="lifecycleActionButtons" class="d-none">
+               <button type="button" class="btn btn-primary btn-sm me-2 d-none" id="btnLifecyclePublish">Publish Event</button>
+               <button type="button" class="btn btn-dark btn-sm me-2 d-none" id="btnLifecycleStop">Stop Event</button>
+               <button type="button" class="btn btn-danger btn-sm d-none" id="btnLifecycleCancel">Cancel Event</button>
+            </div>
+            <div class="d-flex align-items-center">
+              <button type="button" class="btn btn-secondary text-white border-0 px-4 me-2" id="btnWizardCancel" data-bs-dismiss="modal">Close</button>
+              <button type="button" class="btn btn-outline-secondary px-4 me-2 d-none" id="btnWizardPrev">Previous</button>
+              <button type="button" class="btn btn-primary px-4 shadow-sm" id="btnWizardNext">Next</button>
+              <button type="submit" class="btn btn-success px-4 shadow-sm d-none" id="eventSaveBtn" form="eventForm">
+                <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true" id="eventSaveSpinner"></span>
+                <span id="eventSaveBtnText">Create Event</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Event Modal -->
+  <div class="modal fade" id="eventDeleteModal" tabindex="-1" aria-labelledby="eventDeleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="eventDeleteModalLabel">Confirm Delete</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to permanently delete this event?</p>
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> Deleting this event may affect attendance history. Delete only after confirmation.
+          </div>
+          <input type="hidden" id="deleteEventId">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="eventConfirmDeleteBtn">
+            <span class="spinner-border spinner-border-sm d-none" id="eventDeleteSpinner" role="status" aria-hidden="true"></span>
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+  <!-- Manage Participants Modal -->
+  <div class="modal fade" id="manageParticipantsModal" tabindex="-1" aria-labelledby="manageParticipantsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="manageParticipantsModalLabel">Manage Participants - <span id="mpEventName"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="mpEventId">
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <div class="p-3 bg-light rounded text-center h-100">
+                <h6 class="text-muted mb-1 small">Participant Summary</h6>
+                <h4 class="mb-0 fw-bold text-primary" id="mpParticipantCounter">Loading...</h4>
+              </div>
+            </div>
+            <div class="col-md-8" id="mpAddContainer">
+              <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                  <h6 class="card-title text-muted small">Add Participant</h6>
+                  <div class="input-group mb-2">
+                    <input type="text" id="mpSearchRoll" class="form-control" placeholder="Enter Roll Number...">
+                    <button class="btn btn-primary" id="mpAddBtn" type="button">Add Participant</button>
+                  </div>
+                  <div id="mpEligibilityMessage" class="small mt-1 fw-bold"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="mpTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Roll Number</th>
+                  <th>Name</th>
+                  <th>Department</th>
+                  <th>Year</th>
+                  <th>Section</th>
+                  <th>Status</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="mpTableBody">
+                <tr><td colspan="7" class="text-center py-3">Loading participants...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer border-top-0 bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Details & Day Timeline Modal -->
+  <div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-labelledby="eventDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header bg-dark text-white py-3">
+          <div>
+            <h5 class="modal-title fw-bold" id="eventDetailsTitle">Event Details</h5>
+            <span class="badge bg-primary me-2" id="eventDetailsStatusBadge">Ongoing</span>
+            <small class="text-white-50" id="eventDetailsIdSub">ID: EVT-000</small>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4 bg-light">
+          
+          <!-- Section 1: Event Header & Meta Summary -->
+          <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+              <div class="row g-3">
+                <div class="col-md-3 border-end">
+                  <div class="text-muted small fw-semibold">START & END DATE</div>
+                  <div class="fw-bold text-dark fs-6" id="edDatesLabel">--</div>
+                  <div class="small text-muted" id="edTotalDaysLabel">Duration: 1 Day</div>
+                </div>
+                <div class="col-md-3 border-end">
+                  <div class="text-muted small fw-semibold">DEPARTMENT</div>
+                  <div class="fw-bold text-dark fs-6" id="edDeptLabel">--</div>
+                  <div class="small text-muted" id="edVenueLabel">Venue: --</div>
+                </div>
+                <div class="col-md-3 border-end">
+                  <div class="text-muted small fw-semibold">COORDINATOR</div>
+                  <div class="fw-bold text-dark fs-6" id="edCoordLabel">--</div>
+                  <div class="small text-muted" id="edCapLabel">Capacity: Unlimited</div>
+                </div>
+                <div class="col-md-3">
+                  <div class="text-muted small fw-semibold">OVERALL ATTENDANCE</div>
+                  <div class="d-flex align-items-center mt-1">
+                    <div class="progress flex-grow-1 me-2" style="height: 10px;">
+                      <div class="progress-bar bg-success" id="edProgressBar" role="progressbar" style="width: 0%;"></div>
+                    </div>
+                    <span class="fw-bold text-success" id="edProgressText">0%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Day Timeline Component -->
+          <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+              <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-calendar-range me-2 text-primary"></i>Event Day Timeline</h6>
+              <small class="text-muted">Tap an active or completed day to view day-wise attendance</small>
+            </div>
+            <div class="card-body pt-0 pb-4">
+              <div class="d-flex flex-wrap gap-2" id="eventDayTimelineContainer">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3 disabled">Loading timeline...</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 3: Day-wise Attendance Summary & Student List -->
+          <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+              <div>
+                <h6 class="mb-0 fw-bold text-dark" id="selectedDayTitle"><i class="bi bi-person-check me-2 text-success"></i>Day 1 Attendance</h6>
+                <span class="small text-muted" id="selectedDayDateSub">Date: --</span>
+              </div>
+              <div class="d-flex gap-2">
+                <input type="text" id="edStudentSearchInput" class="form-control form-control-sm" placeholder="Search roll no or name..." style="width: 220px;">
+              </div>
+            </div>
+            <div class="card-body p-0">
+              
+              <!-- Day Summary Stat Cards -->
+              <div class="row g-0 border-top border-bottom bg-light py-3 px-4 text-center">
+                <div class="col">
+                  <div class="small text-muted">REGISTERED</div>
+                  <div class="fs-5 fw-bold text-dark" id="dayStatRegistered">0</div>
+                </div>
+                <div class="col border-start">
+                  <div class="small text-muted">MARKED TOTAL</div>
+                  <div class="fs-5 fw-bold text-primary" id="dayStatMarked">0</div>
+                </div>
+                <div class="col border-start">
+                  <div class="small text-muted">PRESENT</div>
+                  <div class="fs-5 fw-bold text-success" id="dayStatPresent">0</div>
+                </div>
+                <div class="col border-start">
+                  <div class="small text-muted">ABSENT</div>
+                  <div class="fs-5 fw-bold text-danger" id="dayStatAbsent">0</div>
+                </div>
+                <div class="col border-start">
+                  <div class="small text-muted">ATTENDANCE %</div>
+                  <div class="fs-5 fw-bold text-info" id="dayStatPercentage">0%</div>
+                </div>
+              </div>
+
+              <!-- Day Student Roster Table -->
+              <div class="table-responsive" style="max-height: 350px;">
+                <table class="table table-hover align-middle mb-0">
+                  <thead class="table-light sticky-top">
+                    <tr>
+                      <th>Roll Number</th>
+                      <th>Student Name</th>
+                      <th>Department</th>
+                      <th>Year</th>
+                      <th>Section</th>
+                      <th>Status</th>
+                      <th>Scan Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody id="edAttendanceTableBody">
+                    <tr><td colspan="7" class="text-center py-4 text-muted">Select a day above to view attendance records</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 3.5: Registration Settings Details -->
+          <div class="card border-0 shadow-sm mb-4" id="edRegistrationSection">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+              <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-gear-fill me-2 text-warning"></i>Registration Settings</h6>
+              <span class="badge bg-secondary" id="edRegEnabledBadge">Disabled</span>
+            </div>
+            <div class="card-body pt-0">
+              <div class="row g-3" id="edRegDetailsContainer">
+                <div class="col-md-4">
+                  <span class="small text-muted d-block">REGISTRATION WINDOW</span>
+                  <strong class="text-dark small" id="edRegWindowLabel">--</strong>
+                </div>
+                <div class="col-md-4">
+                  <span class="small text-muted d-block">MAXIMUM SEATS</span>
+                  <strong class="text-dark" id="edRegMaxSeatsLabel">--</strong>
+                </div>
+                <div class="col-md-4">
+                  <span class="small text-muted d-block">SPOT REGISTRATION</span>
+                  <strong class="text-dark" id="edRegSpotLabel">--</strong>
+                </div>
+                <div class="col-md-12 border-top pt-3" id="edRegFieldsCont">
+                  <span class="small text-muted d-block">REGISTRATION FIELDS</span>
+                  <div class="d-flex flex-wrap gap-2 mt-1" id="edRegFieldsList">
+                    <!-- Dynamic badges -->
+                  </div>
+                </div>
+                <div class="col-md-12 border-top pt-3" id="edRegTermsCont" style="display: none;">
+                  <span class="small text-muted d-block">TERMS &amp; CONDITIONS</span>
+                  <p class="small text-dark mb-0" id="edRegTermsText" style="white-space: pre-line;">--</p>
+                </div>
+                <div class="col-md-12 border-top pt-3" id="edRegUrlCont" style="display: none;">
+                  <span class="small text-muted d-block">REGISTRATION URL</span>
+                  <div class="input-group input-group-sm mt-1" style="max-width: 600px;">
+                    <input type="text" class="form-control" id="edRegUrlInput" readonly>
+                    <button class="btn btn-outline-primary" type="button" id="edBtnCopyRegUrl"><i class="bi bi-clipboard me-1"></i>Copy URL</button>
+                    <a class="btn btn-primary" href="#" target="_blank" id="edLinkOpenRegUrl"><i class="bi bi-box-arrow-up-right"></i> Open Link</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+ 
+          <!-- Section 4: Event & Day Reports Generator -->
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+              <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-file-earmark-bar-graph me-2 text-danger"></i>Event Reports & Export</h6>
+              <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-danger" id="btnExportPDF"><i class="bi bi-file-earmark-pdf me-1"></i>PDF Report</button>
+                <button type="button" class="btn btn-outline-success" id="btnExportExcel"><i class="bi bi-file-earmark-excel me-1"></i>Excel (XLSX)</button>
+                <button type="button" class="btn btn-outline-secondary" id="btnExportCSV"><i class="bi bi-file-earmark-text me-1"></i>CSV</button>
+                <button type="button" class="btn btn-outline-dark" id="btnPrintReport"><i class="bi bi-printer me-1"></i>Print</button>
+              </div>
+            </div>
+            <div class="card-body pt-0">
+              <div class="d-flex align-items-center gap-4">
+                <span class="small fw-semibold text-muted">Report Target Scope:</span>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="reportScope" id="scopeSelectedDay" value="DAY" checked>
+                  <label class="form-check-label small" for="scopeSelectedDay">Currently Selected Day Only</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="reportScope" id="scopeEntireEvent" value="EVENT">
+                  <label class="form-check-label small" for="scopeEntireEvent">Entire Event (All Days Summary)</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="modal-footer border-top bg-white">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<style>
+.timeline-item {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -1.4rem;
+  top: 0.3rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--bs-primary);
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px var(--bs-primary);
+}
+</style>
+
+<?!= include('events_css'); ?>
+<?!= include('events_js'); ?>

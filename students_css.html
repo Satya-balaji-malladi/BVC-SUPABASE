@@ -1,0 +1,55 @@
+<style>
+/* Students Module Premium Dashboard Styles */
+.module-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.table-responsive {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+/* Timeline Small Styles for Student Details Modal */
+.timeline-small {
+  border-left: 2px solid #e2e8f0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.timeline-small .list-group-item {
+  border: none;
+  position: relative;
+}
+
+.timeline-small .list-group-item::before {
+  content: "";
+  position: absolute;
+  left: calc(-1.5rem - 6px);
+  top: 14px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #cbd5e1;
+}
+
+.timeline-small .list-group-item:first-child::before {
+  background: #10b981;
+  box-shadow: 0 0 0 2px #a7f3d0;
+}
+</style>

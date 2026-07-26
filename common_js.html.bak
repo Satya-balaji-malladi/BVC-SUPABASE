@@ -1,0 +1,320 @@
+<script>
+/**
+ * ==========================================
+ * GLOBAL APPLICATION NAMESPACE
+ * ==========================================
+ * Centralized, scalable, and lightweight architecture.
+ */
+window.App = {
+  Version: '1.0.0',
+  Environment: (typeof google !== 'undefined' && google.script) ? 'production' : 'development',
+  Features: { enableCache: true, enableMockFallback: true },
+  
+  // Storage Architecture (Interface)
+  Storage: {
+    get: function(key) { return localStorage.getItem(key); },
+    set: function(key, val) { localStorage.setItem(key, val); },
+    remove: function(key) { localStorage.removeItem(key); }
+  },
+
+  // Events Architecture (Pub/Sub pattern interface)
+  Events: {
+    _listeners: {},
+    on: function(event, callback) {
+      if (!this._listeners[event]) this._listeners[event] = [];
+      this._listeners[event].push(callback);
+    },
+    emit: function(event, data) {
+      if (this._listeners[event]) {
+        this._listeners[event].forEach(cb => cb(data));
+      }
+    }
+  },
+
+  // Config & Constants (No hardcoded values)
+  Constants: {
+    MODULES: { DASHBOARD: 'dashboard', USERS: 'users', STUDENTS: 'students', EVENTS: 'events', ATTENDANCE: 'attendance', REPORTS: 'reports' },
+    ROLES: { ADMIN: 'Admin', SUPER_ADMIN: 'Super Admin', COORDINATOR: 'Coordinator' },
+    EVENT_STATUS: { UPCOMING: 'Upcoming', ACTIVE: 'Active', COMPLETED: 'Completed', CANCELLED: 'Cancelled' },
+    ATTENDANCE_STATUS: { PRESENT: 'Present', ABSENT: 'Absent' },
+    MSGS: { ERR_SERVER: 'Server error occurred', ERR_NOT_FOUND: 'Method not found' }
+  },
+
+  // State (Minimal footprint)
+  State: {
+    activeModule: null,
+    currentUser: null
+  },
+
+  // Utils
+  Utils: {
+    escapeHtml: function(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    },
+    formatDate: function(dateStr) {
+      if (!dateStr) return 'N/A';
+      return new Date(dateStr).toLocaleDateString();
+    }
+  },
+
+  // Logger
+  Logger: {
+    info: function(...args) { console.info('[INFO]', ...args); },
+    warn: function(...args) { console.warn('[WARN]', ...args); },
+    error: function(...args) { console.error('[ERROR]', ...args); }
+  },
+
+  // Loading Manager (Reference Counting to prevent flicker)
+  LoadingManager: {
+    _activeRequests: 0,
+    show: function() {
+      this._activeRequests++;
+      if (this._activeRequests === 1) {
+        const loader = document.getElementById('page-loader');
+        if (loader) loader.classList.remove('d-none');
+      }
+    },
+    hide: function(force = false) {
+      if (force) this._activeRequests = 0;
+      else if (this._activeRequests > 0) this._activeRequests--;
+      
+      if (this._activeRequests === 0) {
+        const loader = document.getElementById('page-loader');
+        if (loader) loader.classList.add('d-none');
+      }
+    }
+  },
+
+  // Error Handler
+  ErrorHandler: {
+    handle: function(error, customMsg) {
+      App.Logger.error(error);
+      App.LoadingManager.hide(true); // Force hide loader on major error
+      const msg = customMsg || error.message || App.Constants.MSGS.ERR_SERVER;
+      App.UI.showError(msg);
+    }
+  },
+
+  // UI Singleton
+  UI: {
+    _confirmModal: null,
+    init: function() {
+      const el = document.getElementById('confirmationModal');
+      if (el && typeof bootstrap !== 'undefined') this._confirmModal = new bootstrap.Modal(el);
+    },
+    _toast: function(msg, type) {
+      const c = document.getElementById('toast-container');
+      if (!c) return;
+      const id = 'toast-' + Date.now();
+      let icon = 'bi-check-circle', bg = 'text-bg-success';
+      if (type === 'error') { icon = 'bi-x-circle'; bg = 'text-bg-danger'; }
+      else if (type === 'info') { icon = 'bi-info-circle'; bg = 'text-bg-info'; }
+      c.insertAdjacentHTML('beforeend', `<div id="${id}" class="toast align-items-center ${bg} border-0 shadow" role="alert"><div class="d-flex"><div class="toast-body"><i class="bi ${icon} me-2"></i><span>${App.Utils.escapeHtml(msg)}</span></div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`);
+      const el = document.getElementById(id);
+      const t = new bootstrap.Toast(el, { delay: 3000 });
+      t.show();
+      el.addEventListener('hidden.bs.toast', () => el.remove());
+    },
+    showSuccess: function(msg) { this._toast(msg, 'success'); },
+    showError: function(msg) { this._toast(msg, 'error'); },
+    showInfo: function(msg) { this._toast(msg, 'info'); },
+    updateBreadcrumb: function(parent, current) {
+      const p = document.getElementById('breadcrumb-parent');
+      if (p) p.innerText = parent;
+      const h = document.getElementById('page-heading');
+      if (h) h.innerText = current;
+      const t = document.getElementById('current-page-title');
+      if (t) t.innerText = current;
+    }
+  },
+
+  // Cache (Targeted caching, currently for Dashboard)
+  Cache: {
+    _store: {},
+    get: function(key) { return this._store[key] || null; },
+    set: function(key, data) { this._store[key] = data; },
+    clear: function(key) { if (key) delete this._store[key]; else this._store = {}; }
+  },
+
+  // Session (Basic role guards interface)
+  Session: {
+    hasPermission: function(moduleName) {
+      // Basic guard interface for future role matrix implementation
+      return true; 
+    }
+  },
+
+  // API Layer (Centralized google.script.run wrapper)
+  API: {
+    _call: function(serverMethod, ...args) {
+      console.log("FRONTEND STEP 2.1: _call started for", serverMethod);
+      return new Promise((resolve, reject) => {
+        console.log("FRONTEND STEP 2.2: inside promise executor");
+        try {
+          App.LoadingManager.show();
+        } catch (e) {
+          console.error("FRONTEND STEP 2.3: App.LoadingManager.show crashed", e);
+        }
+        
+        console.log("FRONTEND STEP 2.4: App.Environment =", App.Environment);
+        if (App.Environment === 'production') {
+          console.log("FRONTEND STEP 2.5: checking typeof google.script.run");
+          if (typeof google.script.run[serverMethod] === 'function') {
+            console.log("FRONTEND STEP 2.6: calling google.script.run." + serverMethod);
+            google.script.run
+              .withSuccessHandler((res) => {
+                App.LoadingManager.hide();
+                console.log("STEP 1 - Raw res:", res);
+                let resolvedData = null;
+                if (Array.isArray(res)) {
+                  resolvedData = res;
+                } else if (res && res.success === false) {
+                  return reject(new Error(res.message || 'Operation failed'));
+                } else if (res && Array.isArray(res.data)) {
+                  resolvedData = res.data;
+                } else if (res && res.data !== undefined) {
+                  resolvedData = res.data;
+                } else {
+                  resolvedData = res;
+                }
+                console.log("STEP 1 - Resolved Response:", resolvedData);
+                resolve(resolvedData);
+              })
+              .withFailureHandler((err) => {
+                App.LoadingManager.hide();
+                reject(err);
+              })
+              [serverMethod](...args);
+          } else {
+            App.LoadingManager.hide();
+            reject(new Error(`${App.Constants.MSGS.ERR_NOT_FOUND}: ${serverMethod}`));
+          }
+        } else {
+          // Fallback mock
+          setTimeout(() => {
+            App.LoadingManager.hide();
+            resolve(this._getMock(serverMethod, ...args));
+          }, 500);
+        }
+      });
+    },
+    getDashboardSummary: function() { return this._call('getDashboardSummary'); },
+    getAllEvents: function() { return this._call('getAllEvents'); },
+    getAllUsers: function() { return this._call('getAllUsers'); },
+    createUser: function(userData) { return this._call('createUser', userData); },
+    getAllStudents: function() { return this._call('getAllStudents'); },
+    getAttendanceByEvent: function(eventId) { return this._call('getAttendanceByEvent', eventId); },
+    _getMock: function(m) {
+      if (m === 'getDashboardSummary') return { report: { totalStudents: 1250, totalEvents: 45, totalAttendance: 15420, totalPresent: 14200, totalAbsent: 1220, attendancePercentage: 92.08 } };
+      if (m === 'getAllEvents') return [{ event_id: 'EVT-01', event_name: 'Tech Symposium', event_date: '2026-07-15', status: App.Constants.EVENT_STATUS.COMPLETED, coordinator_id: 'USR-01' }];
+      if (m === 'getAllUsers') return [{ user_id: 'USR-01', full_name: 'John Doe', role: App.Constants.ROLES.COORDINATOR }];
+      if (m === 'getAllStudents') return [{ roll_number: 'CSE001', student_name: 'Alice', department: 'CSE' }];
+      if (m === 'getAttendanceByEvent') return [{ roll_number: 'CSE001', event_id: 'EVT-01', status: App.Constants.ATTENDANCE_STATUS.PRESENT, timestamp: '2026-07-15 10:00' }];
+      return {};
+    }
+  },
+
+  // Router
+  Router: {
+    navigate: function(pageName) {
+      if (!pageName || pageName === 'logout') return;
+      if (!App.Session.hasPermission(pageName)) {
+        App.UI.showError('Access Denied');
+        return;
+      }
+      
+      // Cleanup previous module
+      if (App.State.activeModule && App.Modules[App.State.activeModule] && typeof App.Modules[App.State.activeModule].destroy === 'function') {
+        App.Modules[App.State.activeModule].destroy();
+      }
+
+      document.getElementById('module-empty').classList.add('d-none');
+      document.querySelectorAll('.app-module').forEach(el => el.classList.add('d-none'));
+      
+      const targetModule = document.getElementById(`module-${pageName}`);
+      if (targetModule) {
+        targetModule.classList.remove('d-none');
+        App.State.activeModule = pageName;
+        const mod = App.Modules[pageName];
+        if (mod) {
+          if (typeof mod.init === 'function') mod.init();
+        } else {
+          App.Logger.warn(`Module ${pageName} logic not found.`);
+        }
+      } else {
+        App.ErrorHandler.handle(new Error(`Template module-${pageName} missing.`));
+      }
+    }
+  },
+
+  // UI Components Architecture (Interfaces only, as requested)
+  Components: {
+    Table: { render: function(containerId, config) { /* implementation pending */ } },
+    Modal: { create: function(config) { /* implementation pending */ } },
+    Pagination: { render: function(containerId, config) { /* implementation pending */ } },
+    Search: { bind: function(inputId, callback) { /* implementation pending */ } },
+    Filters: { render: function(containerId, config) { /* implementation pending */ } }
+  },
+
+  // Modules Registry
+  Modules: {}
+};
+
+/**
+ * ==========================================
+ * CORE EVENT LISTENERS
+ * ==========================================
+ */
+document.addEventListener('DOMContentLoaded', () => {
+  App.UI.init();
+  const body = document.body;
+  
+  // Layout toggles
+  document.getElementById('toggle-sidebar')?.addEventListener('click', () => {
+    if (window.innerWidth < 768) body.classList.add('sidebar-open');
+    else body.classList.toggle('sidebar-collapsed');
+  });
+  
+  document.getElementById('close-sidebar')?.addEventListener('click', () => body.classList.remove('sidebar-open'));
+  
+  // Sidebar auto-close on mobile outside click
+  document.addEventListener('click', (e) => {
+    if (window.innerWidth < 768 && body.classList.contains('sidebar-open')) {
+      const sidebar = document.getElementById('sidebar');
+      const toggleBtn = document.getElementById('toggle-sidebar');
+      if (!sidebar.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) body.classList.remove('sidebar-open');
+    }
+  });
+
+  // Global Navigation Delegation
+  document.querySelectorAll('.sidebar-nav .nav-link[data-page]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const pageName = this.getAttribute('data-page');
+      if (!pageName || pageName === 'logout') return;
+      document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.remove('active'));
+      this.classList.add('active');
+      App.UI.updateBreadcrumb('Home', this.querySelector('.nav-text').innerText);
+      if (window.innerWidth < 768) body.classList.remove('sidebar-open');
+      App.Router.navigate(pageName);
+    });
+  });
+
+  // Live Clock
+  setInterval(() => {
+    const d = document.getElementById('current-date');
+    const t = document.getElementById('current-time');
+    if (d && t) {
+      const now = new Date();
+      d.innerText = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      t.innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+  }, 1000);
+
+  // Boot default route
+  App.Router.navigate(App.Constants.MODULES.DASHBOARD);
+});
+</script>

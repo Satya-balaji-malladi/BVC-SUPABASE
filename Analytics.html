@@ -1,0 +1,262 @@
+<!-- Premium Analytics Dashboard Component HTML -->
+<style>
+  /* Premium Visual Aesthetics for Analytics Dashboard */
+  .analytics-kpi-card {
+    border: none;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .analytics-kpi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  }
+  .analytics-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+  }
+  .kpi-primary::before { background: linear-gradient(90deg, #4f46e5, #6366f1); }
+  .kpi-success::before { background: linear-gradient(90deg, #10b981, #34d399); }
+  .kpi-warning::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+  .kpi-info::before { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+
+  .analytics-card {
+    border: none;
+    border-radius: 24px;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03);
+    transition: box-shadow 0.3s ease;
+  }
+  .analytics-card:hover {
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
+  }
+  
+  .trend-badge {
+    padding: 0.35rem 0.65rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .chart-canvas-container {
+    position: relative;
+    width: 100%;
+    height: 280px;
+  }
+
+  .leaderboard-table th {
+    background: #f8fafc;
+    border: none;
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+  }
+  
+  .leaderboard-table td {
+    padding: 1rem 0.75rem;
+    vertical-align: middle;
+  }
+
+  .rank-badge {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 0.85rem;
+  }
+  .rank-1 { background: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+  .rank-2 { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+  .rank-3 { background: #ffedd5; color: #ea580c; border: 1px solid #fed7aa; }
+  .rank-other { background: #ffffff; color: #94a3b8; border: 1px solid #f1f5f9; }
+
+  /* Premium Loader Skeletons */
+  .skeleton-glow {
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+  }
+  @keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>
+
+<div class="container-fluid py-2" id="analyticsModuleContainer">
+  <!-- Analytics Control Bar -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h4 class="fw-bold text-dark mb-1">Executive Analytics Dashboard</h4>
+      <p class="text-muted mb-0 small">Visual metrics, distribution models, and leaderboard logs</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-outline-secondary" id="analyticsExportBtn" title="Export CSV Data"><i class="bi bi-file-earmark-arrow-down me-2"></i>Export Dataset</button>
+      <button class="btn btn-primary" id="analyticsRefreshBtn"><i class="bi bi-arrow-clockwise me-1"></i>Refresh Dashboard</button>
+    </div>
+  </div>
+
+  <!-- Summary KPI Cards Row -->
+  <div class="row g-3 mb-4" id="analyticsSummaryRow">
+    <!-- Card 1: Total Events -->
+    <div class="col-xl-3 col-md-6">
+      <div class="card analytics-kpi-card kpi-primary h-100 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="text-muted small text-uppercase fw-bold">Total Managed Events</span>
+          <span class="p-2 bg-indigo bg-opacity-10 text-indigo rounded-circle"><i class="bi bi-calendar3 fs-5"></i></span>
+        </div>
+        <h2 class="fw-extrabold text-dark mb-1" id="kpiEvents">--</h2>
+        <div class="d-flex align-items-center small">
+          <span class="trend-badge bg-success bg-opacity-10 text-success me-2" id="kpiEventsTrend"><i class="bi bi-graph-up me-1"></i>+0%</span>
+          <span class="text-muted">vs last month</span>
+        </div>
+      </div>
+    </div>
+    <!-- Card 2: Total Registrations -->
+    <div class="col-xl-3 col-md-6">
+      <div class="card analytics-kpi-card kpi-success h-100 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="text-muted small text-uppercase fw-bold">Active Roster Size</span>
+          <span class="p-2 bg-success bg-opacity-10 text-success rounded-circle"><i class="bi bi-people-fill fs-5"></i></span>
+        </div>
+        <h2 class="fw-extrabold text-dark mb-1" id="kpiParticipants">--</h2>
+        <div class="d-flex align-items-center small">
+          <span class="trend-badge bg-success bg-opacity-10 text-success me-2" id="kpiParticipantsTrend"><i class="bi bi-graph-up me-1"></i>+0%</span>
+          <span class="text-muted">vs last month</span>
+        </div>
+      </div>
+    </div>
+    <!-- Card 3: Total Attendance Check-Ins -->
+    <div class="col-xl-3 col-md-6">
+      <div class="card analytics-kpi-card kpi-warning h-100 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="text-muted small text-uppercase fw-bold">Attendance Check-Ins</span>
+          <span class="p-2 bg-warning bg-opacity-10 text-warning rounded-circle"><i class="bi bi-qr-code-scan fs-5"></i></span>
+        </div>
+        <h2 class="fw-extrabold text-dark mb-1" id="kpiCheckins">--</h2>
+        <div class="d-flex align-items-center small">
+          <span class="trend-badge bg-success bg-opacity-10 text-success me-2" id="kpiCheckinsTrend"><i class="bi bi-graph-up me-1"></i>+0%</span>
+          <span class="text-muted">vs last month</span>
+        </div>
+      </div>
+    </div>
+    <!-- Card 4: Avg Attendance Rate -->
+    <div class="col-xl-3 col-md-6">
+      <div class="card analytics-kpi-card kpi-info h-100 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="text-muted small text-uppercase fw-bold">Overall Attendance Rate</span>
+          <span class="p-2 bg-info bg-opacity-10 text-info rounded-circle"><i class="bi bi-percent fs-5"></i></span>
+        </div>
+        <h2 class="fw-extrabold text-dark mb-1" id="kpiRate">--%</h2>
+        <div class="d-flex align-items-center small">
+          <span class="trend-badge bg-success bg-opacity-10 text-success me-2" id="kpiRateTrend"><i class="bi bi-plus me-1"></i>0.0%</span>
+          <span class="text-muted">vs last month</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Primary Visualization Analytics Row -->
+  <div class="row g-4 mb-4">
+    <!-- Chart 1: Attendance Trends Line Chart -->
+    <div class="col-lg-8">
+      <div class="card analytics-card h-100 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-graph-up text-primary me-2"></i>Attendance and Events Volume Trend</h5>
+        <div class="chart-canvas-container">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Chart 2: Performance distribution Pie/Doughnut -->
+    <div class="col-lg-4">
+      <div class="card analytics-card h-100 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-pie-chart-fill text-warning me-2"></i>Performance Tiers</h5>
+        <div class="chart-canvas-container">
+          <canvas id="performanceChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Secondary Distribution Row -->
+  <div class="row g-4 mb-4">
+    <!-- Chart 3: Department wise bar chart -->
+    <div class="col-md-6 col-lg-4">
+      <div class="card analytics-card h-100 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-building-fill text-success me-2"></i>Department Wise Metrics</h5>
+        <div class="chart-canvas-container">
+          <canvas id="departmentChart"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Chart 4: Event wise comparative horizontal chart -->
+    <div class="col-md-6 col-lg-4">
+      <div class="card analytics-card h-100 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-bar-chart-line-fill text-info me-2"></i>Event Performance Compare</h5>
+        <div class="chart-canvas-container">
+          <canvas id="eventChart"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Chart 5: Check in patterns hourly clock line -->
+    <div class="col-lg-4">
+      <div class="card analytics-card h-100 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-clock-fill text-indigo me-2"></i>Peak Hourly Check-Ins</h5>
+        <div class="chart-canvas-container">
+          <canvas id="patternsChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Distribution and Leaderboard Row -->
+  <div class="row g-4">
+    <!-- Chart 6: Defaulters per department bar chart -->
+    <div class="col-lg-5">
+      <div class="card analytics-card h-100 p-4">
+        <h5 class="fw-bold text-dark mb-3"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Defaulters (<75%) Distribution</h5>
+        <div class="chart-canvas-container">
+          <canvas id="defaulterChart"></canvas>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Top Performers Leaderboard -->
+    <div class="col-lg-7">
+      <div class="card analytics-card h-100 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold text-dark mb-0"><i class="bi bi-trophy-fill text-warning me-2"></i>Top Attendance Leaderboard</h5>
+          <span class="badge bg-light text-dark font-monospace fw-semibold px-2 py-1">TOP 10</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle leaderboard-table mb-0" id="leaderboardTable">
+            <thead>
+              <tr>
+                <th style="width: 60px;">Rank</th>
+                <th>Student</th>
+                <th>Department</th>
+                <th class="text-end">Events Attended</th>
+                <th class="text-end" style="width: 140px;">Percentage</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboardTableBody">
+              <tr><td colspan="5" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-secondary me-2"></div>Loading leaderboard...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?!= include('analytics_js'); ?>

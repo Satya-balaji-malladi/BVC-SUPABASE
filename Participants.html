@@ -1,0 +1,280 @@
+<div class="card h-100 border-0 shadow-sm module-card">
+  <!-- Stats Section -->
+  <div class="card-header bg-white border-bottom-0 pt-4 px-4">
+    <div class="row g-3 mb-4" id="participants-stats-container">
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center border-start border-primary border-4 shadow-sm">
+          <h6 class="text-muted mb-1 small text-uppercase fw-bold">Total Registered</h6>
+          <h3 class="mb-0 fw-bold text-dark" id="participants-stat-total">0</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center border-start border-success border-4 shadow-sm">
+          <h6 class="text-muted mb-1 small text-uppercase fw-bold">Present (Attended)</h6>
+          <h3 class="mb-0 fw-bold text-success" id="participants-stat-present">0</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center border-start border-danger border-4 shadow-sm">
+          <h6 class="text-muted mb-1 small text-uppercase fw-bold">Absent (No-Show)</h6>
+          <h3 class="mb-0 fw-bold text-danger" id="participants-stat-absent">0</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="p-3 bg-light rounded text-center border-start border-info border-4 shadow-sm">
+          <h6 class="text-muted mb-1 small text-uppercase fw-bold">Attendance Rate</h6>
+          <h3 class="mb-0 fw-bold text-info" id="participants-stat-rate">0%</h3>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="d-flex flex-wrap gap-2 align-items-center pb-3 border-bottom">
+      <div style="flex: 1 1 200px; min-width: 150px;">
+        <div class="input-group">
+          <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+          <input type="text" id="participants-search-input" class="form-control border-start-0" placeholder="Search roll, name...">
+        </div>
+      </div>
+      <div style="flex: 1 1 150px; min-width: 130px;">
+        <select id="participants-event-filter" class="form-select">
+          <option value="">All Events</option>
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div style="flex: 1 1 120px; min-width: 100px;">
+        <select id="participants-dept-filter" class="form-select">
+          <option value="">All Depts</option>
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div style="flex: 1 1 100px; min-width: 90px;">
+        <select id="participants-year-filter" class="form-select">
+          <option value="">All Years</option>
+          <option value="1">Year 1</option>
+          <option value="2">Year 2</option>
+          <option value="3">Year 3</option>
+          <option value="4">Year 4</option>
+        </select>
+      </div>
+      <div style="flex: 1 1 140px; min-width: 110px;">
+        <select id="participants-college-filter" class="form-select">
+          <option value="">All Colleges</option>
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div style="flex: 1 1 140px; min-width: 110px;">
+        <select id="participants-participation-filter" class="form-select">
+          <option value="">All Participation</option>
+          <option value="1">1+ Event</option>
+          <option value="2">2+ Events</option>
+          <option value="3">3+ Events</option>
+        </select>
+      </div>
+      <div style="flex: 1 1 120px; min-width: 100px;">
+        <select id="participants-attendance-filter" class="form-select">
+          <option value="">All Attendance</option>
+          <option value="Present">Present</option>
+          <option value="Absent">Absent</option>
+        </select>
+      </div>
+      <div class="d-flex gap-2 ms-auto flex-wrap">
+        <button class="btn btn-outline-danger d-none text-nowrap" id="participants-bulk-remove-btn" title="Remove Selected"><i class="bi bi-trash me-2"></i>Remove Selected</button>
+        <button class="btn btn-outline-secondary" id="participants-export-btn" title="Export CSV" data-action="export-csv"><i class="bi bi-download me-1"></i>Export</button>
+        <button class="btn btn-outline-primary" id="participants-bulk-import-btn" title="Bulk Import"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import</button>
+        <button class="btn btn-primary text-nowrap" id="participants-add-btn" data-action="add-participant"><i class="bi bi-person-plus me-2"></i>Add Participant</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card-body p-4 pt-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-4" id="participants-table">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 40px;">
+              <input type="checkbox" class="form-check-input" id="participants-select-all">
+            </th>
+            <th>Roll Number</th>
+            <th>Name</th>
+            <th>College Name</th>
+            <th>Department</th>
+            <th>Branch</th>
+            <th>Year & Sec</th>
+            <th>Event Name</th>
+            <th>Events Attended</th>
+            <th>Reg Status</th>
+            <th>Attendance</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="participants-table-body">
+          <tr><td colspan="9" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>Loading participants data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination UI -->
+    <div class="d-flex justify-content-between align-items-center mt-2">
+      <div class="d-flex align-items-center">
+        <span class="me-2 text-muted">Rows per page:</span>
+        <select id="participants-per-page" class="form-select form-select-sm" style="width: auto;">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <nav aria-label="Participants pagination">
+        <ul class="pagination mb-0" id="participants-pagination">
+          <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
+          <li class="page-item active"><a class="page-link" href="#">1</a></li>
+          <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Add Participant Modal -->
+  <div class="modal fade" id="participantModal" tabindex="-1" aria-labelledby="participantModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content border-0 shadow-lg">
+        <form id="participantForm" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold text-dark" id="participantModalLabel"><i class="bi bi-person-plus me-2 text-primary"></i>Add Participant</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body py-3">
+            <div id="participantModalError" class="alert alert-danger d-none"></div>
+            
+            <div class="mb-3">
+              <label for="pEventSelect" class="form-label fw-semibold">Select Event <span class="text-danger">*</span></label>
+              <select class="form-select" id="pEventSelect" required>
+                <option value="">Choose an Event</option>
+                <!-- Populated dynamically -->
+              </select>
+              <div class="invalid-feedback">Event selection is required.</div>
+            </div>
+
+            <div class="mb-3">
+              <label for="pRollNumber" class="form-label fw-semibold">Student Roll Number <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <input type="text" class="form-control font-monospace text-uppercase" id="pRollNumber" required placeholder="e.g. 23A91A0501">
+                <button class="btn btn-outline-secondary" type="button" id="pVerifyBtn"><i class="bi bi-shield-check me-1"></i>Verify</button>
+              </div>
+              <div class="invalid-feedback">Roll Number is required.</div>
+              <div class="form-text">Type roll number and click Verify to validate eligibility.</div>
+            </div>
+
+            <!-- Eligibility Verification Result Container -->
+            <div id="pVerificationResult" class="p-3 mb-3 rounded bg-light border d-none">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+          <div class="modal-footer bg-light border-top">
+            <button type="button" class="btn btn-light border px-4" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary px-4" id="pSaveBtn" disabled>
+              <span class="spinner-border spinner-border-sm d-none" id="pSaveSpinner" role="status" aria-hidden="true"></span>
+              Add Participant
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Import Modal -->
+  <div class="modal fade" id="participantBulkModal" tabindex="-1" aria-labelledby="participantBulkModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md">
+      <div class="modal-content border-0 shadow-lg">
+        <form id="participantBulkForm" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold text-dark" id="participantBulkModalLabel"><i class="bi bi-file-earmark-arrow-up me-2 text-primary"></i>Bulk Add Participants</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body py-3">
+            <div id="pBulkModalError" class="alert alert-danger d-none"></div>
+
+            <div class="mb-3">
+              <label for="pBulkEventSelect" class="form-label fw-semibold">Select Target Event <span class="text-danger">*</span></label>
+              <select class="form-select" id="pBulkEventSelect" required>
+                <option value="">Choose an Event</option>
+                <!-- Populated dynamically -->
+              </select>
+              <div class="invalid-feedback">Target Event selection is required.</div>
+            </div>
+
+            <div class="mb-3">
+              <label for="pBulkRolls" class="form-label fw-semibold">Roll Numbers <span class="text-danger">*</span></label>
+              <textarea class="form-control font-monospace" id="pBulkRolls" rows="6" required placeholder="Enter roll numbers (comma or line separated)...&#10;e.g.&#10;22A91A0501&#10;22A91A0502&#10;22A91A0503"></textarea>
+              <div class="invalid-feedback">Please enter at least one Roll Number.</div>
+              <div class="form-text text-muted">Duplicates and ineligible students will be skipped during verification.</div>
+            </div>
+          </div>
+          <div class="modal-footer bg-light border-top">
+            <button type="button" class="btn btn-light border px-4" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary px-4" id="pBulkSaveBtn">
+              <span class="spinner-border spinner-border-sm d-none" id="pBulkSaveSpinner" role="status" aria-hidden="true"></span>
+              Import Roster
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Participant Details Modal -->
+  <div class="modal fade" id="pDetailsModal" tabindex="-1" aria-labelledby="pDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold text-dark" id="pDetailsModalLabel"><i class="bi bi-person-bounding-box me-2 text-primary"></i>Participant Profile</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body py-4">
+          <div class="text-center mb-4">
+            <div class="d-inline-flex justify-content-center align-items-center bg-primary bg-opacity-10 rounded-circle text-primary" style="width: 70px; height: 70px;">
+              <i class="bi bi-person-fill fs-1"></i>
+            </div>
+            <h4 class="fw-bold mt-3 mb-1" id="pDetailsName">Loading Student...</h4>
+            <p class="text-muted font-monospace mb-2" id="pDetailsRoll">CSE001</p>
+            <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success-subtle px-3 py-2 fw-semibold" id="pDetailsStatus">Confirmed</span>
+          </div>
+
+          <div class="border rounded p-3 mb-4 bg-light shadow-sm">
+            <div class="row g-2">
+              <div class="col-6">
+                <span class="text-muted small d-block">Department</span>
+                <span class="fw-semibold text-dark" id="pDetailsDept">CSE</span>
+              </div>
+              <div class="col-6">
+                <span class="text-muted small d-block">Academic Year</span>
+                <span class="fw-semibold text-dark" id="pDetailsYearSec">3 - Sec A</span>
+              </div>
+              <div class="col-6 mt-3">
+                <span class="text-muted small d-block">Email</span>
+                <span class="fw-semibold text-dark text-break small" id="pDetailsEmail">N/A</span>
+              </div>
+              <div class="col-6 mt-3">
+                <span class="text-muted small d-block">Contact Phone</span>
+                <span class="fw-semibold text-dark" id="pDetailsPhone">N/A</span>
+              </div>
+            </div>
+          </div>
+
+          <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-clock-history me-2"></i>Attendance Log Timeline</h6>
+          <div id="pDetailsTimeline" class="timeline-log border rounded p-3 bg-light" style="max-height: 150px; overflow-y: auto;">
+            <!-- Populated dynamically -->
+            No check-in timestamps found.
+          </div>
+        </div>
+        <div class="modal-footer bg-light border-top">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?!= include('participants_js'); ?>

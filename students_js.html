@@ -1,0 +1,935 @@
+<script>
+  /**
+   * ==========================================
+   * STUDENTS MODULE LOGIC
+   * ==========================================
+   */
+  App.Modules.students = {
+    studentsData: [],
+    filteredData: [],
+    departmentsList: [],
+
+    // State variables for pagination and selection
+    currentPage: 1,
+    itemsPerPage: 10,
+    studentModalInstance: null,
+    pollingInterval: null,
+
+    // Map sheet keys to local properties
+    Fields: {
+      ROLL_NUMBER: 'Roll Number',
+      NAME: 'Student Name',
+      DEPARTMENT_ID: 'Department ID',
+      BRANCH: 'Branch',
+      YEAR: 'Year',
+      SECTION: 'Section',
+      GENDER: 'Gender',
+      EMAIL: 'Email Address',
+      PHONE: 'Phone Number',
+      STATUS: 'Student Status',
+      STUDENT_ID: 'Student ID',
+      CREATED_AT: 'Created At',
+      UPDATED_AT: 'Updated At'
+    },
+
+    init: function () {
+      App.Logger.info('Students init');
+      this.bindEvents();
+
+      // Hide Add Student button for Admin and Super Admin roles
+      const currentUser = App.State && App.State.currentUser;
+      if (currentUser) {
+        const role = String(currentUser.role || '').toUpperCase().trim();
+        const isAdminOrSuper = role === 'ADMIN' || role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN';
+        const addBtn = document.getElementById('students-add-btn');
+        if (addBtn) {
+          if (isAdminOrSuper) {
+            addBtn.style.setProperty('display', 'none', 'important');
+          } else {
+            addBtn.style.display = '';
+          }
+        }
+      }
+
+      // First fetch active departments, then load students data
+      this.loadDepartments()
+        .then(() => {
+          this.load();
+        });
+
+      this.startPolling();
+    },
+
+    /**
+     * Loads active departments from Database to populate dropdowns
+     */
+    loadDepartments: function () {
+      return App.API.getActiveDepartments()
+        .then(depts => {
+          this.departmentsList = Array.isArray(depts) ? depts : [];
+          this.populateDepartmentsDropdown();
+        })
+        .catch(err => {
+          App.Logger.error("Failed to load active departments:", err);
+        });
+    },
+
+    /**
+     * Populates department filters and selection selectors
+     */
+    populateDepartmentsDropdown: function () {
+      const deptFilter = document.getElementById('students-dept-filter');
+      const yearFilter = document.getElementById('students-year-filter');
+      const deptSelect = document.getElementById('studentDepartment');
+
+      let filterHtml = '<option value="">All Depts</option>';
+      let selectHtml = '<option value="">Select Department</option>';
+
+      const currentUser = App.State && App.State.currentUser;
+      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
+      const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
+      const isHOD = userRole === 'HOD';
+
+      if (isHOD) {
+        // Exclude Year 1 for HOD in year filter
+        if (yearFilter) {
+          yearFilter.innerHTML = `
+            <option value="">All Years (2-4)</option>
+            <option value="2">Year 2</option>
+            <option value="3">Year 3</option>
+            <option value="4">Year 4</option>
+          `;
+        }
+
+        // Collect branches / sub-departments of HOD's department
+        const branchSet = new Set();
+        (this.studentsData || []).forEach(s => {
+          if (s.branch) branchSet.add(s.branch);
+        });
+
+        filterHtml = '<option value="">All Branches</option>';
+        branchSet.forEach(b => {
+          filterHtml += `<option value="${App.Utils.escapeHtml(b)}">${App.Utils.escapeHtml(b)} Branch</option>`;
+        });
+
+        const hodDepts = this.departmentsList.filter(d => {
+          const code = String(d['Department Code'] || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+          const id   = String(d['Department ID'] || '').toUpperCase().trim();
+          const name = String(d['Department Name'] || '').toUpperCase().trim();
+          const target = String(userDept).toUpperCase().trim();
+          return code === target || id === target || name === target || name.includes(target) || target.includes(code);
+        });
+        const deptsToRender = hodDepts.length > 0 ? hodDepts : this.departmentsList;
+        deptsToRender.forEach(d => {
+          const code = d['Department Code'] || d['Short Name'] || d['Department ID'];
+          const name = d['Department Name'] || code;
+          const id = d['Department ID'];
+          selectHtml += `<option value="${id}">${code} - ${name}</option>`;
+        });
+      } else {
+        this.departmentsList.forEach(d => {
+          const code = d['Department Code'] || d['Short Name'] || d['Department ID'];
+          const name = d['Department Name'] || code;
+          const id = d['Department ID'];
+
+          filterHtml += `<option value="${id}">${code}</option>`;
+          selectHtml += `<option value="${id}">${code} - ${name}</option>`;
+        });
+      }
+
+      if (deptFilter) deptFilter.innerHTML = filterHtml;
+      if (deptSelect) deptSelect.innerHTML = selectHtml;
+    },
+
+    /**
+     * Fetches latest student dataset from the Google Sheet
+     */
+    load: function () {
+      const tbody = document.getElementById('students-table-body');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>Loading students...</td></tr>';
+      }
+
+      App.API.getAllStudents()
+        .then(res => {
+          const data = Array.isArray(res)
+            ? res
+            : (res.students || res.data || []);
+          this.studentsData = data.map(s => this.normalizeStudent(s));
+          
+          // Calculate student participation counts from attendance records
+          return App.API._call('getReportsDashboardSummary').catch(() => null);
+        })
+        .then(repRes => {
+          // Fetch attendance rows to compute exact participation count per student
+          App.API._call('getAllParticipants').then(parts => {
+            const countMap = {};
+            (parts || []).forEach(p => {
+              const roll = String(p.roll_number || p['Roll Number'] || '').toUpperCase().trim();
+              if (roll) countMap[roll] = (countMap[roll] || 0) + 1;
+            });
+            this.studentsData.forEach(s => {
+              const r = String(s.roll_number || '').toUpperCase().trim();
+              s.participation_count = countMap[r] || 0;
+            });
+            this.populateDynamicFilters();
+            this.applyFilters();
+          }).catch(() => {
+            this.populateDynamicFilters();
+            this.applyFilters();
+          });
+        })
+        .catch(err => {
+          if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-2"></i>Failed to load students. <button class="btn btn-sm btn-outline-danger ms-2" onclick="App.Modules.students.load()">Retry</button></td></tr>';
+          }
+          App.ErrorHandler.handle(err, "Failed to load students");
+        });
+    },
+
+    /**
+     * Normalizes keys from sheet columns to a consistent frontend object structure
+     */
+    normalizeStudent: function (s) {
+      return {
+        roll_number: s.roll_number || s[this.Fields.ROLL_NUMBER] || 'N/A',
+        student_name: s.student_name || s[this.Fields.NAME] || 'N/A',
+        department: s.department || s[this.Fields.DEPARTMENT_ID] || 'N/A',
+        branch: s.branch || s[this.Fields.BRANCH] || 'N/A',
+        year: String(s.year || s[this.Fields.YEAR] || 'N/A'),
+        section: s.section || s[this.Fields.SECTION] || 'N/A',
+        gender: s.gender || s[this.Fields.GENDER] || 'N/A',
+        email: s.email || s[this.Fields.EMAIL] || 'N/A',
+        mobile: s.mobile || s[this.Fields.PHONE] || 'N/A',
+        status: s.status || s[this.Fields.STATUS] || 'Active',
+        student_id: s.student_id || s[this.Fields.STUDENT_ID] || 'N/A',
+        created_at: s.created_at || s[this.Fields.CREATED_AT] || 'N/A',
+        updated_at: s.updated_at || s[this.Fields.UPDATED_AT] || 'N/A'
+      };
+    },
+
+    /**
+     * Utility to debounce user inputs
+     */
+    debounce: function (func, delay) {
+      let timeout;
+      return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+      };
+    },
+
+    bindEvents: function () {
+      const searchInput = document.getElementById('students-search-input');
+      const deptFilter = document.getElementById('students-dept-filter');
+      const yearFilter = document.getElementById('students-year-filter');
+      const sectionFilter = document.getElementById('students-section-filter');
+      const genderFilter = document.getElementById('students-gender-filter');
+      const statusFilter = document.getElementById('students-status-filter');
+      const partFilter = document.getElementById('students-participation-filter');
+      const perPageSelect = document.getElementById('students-per-page');
+
+      if (partFilter) {
+        partFilter.addEventListener('change', () => this.applyFilters());
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener('input', this.debounce(() => {
+          this.applyFilters();
+        }, 300));
+      }
+
+      if (deptFilter) deptFilter.addEventListener('change', () => this.applyFilters());
+      if (yearFilter) yearFilter.addEventListener('change', () => this.applyFilters());
+      if (sectionFilter) sectionFilter.addEventListener('change', () => this.applyFilters());
+      if (genderFilter) genderFilter.addEventListener('change', () => this.applyFilters());
+      if (statusFilter) statusFilter.addEventListener('change', () => this.applyFilters());
+
+      if (perPageSelect) {
+        perPageSelect.addEventListener('change', (e) => {
+          this.itemsPerPage = parseInt(e.target.value, 10);
+          this.currentPage = 1;
+          this.renderTable();
+        });
+      }
+
+      // Action buttons inside toolbar
+      const addBtn = document.getElementById('students-add-btn');
+      if (addBtn) addBtn.addEventListener('click', () => this.openAddStudentModal());
+
+      const exportBtn = document.getElementById('students-export-btn');
+      if (exportBtn) exportBtn.addEventListener('click', () => this.exportToCSV());
+
+      // Modal submit and delete triggers
+      const form = document.getElementById('studentForm');
+      if (form) form.addEventListener('submit', (e) => this.handleStudentSubmit(e));
+
+      const confirmDeleteBtn = document.getElementById('studentConfirmDeleteBtn');
+      if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', () => this.handleDeleteStudent());
+
+      // Event delegation on table body actions
+      const tbody = document.getElementById('students-table-body');
+      if (tbody) {
+        tbody.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-action');
+          const roll = btn.getAttribute('data-id');
+
+          if (action === 'view-student') this.openViewStudentModal(roll);
+          if (action === 'edit-student') this.openEditStudentModal(roll);
+          if (action === 'delete-student') this.openDeleteStudentModal(roll);
+        });
+      }
+    },
+
+    /**
+     * Extracts sections dynamically from student records
+     */
+    populateDynamicFilters: function () {
+      const sectionSet = new Set();
+      this.studentsData.forEach(s => {
+        if (s.section && s.section !== 'N/A') sectionSet.add(s.section);
+      });
+
+      const sectionSelect = document.getElementById('students-section-filter');
+      if (sectionSelect) {
+        const currentVal = sectionSelect.value;
+        let html = '<option value="">All Sections</option>';
+        Array.from(sectionSet).sort().forEach(sec => {
+          html += `<option value="${App.Utils.escapeHtml(sec)}">${App.Utils.escapeHtml(sec)}</option>`;
+        });
+        sectionSelect.innerHTML = html;
+        sectionSelect.value = currentVal;
+      }
+    },
+
+    /**
+     * Applies combinations of filters on student dataset
+     */
+    applyFilters: function () {
+      const searchInput = document.getElementById('students-search-input');
+      const deptFilter = document.getElementById('students-dept-filter');
+      const yearFilter = document.getElementById('students-year-filter');
+      const sectionFilter = document.getElementById('students-section-filter');
+      const genderFilter = document.getElementById('students-gender-filter');
+      const statusFilter = document.getElementById('students-status-filter');
+      const partFilter = document.getElementById('students-participation-filter');
+
+      const searchStr = (searchInput ? searchInput.value : '').toLowerCase().trim();
+      let deptVal = deptFilter ? deptFilter.value : '';
+      const yearVal = yearFilter ? yearFilter.value : '';
+      const sectionVal = sectionFilter ? sectionFilter.value : '';
+      const genderVal = genderFilter ? genderFilter.value : '';
+      const statusVal = statusFilter ? statusFilter.value : '';
+      const partVal = partFilter ? partFilter.value : '';
+
+      // TC-54: If HOD logged in, restrict data matching to HOD department
+      const currentUser = App.State && App.State.currentUser;
+      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
+      const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
+      const isHOD = userRole === 'HOD';
+
+      this.filteredData = this.studentsData.filter(s => {
+        if (isHOD && userDept) {
+          const studentDept = String(s.department || '').toUpperCase().trim();
+          const hodDeptStr  = String(userDept).toUpperCase().trim();
+          
+          let matchedDeptId = '';
+          if (this.departmentsList && this.departmentsList.length > 0) {
+            const matchedObj = this.departmentsList.find(d => {
+              const c = String(d['Department Code'] || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+              const id = String(d['Department ID'] || '').toUpperCase().trim();
+              const n = String(d['Department Name'] || '').toUpperCase().trim();
+              return c === hodDeptStr || id === hodDeptStr || n === hodDeptStr || n.includes(hodDeptStr) || hodDeptStr.includes(c);
+            });
+            if (matchedObj) {
+              matchedDeptId = String(matchedObj['Department ID'] || matchedObj['Department Code'] || '').toUpperCase().trim();
+            }
+          }
+
+          const matchesRaw = studentDept === hodDeptStr || studentDept.includes(hodDeptStr) || hodDeptStr.includes(studentDept);
+          const matchesId  = matchedDeptId && (studentDept === matchedDeptId);
+
+          if (!matchesRaw && !matchesId) {
+            return false;
+          }
+        }
+        if (deptVal && s.department !== deptVal) return false;
+        if (yearVal && String(s.year) !== String(yearVal)) return false;
+        if (sectionVal && s.section !== sectionVal) return false;
+        if (genderVal && s.gender !== genderVal) return false;
+        if (statusVal && s.status !== statusVal) return false;
+
+        if (partVal) {
+          const pCount = s.participation_count || 0;
+          if (partVal === '0' && pCount !== 0) return false;
+          if (partVal === '1' && pCount < 1) return false;
+          if (partVal === '2' && pCount < 2) return false;
+          if (partVal === '3' && pCount < 3) return false;
+        }
+
+        if (searchStr) {
+          const searchable = [
+            s.roll_number,
+            s.student_name,
+            s.email,
+            s.mobile
+          ].join(' ').toLowerCase();
+
+          if (!searchable.includes(searchStr)) return false;
+        }
+        return true;
+      });
+
+      this.currentPage = 1;
+      this.updateStats();
+      this.renderTable();
+    },
+
+    updateStats: function () {
+      const total = this.filteredData.length;
+      const active = this.filteredData.filter(s => s.status.toLowerCase() === 'active').length;
+      const inactive = total - active;
+
+      const depts = new Set();
+      this.filteredData.forEach(s => {
+        if (s.department && s.department !== 'N/A') depts.add(s.department);
+      });
+
+      document.getElementById('students-stat-total').textContent = total;
+      document.getElementById('students-stat-active').textContent = active;
+      document.getElementById('students-stat-inactive').textContent = inactive;
+      document.getElementById('students-stat-departments').textContent = depts.size;
+    },
+
+    renderTable: function () {
+      const tbody = document.getElementById('students-table-body');
+      if (!tbody) return;
+
+      if (this.filteredData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-5"><i class="bi bi-info-circle me-2"></i>No Students Found</td></tr>';
+        this.renderPagination(0);
+        return;
+      }
+
+      const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+      const endIndex = Math.min(startIndex + this.itemsPerPage, this.filteredData.length);
+      const pageData = this.filteredData.slice(startIndex, endIndex);
+
+      let html = '';
+      pageData.forEach(student => {
+        const statusBadge = student.status.toLowerCase() === 'active'
+          ? '<span class="badge bg-success bg-opacity-10 text-success border border-success-subtle">Active</span>'
+          : '<span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle">Inactive</span>';
+
+        const deptObj = this.departmentsList.find(d => String(d['Department ID']) === String(student.department));
+        const deptDisplay = deptObj ? (deptObj['Department Code'] || deptObj['Short Name']) : student.department;
+        const pBadge = `<span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle fw-bold px-2.5 py-1">${student.participation_count || 0} Event${(student.participation_count || 0) === 1 ? '' : 's'}</span>`;
+
+        html += `
+        <tr>
+          <td class="fw-medium text-dark font-monospace">${App.Utils.escapeHtml(student.roll_number)}</td>
+          <td class="fw-bold">${App.Utils.escapeHtml(student.student_name)}</td>
+          <td><span class="badge bg-secondary bg-opacity-10 text-secondary">${App.Utils.escapeHtml(deptDisplay)}</span></td>
+          <td>Year ${App.Utils.escapeHtml(student.year)}</td>
+          <td>Section ${App.Utils.escapeHtml(student.section)}</td>
+          <td>${App.Utils.escapeHtml(student.gender)}</td>
+          <td>${App.Utils.escapeHtml(student.email)}</td>
+          <td>${App.Utils.escapeHtml(student.mobile)}</td>
+          <td>${pBadge}</td>
+          <td>${statusBadge}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-light text-primary me-1" data-action="view-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="View"><i class="bi bi-eye"></i></button>
+            <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-light text-danger" data-action="delete-student" data-id="${App.Utils.escapeHtml(student.roll_number)}" title="Delete"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>
+      `;
+      });
+
+      tbody.innerHTML = html;
+      this.renderPagination(Math.ceil(this.filteredData.length / this.itemsPerPage));
+    },
+
+    renderPagination: function (totalPages) {
+      const nav = document.getElementById('students-pagination');
+      if (!nav) return;
+
+      if (totalPages <= 1) {
+        nav.innerHTML = `
+        <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
+        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+        <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+      `;
+        return;
+      }
+
+      let html = '';
+      const prevDisabled = this.currentPage === 1 ? 'disabled' : '';
+      html += `<li class="page-item ${prevDisabled}"><a class="page-link" href="#" data-page="${this.currentPage - 1}">Previous</a></li>`;
+
+      let startPage = Math.max(1, this.currentPage - 2);
+      let endPage = Math.min(totalPages, startPage + 4);
+
+      if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+      }
+
+      if (startPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" data-page="1">1</a></li>`;
+        if (startPage > 2) {
+          html += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+        }
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        const active = i === this.currentPage ? 'active' : '';
+        html += `<li class="page-item ${active}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+      }
+
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          html += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+        }
+        html += `<li class="page-item"><a class="page-link" href="#" data-page="${totalPages}">${totalPages}</a></li>`;
+      }
+
+      const nextDisabled = this.currentPage === totalPages ? 'disabled' : '';
+      html += `<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${this.currentPage + 1}">Next</a></li>`;
+
+      nav.innerHTML = html;
+
+      const links = nav.querySelectorAll('a.page-link');
+      links.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const parent = e.target.closest('.page-item');
+          if (parent && parent.classList.contains('disabled')) return;
+
+          const page = e.target.getAttribute('data-page');
+          if (page) {
+            this.currentPage = parseInt(page, 10);
+            this.renderTable();
+          }
+        });
+      });
+    },
+
+    /**
+     * Resets form states and exposes editing modal
+     */
+    openAddStudentModal: function () {
+      const form = document.getElementById('studentForm');
+      if (form) {
+        form.reset();
+        form.classList.remove('was-validated');
+
+        // Unlock all inputs
+        Array.from(form.elements).forEach(el => {
+          if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+            el.disabled = false;
+            el.readOnly = false;
+          }
+        });
+      }
+
+      document.getElementById('studentOriginalRoll').value = '';
+      document.getElementById('studentModalLabel').textContent = 'Add Student';
+
+      document.getElementById('studentCreatedAtGroup').classList.add('d-none');
+      document.getElementById('studentViewOnlyFields').classList.add('d-none');
+
+      const saveBtn = document.getElementById('studentSaveBtn');
+      if (saveBtn) {
+        saveBtn.classList.remove('d-none');
+        document.getElementById('studentSaveBtnText').textContent = 'Save Student';
+      }
+
+      const errorAlert = document.getElementById('studentModalError');
+      if (errorAlert) errorAlert.classList.add('d-none');
+
+      this.showModal();
+    },
+
+    /**
+     * Opens View student details modal in read-only format
+     */
+    openViewStudentModal: function (roll) {
+      const student = this.studentsData.find(s => String(s.roll_number) === String(roll));
+      if (!student) return;
+
+      const form = document.getElementById('studentForm');
+      if (form) {
+        form.reset();
+        form.classList.remove('was-validated');
+
+        // Lock all fields
+        Array.from(form.elements).forEach(el => {
+          if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+            el.disabled = true;
+          }
+        });
+      }
+
+      document.getElementById('studentModalLabel').textContent = 'Student Details: ' + student.student_name;
+
+      document.getElementById('studentOriginalRoll').value = student.roll_number;
+      document.getElementById('studentRollNumber').value = student.roll_number;
+      document.getElementById('studentName').value = student.student_name || '';
+      document.getElementById('studentDepartment').value = student.department || '';
+      document.getElementById('studentBranch').value = student.branch || '';
+      document.getElementById('studentYear').value = student.year || '';
+      document.getElementById('studentSection').value = student.section || '';
+      document.getElementById('studentGender').value = student.gender || '';
+      document.getElementById('studentEmail').value = student.email || '';
+      document.getElementById('studentMobile').value = student.mobile || '';
+      document.getElementById('studentStatus').value = student.status || '';
+      document.getElementById('studentCreatedAt').value = student.created_at || 'N/A';
+
+      // View details placeholders
+      document.getElementById('studentIdDisplay').value = student.student_id || 'N/A';
+      document.getElementById('studentUpdatedAt').value = student.updated_at || 'N/A';
+
+      // Fetch and show dynamic attendance counts & event timelines
+      const countInput = document.getElementById('studentAttendanceCount');
+      const timelineContainer = document.getElementById('studentEventsTimeline');
+
+      countInput.value = "Fetching...";
+      timelineContainer.innerHTML = '<div class="text-center py-2"><span class="spinner-border spinner-border-sm text-secondary me-2"></span>Loading participation records...</div>';
+
+      // Run parallel calls
+      Promise.all([
+        App.API.getStudentAttendanceCount(student.roll_number),
+        App.API.getStudentEventHistory(student.roll_number)
+      ]).then(([countRes, historyRes]) => {
+        // Set count
+        countInput.value = (countRes && countRes.count !== undefined) ? countRes.count : (countRes || 0);
+
+        // Build timelines
+        const historyList = Array.isArray(historyRes) ? historyRes : (historyRes.history || historyRes.data || []);
+        if (historyList.length === 0) {
+          timelineContainer.innerHTML = 'No event participation logs found.';
+          return;
+        }
+
+        let timelineHtml = '<div class="list-group list-group-flush">';
+        historyList.forEach(evt => {
+          const date = evt['Date'] || evt.date || evt.timestamp || 'N/A';
+          const name = evt['Event Name'] || evt.event_name || 'N/A';
+          const status = evt['Attendance Status'] || evt.status || 'Present';
+          const statusBadge = status === 'Present' ? 'text-success' : 'text-danger';
+
+          timelineHtml += `
+          <div class="list-group-item px-0 py-2 bg-transparent">
+            <div class="d-flex w-100 justify-content-between">
+              <h6 class="mb-1 fw-semibold text-dark">${App.Utils.escapeHtml(name)}</h6>
+              <small class="font-monospace text-muted">${App.Utils.escapeHtml(date)}</small>
+            </div>
+            <small class="${statusBadge} fw-semibold"><i class="bi bi-dot"></i>Checked-in: ${App.Utils.escapeHtml(status)}</small>
+          </div>
+        `;
+        });
+        timelineHtml += '</div>';
+        timelineContainer.innerHTML = timelineHtml;
+      }).catch(err => {
+        countInput.value = "Error";
+        timelineContainer.innerHTML = 'Error loading timeline details.';
+        App.Logger.error("Failed to load view details:", err);
+      });
+
+      document.getElementById('studentCreatedAtGroup').classList.remove('d-none');
+      document.getElementById('studentViewOnlyFields').classList.remove('d-none');
+
+      const saveBtn = document.getElementById('studentSaveBtn');
+      if (saveBtn) saveBtn.classList.add('d-none');
+
+      const errorAlert = document.getElementById('studentModalError');
+      if (errorAlert) errorAlert.classList.add('d-none');
+
+      this.showModal();
+    },
+
+    /**
+     * Opens Edit student modal enabling edits
+     */
+    openEditStudentModal: function (roll) {
+      const student = this.studentsData.find(s => String(s.roll_number) === String(roll));
+      if (!student) return;
+
+      const form = document.getElementById('studentForm');
+      if (form) {
+        form.reset();
+        form.classList.remove('was-validated');
+
+        // Unlock fields for edits
+        Array.from(form.elements).forEach(el => {
+          if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+            el.disabled = false;
+            el.readOnly = false;
+          }
+        });
+      }
+
+      document.getElementById('studentModalLabel').textContent = 'Edit Student: ' + student.student_name;
+      document.getElementById('studentOriginalRoll').value = student.roll_number;
+
+      // Roll number cannot be updated
+      const rollInput = document.getElementById('studentRollNumber');
+      rollInput.value = student.roll_number;
+      rollInput.readOnly = true;
+      rollInput.disabled = true;
+
+      const createdDisplay = document.getElementById('studentCreatedAt');
+      createdDisplay.value = student.created_at || 'N/A';
+      createdDisplay.readOnly = true;
+      createdDisplay.disabled = true;
+
+      document.getElementById('studentName').value = student.student_name || '';
+      document.getElementById('studentDepartment').value = student.department || '';
+      document.getElementById('studentBranch').value = student.branch || '';
+      document.getElementById('studentYear').value = student.year || '';
+      document.getElementById('studentSection').value = student.section || '';
+      document.getElementById('studentGender').value = student.gender || '';
+      document.getElementById('studentEmail').value = student.email || '';
+      document.getElementById('studentMobile').value = student.mobile || '';
+      document.getElementById('studentStatus').value = student.status || '';
+
+      document.getElementById('studentCreatedAtGroup').classList.remove('d-none');
+      document.getElementById('studentViewOnlyFields').classList.add('d-none');
+
+      const saveBtn = document.getElementById('studentSaveBtn');
+      if (saveBtn) {
+        saveBtn.classList.remove('d-none');
+        document.getElementById('studentSaveBtnText').textContent = 'Update Student';
+      }
+
+      const errorAlert = document.getElementById('studentModalError');
+      if (errorAlert) errorAlert.classList.add('d-none');
+
+      this.showModal();
+    },
+
+    openDeleteStudentModal: function (roll) {
+      document.getElementById('studentDeleteRoll').value = roll;
+      const modalEl = document.getElementById('studentDeleteModal');
+      if (modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.show();
+      }
+    },
+
+    showModal: function () {
+      if (!this.studentModalInstance) {
+        const modalEl = document.getElementById('studentModal');
+        if (modalEl) this.studentModalInstance = new bootstrap.Modal(modalEl);
+      }
+      if (this.studentModalInstance) this.studentModalInstance.show();
+    },
+
+    setModalLoading: function (isLoading) {
+      const btn = document.getElementById('studentSaveBtn');
+      const spinner = document.getElementById('studentSaveSpinner');
+      if (btn) btn.disabled = isLoading;
+      if (spinner) {
+        if (isLoading) spinner.classList.remove('d-none');
+        else spinner.classList.add('d-none');
+      }
+    },
+
+    /**
+     * Form submission payload mapping and logic routing
+     */
+    handleStudentSubmit: function (e) {
+      e.preventDefault();
+      const form = e.target;
+
+      if (!form.checkValidity()) {
+        e.stopPropagation();
+        form.classList.add('was-validated');
+        return;
+      }
+
+      this.setModalLoading(true);
+      const errorAlert = document.getElementById('studentModalError');
+      if (errorAlert) errorAlert.classList.add('d-none');
+
+      const originalRoll = document.getElementById('studentOriginalRoll').value;
+      const isEdit = !!originalRoll;
+
+      // Construct exact header string key value mappings matching Config.js column naming specifications
+      const studentData = {};
+      studentData[this.Fields.ROLL_NUMBER] = document.getElementById('studentRollNumber').value.trim().toUpperCase();
+      studentData[this.Fields.NAME] = document.getElementById('studentName').value.trim();
+      studentData[this.Fields.DEPARTMENT_ID] = document.getElementById('studentDepartment').value;
+      studentData[this.Fields.BRANCH] = document.getElementById('studentBranch').value.trim().toUpperCase();
+      studentData[this.Fields.YEAR] = document.getElementById('studentYear').value;
+      studentData[this.Fields.SECTION] = document.getElementById('studentSection').value.trim().toUpperCase();
+      studentData[this.Fields.GENDER] = document.getElementById('studentGender').value;
+      studentData[this.Fields.EMAIL] = document.getElementById('studentEmail').value.trim();
+      studentData[this.Fields.PHONE] = document.getElementById('studentMobile').value.trim();
+      studentData[this.Fields.STATUS] = document.getElementById('studentStatus').value;
+
+      if (isEdit) {
+        App.API.updateStudent(originalRoll, studentData)
+          .then(res => {
+            this.setModalLoading(false);
+            if (this.studentModalInstance) this.studentModalInstance.hide();
+            App.UI.showSuccess("Student updated successfully!");
+            this.load();
+          })
+          .catch(err => {
+            this.setModalLoading(false);
+            if (errorAlert) {
+              errorAlert.textContent = err.message || "Failed to update student.";
+              errorAlert.classList.remove('d-none');
+            }
+            App.UI.showError(err.message || "Failed to update student.");
+          });
+      } else {
+        App.API.createStudent(studentData)
+          .then(res => {
+            this.setModalLoading(false);
+            if (this.studentModalInstance) this.studentModalInstance.hide();
+            App.UI.showSuccess("Student created successfully!");
+            this.load();
+          })
+          .catch(err => {
+            this.setModalLoading(false);
+            if (errorAlert) {
+              errorAlert.textContent = err.message || "Failed to create student.";
+              errorAlert.classList.remove('d-none');
+            }
+            App.UI.showError(err.message || "Failed to create student.");
+          });
+      }
+    },
+
+    handleDeleteStudent: function () {
+      const roll = document.getElementById('studentDeleteRoll').value;
+      if (!roll) return;
+
+      const btn = document.getElementById('studentConfirmDeleteBtn');
+      const spinner = document.getElementById('studentDeleteSpinner');
+      if (btn) btn.disabled = true;
+      if (spinner) spinner.classList.remove('d-none');
+
+      App.API.deleteStudent(roll)
+        .then(() => {
+          if (btn) btn.disabled = false;
+          if (spinner) spinner.classList.add('d-none');
+
+          const modalEl = document.getElementById('studentDeleteModal');
+          if (modalEl) {
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+          }
+          App.UI.showSuccess("Student deleted successfully!");
+          this.load();
+        })
+        .catch(err => {
+          if (btn) btn.disabled = false;
+          if (spinner) spinner.classList.add('d-none');
+          App.UI.showError(err.message || "Failed to delete student.");
+        });
+    },
+
+    /**
+     * Exports filtered results locally to CSV
+     */
+    exportToCSV: function () {
+      if (this.filteredData.length === 0) {
+        App.UI.showInfo("No students matches current filters to export.");
+        return;
+      }
+
+      const headers = ["Roll Number", "Name", "Department ID", "Year", "Section", "Gender", "Email", "Mobile", "Status"];
+
+      const rows = this.filteredData.map(s => [
+        s.roll_number,
+        s.student_name,
+        s.department,
+        s.year,
+        s.section,
+        s.gender,
+        s.email,
+        s.mobile,
+        s.status
+      ]);
+
+      let csvContent = "\uFEFF"; // UTF-8 BOM
+      csvContent += headers.join(",") + "\r\n";
+      rows.forEach(row => {
+        csvContent += row.map(val => {
+          const cleanVal = String(val ?? '').replace(/"/g, '""');
+          return `"${cleanVal}"`;
+        }).join(",") + "\r\n";
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `students_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      App.UI.showSuccess("CSV export successful!");
+    },
+
+    /**
+     * Checks database at set intervals to auto-refresh changes without full refresh
+     */
+    refreshStudents: function () {
+      // Skip polling updates if the dialog details modal is currently open to prevent form overwriting
+      const modalEl = document.getElementById('studentModal');
+      if (modalEl && modalEl.classList.contains('show')) return;
+
+      App.API.getAllStudents()
+        .then(res => {
+          const data = Array.isArray(res) ? res : (res.students || res.data || []);
+          const normalized = data.map(s => this.normalizeStudent(s));
+
+          const hasChanged = JSON.stringify(normalized) !== JSON.stringify(this.studentsData);
+          if (hasChanged) {
+            App.Logger.info("Background update detected: refresh list");
+            this.studentsData = normalized;
+            this.populateDynamicFilters();
+            this.applyFilters();
+          }
+        })
+        .catch(err => {
+          App.Logger.error("Background polling check failed: ", err);
+        });
+    },
+
+    startPolling: function () {
+      this.stopPolling();
+      this.pollingInterval = setInterval(() => {
+        this.refreshStudents();
+      }, 25000); // Poll sheet every 25 seconds
+    },
+
+    stopPolling: function () {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+    },
+
+    refresh: function () {
+      this.load();
+    },
+
+    destroy: function () {
+      App.Logger.info('Students destroy');
+      this.stopPolling();
+    }
+  };
+
+  // Auto-initialize module on direct injection trigger
+  if (typeof App !== 'undefined' && App.Modules && App.Modules.students) {
+    App.Modules.students.init();
+  }
+</script>

@@ -1,0 +1,452 @@
+<script>
+  /**
+   * ==========================================
+   * ANALYTICS MODULE JAVASCRIPT CONTROLLER
+   * ==========================================
+   */
+  (function () {
+    const Analytics = {
+      charts: {},
+      summaryData: null,
+      leaderboardData: [],
+      
+      init: function () {
+        console.log('Initializing Analytics Module...');
+        
+        // Dynamically load Chart.js from CDN if not already present
+        this.loadChartJs()
+          .then(() => {
+            this.bindEvents();
+            this.loadDashboardData();
+          })
+          .catch(err => {
+            console.error("Failed to load Chart.js library", err);
+            App.UI.showError("Failed to load charting libraries. Please check your internet connection.");
+          });
+      },
+
+      loadChartJs: function () {
+        return new Promise((resolve, reject) => {
+          if (typeof Chart !== 'undefined') {
+            resolve();
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+          script.type = 'text/javascript';
+          script.onload = () => resolve();
+          script.onerror = (err) => reject(err);
+          document.head.appendChild(script);
+        });
+      },
+
+      bindEvents: function () {
+        document.getElementById('analyticsRefreshBtn')?.addEventListener('click', () => {
+          this.loadDashboardData();
+        });
+
+        document.getElementById('analyticsExportBtn')?.addEventListener('click', () => {
+          this.exportAnalyticsData();
+        });
+      },
+
+      loadDashboardData: function () {
+        App.LoadingManager.show();
+        
+        // Load all datasets concurrently
+        Promise.all([
+          App.API.getAnalyticsSummary(),
+          App.API.getTrendData(),
+          App.API.getPerformanceDistribution(),
+          App.API.getDepartmentData(),
+          App.API.getEventWiseData(),
+          App.API.getCheckInPatterns(),
+          App.API.getDefaulterDistribution(),
+          App.API.getLeaderboard()
+        ])
+          .then(([summary, trend, performance, department, eventWise, patterns, defaulters, leaderboard]) => {
+            App.LoadingManager.hide();
+            
+            this.renderSummary(summary);
+            this.renderTrendChart(trend);
+            this.renderPerformanceChart(performance);
+            this.renderDepartmentChart(department);
+            this.renderEventChart(eventWise);
+            this.renderPatternsChart(patterns);
+            this.renderDefaulterChart(defaulters);
+            this.renderLeaderboardTable(leaderboard);
+            
+            App.UI.showSuccess("Analytics dashboard refreshed successfully");
+          })
+          .catch(err => {
+            App.LoadingManager.hide();
+            console.error("Failed to load analytics dashboard data", err);
+            App.UI.showError("Failed to load analytics reports. " + (err.message || ''));
+          });
+      },
+
+      renderSummary: function (res) {
+        const s = res && res.summary ? res.summary : null;
+        if (!s) return;
+        this.summaryData = s;
+
+        document.getElementById('kpiEvents').textContent = s.totalEvents;
+        document.getElementById('kpiParticipants').textContent = s.totalParticipants;
+        document.getElementById('kpiCheckins').textContent = s.totalCheckIns;
+        document.getElementById('kpiRate').textContent = s.overallAttendanceRate.toFixed(1) + '%';
+
+        // Helper to format KPI indicators
+        const setTrend = (elId, value) => {
+          const el = document.getElementById(elId);
+          if (!el) return;
+          const valNum = parseFloat(value);
+          const icon = valNum >= 0 ? '<i class="bi bi-graph-up me-1"></i>+' : '<i class="bi bi-graph-down me-1"></i>';
+          el.innerHTML = `${icon}${value}%`;
+          if (valNum >= 0) {
+            el.className = 'trend-badge bg-success bg-opacity-10 text-success me-2';
+          } else {
+            el.className = 'trend-badge bg-danger bg-opacity-10 text-danger me-2';
+          }
+        };
+
+        setTrend('kpiEventsTrend', s.growth.events);
+        setTrend('kpiParticipantsTrend', s.growth.checkins); // Map active roster checkins
+        setTrend('kpiCheckinsTrend', s.growth.checkins);
+        setTrend('kpiRateTrend', s.growth.rate);
+      },
+
+      destroyCharts: function (names) {
+        names.forEach(name => {
+          try {
+            if (typeof Chart !== 'undefined' && Chart.getChart) {
+              const activeChart = Chart.getChart(name);
+              if (activeChart) {
+                activeChart.destroy();
+              }
+            }
+          } catch (e) {
+            console.warn("Failed static chart destruction for " + name, e);
+          }
+          if (this.charts[name]) {
+            try {
+              this.charts[name].destroy();
+            } catch (e) {}
+            delete this.charts[name];
+          }
+        });
+      },
+
+      renderTrendChart: function (res) {
+        this.destroyCharts(['trendChart']);
+        const ctx = document.getElementById('trendChart')?.getContext('2d');
+        if (!ctx) return;
+
+        const labels = res.labels || [];
+        const rates = res.rates || [];
+        const volumes = res.volumes || [];
+
+        // Gradient for rates
+        const rateGradient = ctx.createLinearGradient(0, 0, 0, 250);
+        rateGradient.addColorStop(0, 'rgba(79, 70, 229, 0.4)');
+        rateGradient.addColorStop(1, 'rgba(79, 70, 229, 0.0)');
+
+        this.charts['trendChart'] = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'Attendance Rate (%)',
+                data: rates,
+                borderColor: '#4f46e5',
+                borderWidth: 3,
+                backgroundColor: rateGradient,
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'yRate'
+              },
+              {
+                label: 'Check-Ins Volume',
+                data: volumes,
+                borderColor: '#10b981',
+                backgroundColor: '#10b981',
+                type: 'bar',
+                borderRadius: 8,
+                barThickness: 24,
+                yAxisID: 'yVol'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top' }
+            },
+            scales: {
+              yRate: {
+                type: 'linear',
+                position: 'left',
+                min: 0,
+                max: 100,
+                ticks: { callback: value => value + '%' },
+                grid: { drawOnChartArea: true }
+              },
+              yVol: {
+                type: 'linear',
+                position: 'right',
+                grid: { drawOnChartArea: false },
+                ticks: { precision: 0 }
+              }
+            }
+          }
+        });
+      },
+
+      renderPerformanceChart: function (res) {
+        this.destroyCharts(['performanceChart']);
+        const ctx = document.getElementById('performanceChart')?.getContext('2d');
+        if (!ctx) return;
+
+        this.charts['performanceChart'] = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: res.labels || [],
+            datasets: [{
+              data: res.counts || [],
+              backgroundColor: ['#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#94a3b8'],
+              borderWidth: 0,
+              hoverOffset: 8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { boxWidth: 12 } }
+            },
+            cutout: '68%'
+          }
+        });
+      },
+
+      renderDepartmentChart: function (res) {
+        this.destroyCharts(['departmentChart']);
+        const ctx = document.getElementById('departmentChart')?.getContext('2d');
+        if (!ctx) return;
+
+        this.charts['departmentChart'] = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: res.labels || [],
+            datasets: [{
+              label: 'Attendance Rate (%)',
+              data: res.rates || [],
+              backgroundColor: 'rgba(59, 130, 246, 0.85)',
+              hoverBackgroundColor: '#2563eb',
+              borderRadius: 8,
+              barThickness: 20
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { min: 0, max: 100, ticks: { callback: v => v + '%' } }
+            }
+          }
+        });
+      },
+
+      renderEventChart: function (res) {
+        this.destroyCharts(['eventChart']);
+        const ctx = document.getElementById('eventChart')?.getContext('2d');
+        if (!ctx) return;
+
+        this.charts['eventChart'] = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: res.labels || [],
+            datasets: [{
+              label: 'Attendance Rate (%)',
+              data: res.rates || [],
+              backgroundColor: 'rgba(6, 182, 212, 0.85)',
+              hoverBackgroundColor: '#0891b2',
+              borderRadius: 8,
+              barThickness: 16
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { min: 0, max: 100, ticks: { callback: v => v + '%' } }
+            }
+          }
+        });
+      },
+
+      renderPatternsChart: function (res) {
+        this.destroyCharts(['patternsChart']);
+        const ctx = document.getElementById('patternsChart')?.getContext('2d');
+        if (!ctx) return;
+
+        // Custom Gradient for patterns line
+        const patternGradient = ctx.createLinearGradient(0, 0, 0, 250);
+        patternGradient.addColorStop(0, 'rgba(99, 102, 241, 0.3)');
+        patternGradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+
+        this.charts['patternsChart'] = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: res.labels || [],
+            datasets: [{
+              label: 'Scan Frequency',
+              data: res.counts || [],
+              borderColor: '#6366f1',
+              backgroundColor: patternGradient,
+              borderWidth: 3,
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: '#4f46e5'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { ticks: { precision: 0 } }
+            }
+          }
+        });
+      },
+
+      renderDefaulterChart: function (res) {
+        this.destroyCharts(['defaulterChart']);
+        const ctx = document.getElementById('defaulterChart')?.getContext('2d');
+        if (!ctx) return;
+
+        this.charts['defaulterChart'] = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: res.labels || [],
+            datasets: [{
+              label: 'Defaulters Count (<75%)',
+              data: res.counts || [],
+              backgroundColor: 'rgba(239, 68, 68, 0.85)',
+              hoverBackgroundColor: '#dc2626',
+              borderRadius: 8,
+              barThickness: 20
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { ticks: { precision: 0 } }
+            }
+          }
+        });
+      },
+
+      renderLeaderboardTable: function (res) {
+        const tbody = document.getElementById('leaderboardTableBody');
+        if (!tbody) return;
+        
+        const list = res && res.leaderboard ? res.leaderboard : [];
+        this.leaderboardData = list;
+
+        if (list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No top performers found</td></tr>';
+          return;
+        }
+
+        let html = '';
+        list.forEach((s, idx) => {
+          const rank = idx + 1;
+          let rankClass = 'rank-other';
+          if (rank === 1) rankClass = 'rank-1';
+          else if (rank === 2) rankClass = 'rank-2';
+          else if (rank === 3) rankClass = 'rank-3';
+
+          const pct = s.attendance_percentage.toFixed(1) + '%';
+
+          html += `
+            <tr>
+              <td><span class="rank-badge ${rankClass}">${rank}</span></td>
+              <td class="fw-bold text-dark">
+                <span class="d-block">${App.Utils.escapeHtml(s.student_name)}</span>
+                <span class="text-muted font-monospace small" style="font-size:0.75rem;">${App.Utils.escapeHtml(s.roll_number)}</span>
+              </td>
+              <td><span class="badge bg-secondary bg-opacity-10 text-secondary">${App.Utils.escapeHtml(s.department)}</span></td>
+              <td class="text-end fw-semibold text-dark">${s.events_attended}</td>
+              <td class="text-end">
+                <div class="d-flex align-items-center justify-content-end gap-2">
+                  <div class="progress" style="height:6px; width:60px;">
+                    <div class="progress-bar bg-success" style="width:${s.attendance_percentage}%"></div>
+                  </div>
+                  <span class="fw-bold text-success" style="font-size:0.85rem;">${pct}</span>
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+        tbody.innerHTML = html;
+      },
+
+      exportAnalyticsData: function () {
+        if (!this.summaryData) {
+          App.UI.showInfo("Load analytics data first.");
+          return;
+        }
+        
+        let csv = "\uFEFF"; // UTF-8 BOM
+        csv += '"BVC Analytics Dashboard Summary Report"\r\n';
+        csv += `"Generated On", "${new Date().toLocaleString()}"\r\n\r\n`;
+
+        csv += '"KPI Card Metircs"\r\n';
+        csv += '"Metric", "Value", "Growth vs Prior Month"\r\n';
+        csv += `"Total Events", "${this.summaryData.totalEvents}", "${this.summaryData.growth.events}%"\r\n`;
+        csv += `"Roster Roster Size", "${this.summaryData.totalParticipants}", "${this.summaryData.growth.checkins}%"\r\n`;
+        csv += `"Check-Ins", "${this.summaryData.totalCheckIns}", "${this.summaryData.growth.checkins}%"\r\n`;
+        csv += `"Avg Attendance Rate", "${this.summaryData.overallAttendanceRate}%", "${this.summaryData.growth.rate}%"\r\n\r\n`;
+
+        if (this.leaderboardData.length > 0) {
+          csv += '"Top Leaderboard Performers"\r\n';
+          csv += '"Rank", "Roll Number", "Student Name", "Department", "Events Attended", "Attendance Percentage"\r\n';
+          this.leaderboardData.forEach((s, idx) => {
+            csv += `"${idx + 1}", "${s.roll_number}", "${s.student_name}", "${s.department}", "${s.events_attended}", "${s.attendance_percentage}%"\r\n`;
+          });
+        }
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `analytics_executive_export_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        App.UI.showSuccess("CSV dataset exported successfully.");
+      },
+
+      destroy: function () {
+        console.log('Destroying Analytics Module...');
+        this.destroyCharts(['trendChart', 'performanceChart', 'departmentChart', 'eventChart', 'patternsChart', 'defaulterChart']);
+      }
+    };
+
+    App.Modules.analytics = Analytics;
+  })();
+
+  // Auto-initialize module on direct injection trigger
+  if (typeof App !== 'undefined' && App.Modules && App.Modules.analytics) {
+    App.Modules.analytics.init();
+  }
+</script>

@@ -1,0 +1,934 @@
+<script>
+/**
+ * Reports Module UI Controller
+ */
+(function() {
+  const Reports = {
+    currentData: [],
+    filteredData: [],
+    currentPage: 1,
+    rowsPerPage: 25,
+    sortCol: null,
+    sortAsc: true,
+    currentReportType: 'event',
+
+    init: function() {
+      console.log('Initializing Reports Module...');
+      try {
+        this.bindEvents();
+        this.updateFilterUI('event');
+      } catch(e) {
+        console.error('[Reports] init setup error:', e);
+      }
+      this.loadGlobalSummary().finally(() => {
+        // Force-clear any stuck loading overlay when module finishes initialising
+        App.LoadingManager.hide(true);
+      });
+      this.loadFilterDropdowns();
+    },
+
+    bindEvents: function() {
+      const typeSelect = document.getElementById('reportTypeSelect');
+      if (typeSelect) {
+        typeSelect.addEventListener('change', (e) => {
+           this.updateFilterUI(e.target.value);
+        });
+      }
+
+      const form = document.getElementById('reportFilterForm');
+      if (form) {
+         form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.generateReport();
+         });
+      }
+
+      document.getElementById('btnResetFilters')?.addEventListener('click', () => {
+         document.getElementById('reportFilterForm').reset();
+         document.getElementById('filterThreshold').value = '75';
+         document.getElementById('filterLimit').value = '20';
+         document.getElementById('reportTypeSelect').value = 'event';
+         this.sortCol = null;
+         this.sortAsc = true;
+         this.currentData = [];
+         this.filteredData = [];
+         this.updateFilterUI('event');
+         this.renderTableHeader();
+         this.renderTableBody();
+      });
+
+      document.getElementById('reportTableSearch')?.addEventListener('input', (e) => {
+         this.handleSearch(e.target.value);
+      });
+
+      document.getElementById('reportTableRowsPerPage')?.addEventListener('change', (e) => {
+         this.rowsPerPage = parseInt(e.target.value, 10);
+         this.currentPage = 1;
+         this.renderTableBody();
+      });
+
+      document.getElementById('btnExportCSV')?.addEventListener('click', () => this.exportCSV());
+      document.getElementById('btnPrintReport')?.addEventListener('click', () => this.printReport());
+      document.getElementById('btnExportPDF')?.addEventListener('click', () => this.exportPDF());
+      document.getElementById('btnCustomExport')?.addEventListener('click', () => {
+         if (App.ExportBuilder) {
+            App.ExportBuilder.open(this.currentReportType);
+         } else {
+            App.UI.showError('Export Builder not loaded.');
+         }
+      });
+    },
+
+    updateFilterUI: function(type) {
+      this.currentReportType = type;
+      this.sortCol = null;
+      this.sortAsc = true;
+      ['EventId', 'RollNo', 'Department', 'Coordinator', 'Status', 'FromDate', 'ToDate', 'Year', 'CalendarYear', 'Month', 'Threshold', 'Limit'].forEach(f => {
+         const el = document.getElementById('filter' + f + 'Wrapper');
+         if (el) el.classList.add('d-none');
+      });
+
+      const show = (ids) => ids.forEach(id => {
+         const el = document.getElementById('filter' + id + 'Wrapper');
+         if (el) el.classList.remove('d-none');
+      });
+
+      switch (type) {
+         case 'event':
+            show(['EventId', 'Coordinator', 'Status']);
+            break;
+         case 'student':
+         case 'student_history':
+            show(['RollNo']);
+            break;
+         case 'department':
+            show(['Department']);
+            break;
+         case 'dept_comparison':
+            break;
+         case 'coordinator':
+         case 'coord_performance':
+            show(['Coordinator']);
+            break;
+         case 'daterange':
+         case 'event_trend':
+         case 'cancelled':
+            show(['FromDate', 'ToDate']);
+            break;
+         case 'monthly':
+            show(['Month', 'CalendarYear', 'FromDate', 'ToDate']);
+            break;
+         case 'yearwise':
+            show(['Year']);
+            break;
+         case 'defaulters':
+            show(['Department', 'Year', 'Threshold']);
+            break;
+         case 'top_participants':
+            show(['Department', 'Year', 'Limit']);
+            break;
+         case 'absent':
+            show(['EventId', 'Department']);
+            break;
+         default:
+            break;
+      }
+    },
+
+    loadFilterDropdowns: async function() {
+      try {
+        // Populate Events dropdown
+        const eventsRes = await App.API._call('getAllEvents');
+        const events = Array.isArray(eventsRes) ? eventsRes
+          : (eventsRes && Array.isArray(eventsRes.data)) ? eventsRes.data
+          : (eventsRes && eventsRes.data && Array.isArray(eventsRes.data.events)) ? eventsRes.data.events
+          : [];
+        const eventSelect = document.getElementById('filterEventId');
+        if (eventSelect) {
+          eventSelect.innerHTML = '<option value="">All Events</option>';
+          events.filter(e => !e['Deletion Flag'] && e['Deletion Flag'] !== true).forEach(e => {
+            const id = e['Event ID'] || e.event_id || e.eventId || '';
+            const name = e['Event Name'] || e.event_name || e.name || id;
+            if (id) {
+              const opt = document.createElement('option');
+              opt.value = id;
+              opt.textContent = name + ' (' + id + ')';
+              eventSelect.appendChild(opt);
+            }
+          });
+        }
+      } catch(e) {
+        console.warn('[Reports] Failed to load events for filter:', e);
+      }
+
+      try {
+        // Populate Coordinators dropdown
+        const usersRes = await App.API._call('getAllUsers');
+        const users = Array.isArray(usersRes) ? usersRes
+          : (usersRes && Array.isArray(usersRes.data)) ? usersRes.data
+          : (usersRes && usersRes.data && Array.isArray(usersRes.data.users)) ? usersRes.data.users
+          : [];
+        const coordSelect = document.getElementById('filterCoordinatorId');
+        if (coordSelect) {
+          coordSelect.innerHTML = '<option value="">All Admins</option>';
+          users.filter(u => {
+            const role = String(u['Role'] || u.role || '').toUpperCase();
+            const deleted = u['Deletion Flag'] === true || u['Deletion Flag'] === 'true';
+            return !deleted && (role === 'COORDINATOR' || role === 'HOD');
+          }).forEach(u => {
+            const id = u['User ID'] || u.user_id || u.userId || '';
+            const firstName = u['First Name'] || u.first_name || '';
+            const lastName = u['Last Name'] || u.last_name || '';
+            const fullName = (firstName + ' ' + lastName).trim() || id;
+            const role = u['Role'] || u.role || '';
+            if (id) {
+              const opt = document.createElement('option');
+              opt.value = id;
+              opt.textContent = fullName + ' [' + role + '] (' + id + ')';
+              coordSelect.appendChild(opt);
+            }
+          });
+        }
+      } catch(e) {
+        console.warn('[Reports] Failed to load coordinators for filter:', e);
+      }
+    },
+
+    loadGlobalSummary: async function() {
+      try {
+        const res = await App.API._call('getReportsDashboardSummary');
+        console.log('[Reports] loadGlobalSummary raw res:', res);
+        // buildResponse spreads data at root level: { success, message, report }
+        // _call resolves with the full object when res.data is undefined
+        const r = (res && res.report) ? res.report
+                : (res && res.data && res.data.report) ? res.data.report
+                : null;
+        if (r) {
+           document.getElementById('gSumEvents').textContent = r.totalEvents;
+           document.getElementById('gSumStudents').textContent = r.totalStudents;
+           document.getElementById('gSumAttendance').textContent = r.totalAttendance;
+           document.getElementById('gSumRate').textContent = r.attendancePercentage + '%';
+           document.getElementById('gSumActive').textContent = r.activeEvents;
+           document.getElementById('gSumCompleted').textContent = r.completedEvents;
+           document.getElementById('gSumHighest').textContent = r.highestEvent;
+           document.getElementById('gSumLowest').textContent = r.lowestEvent;
+           document.getElementById('gSumHighest').title = r.highestEvent;
+           document.getElementById('gSumLowest').title = r.lowestEvent;
+        } else {
+           console.warn('[Reports] Summary data not found in response:', res);
+        }
+      } catch (error) {
+        console.error('Failed to load global summary:', error);
+      }
+    },
+
+    setLoading: function(isLoading) {
+       const loader = document.getElementById('reportTableLoading');
+       if (isLoading) {
+          loader.classList.remove('d-none');
+          document.getElementById('reportTableBody').innerHTML = '';
+       } else {
+          loader.classList.add('d-none');
+       }
+       document.getElementById('btnGenerateReport').disabled = isLoading;
+    },
+
+    parseReportRows: function(res) {
+       if (Array.isArray(res)) return res;
+       if (res && Array.isArray(res.data)) return res.data;
+       if (res && res.data && Array.isArray(res.data.data)) return res.data.data;
+       return null;
+    },
+
+    getCommonFilters: function() {
+       return {
+          eventId: document.getElementById('filterEventId')?.value || '',
+          department: document.getElementById('filterDepartment')?.value || '',
+          year: document.getElementById('filterYear')?.value || '',
+          calendarYear: document.getElementById('filterCalendarYear')?.value || new Date().getFullYear(),
+          month: document.getElementById('filterMonth')?.value || '',
+          fromDate: document.getElementById('filterFromDate')?.value || '',
+          toDate: document.getElementById('filterToDate')?.value || '',
+          threshold: document.getElementById('filterThreshold')?.value || '75',
+          limit: document.getElementById('filterLimit')?.value || '20',
+          coordinatorId: document.getElementById('filterCoordinatorId')?.value || '',
+          status: document.getElementById('filterStatus')?.value || ''
+       };
+    },
+
+    generateReport: async function() {
+       this.setLoading(true);
+       try {
+          const type = this.currentReportType;
+          const f = this.getCommonFilters();
+          let res = null;
+
+          switch (type) {
+             case 'event':
+                res = await App.API._call('getEventReport', {
+                   eventId: f.eventId,
+                   coordinatorId: f.coordinatorId,
+                   status: f.status
+                });
+                break;
+             case 'student':
+                if (!document.getElementById('filterRollNo').value) {
+                   App.UI.showInfo('Please enter a Roll Number');
+                   this.setLoading(false);
+                   return;
+                }
+                res = await App.API._call('getStudentReport', document.getElementById('filterRollNo').value);
+                break;
+             case 'student_history':
+                if (!document.getElementById('filterRollNo').value) {
+                   App.UI.showInfo('Please enter a Roll Number');
+                   this.setLoading(false);
+                   return;
+                }
+                res = await App.API._call('getStudentEventHistory', document.getElementById('filterRollNo').value);
+                break;
+             case 'department':
+                res = await App.API._call('getDepartmentReport', f.department);
+                break;
+             case 'dept_comparison':
+                res = await App.API._call('getDepartmentComparison');
+                break;
+             case 'coordinator':
+                res = await App.API._call('getCoordinatorReport', f.coordinatorId);
+                break;
+             case 'coord_performance':
+                res = await App.API._call('getCoordinatorPerformance', f.coordinatorId);
+                break;
+             case 'daterange':
+                if (!f.fromDate || !f.toDate) {
+                   App.UI.showInfo('Please select From and To dates');
+                   this.setLoading(false);
+                   return;
+                }
+                res = await App.API._call('getDateRangeReport', f.fromDate, f.toDate);
+                break;
+             case 'monthly':
+                res = await App.API._call('getMonthlyReport', {
+                   month: f.month,
+                   year: f.calendarYear,
+                   fromDate: f.fromDate,
+                   toDate: f.toDate
+                });
+                break;
+             case 'event_trend':
+                res = await App.API._call('getEventTrendReport', { fromDate: f.fromDate, toDate: f.toDate });
+                break;
+             case 'yearwise':
+                res = await App.API._call('getYearWiseReport', f.year);
+                break;
+             case 'defaulters':
+                res = await App.API._call('getAttendanceDefaulters', {
+                   department: f.department,
+                   year: f.year,
+                   threshold: f.threshold
+                });
+                break;
+             case 'top_participants':
+                res = await App.API._call('getTopParticipants', {
+                   department: f.department,
+                   year: f.year,
+                   limit: f.limit
+                });
+                break;
+             case 'college_ranking':
+                res = await App.API._call('getCollegeRankingReport');
+                break;
+             case 'dept_ranking':
+                res = await App.API._call('getDepartmentRankingReport');
+                break;
+             case 'hod_outbound':
+                res = await App.API._call('getCrossDepartmentAttendance');
+                break;
+             case 'hod_branch_ranking':
+                res = await App.API._call('getDepartmentBranchRankingReport');
+                break;
+             case 'absent':
+                res = await App.API._call('getAbsentStudents', {
+                   eventId: f.eventId,
+                   department: f.department
+                });
+                break;
+             case 'cancelled':
+                res = await App.API._call('getCancelledEvents', {
+                   coordinatorId: f.coordinatorId,
+                   fromDate: f.fromDate,
+                   toDate: f.toDate
+                });
+                break;
+             default:
+                throw new Error('Unknown report type');
+          }
+
+          console.log('[Reports] generateReport raw res:', res);
+          const rows = this.parseReportRows(res);
+
+          if (rows !== null) {
+             this.currentData = rows;
+             this.filteredData = [...this.currentData];
+             this.currentPage = 1;
+             this.renderTableHeader();
+             this.renderTableBody();
+             if (rows.length > 0) {
+                App.UI.showSuccess('Report generated successfully');
+             } else {
+                App.UI.showInfo('No records found for the selected filters');
+             }
+          } else if (res && res.success === false) {
+             throw new Error(res.message || 'Failed to generate report');
+          } else {
+             this.currentData = [];
+             this.filteredData = [];
+             this.renderTableHeader();
+             this.renderTableBody();
+             App.UI.showInfo('No records found for the selected filters');
+          }
+       } catch (error) {
+          console.error(error);
+          App.UI.showError('Error: ' + error.message);
+          document.getElementById('reportTableBody').innerHTML = '<tr><td class="text-center text-danger py-5" colspan="100%">Error generating report.</td></tr>';
+       } finally {
+          this.setLoading(false);
+       }
+    },
+
+    handleSearch: function(query) {
+       if (!query) {
+          this.filteredData = [...this.currentData];
+       } else {
+          query = query.toLowerCase();
+          this.filteredData = this.currentData.filter(row => {
+             return Object.values(row).some(val => String(val).toLowerCase().includes(query));
+          });
+       }
+       this.currentPage = 1;
+       this.renderTableBody();
+    },
+
+    handleSort: function(col) {
+       if (this.sortCol === col) {
+          this.sortAsc = !this.sortAsc;
+       } else {
+          this.sortCol = col;
+          this.sortAsc = true;
+       }
+
+       this.filteredData.sort((a, b) => {
+          let valA = a[col];
+          let valB = b[col];
+          if (typeof valA === 'string') valA = valA.toLowerCase();
+          if (typeof valB === 'string') valB = valB.toLowerCase();
+
+          if (valA < valB) return this.sortAsc ? -1 : 1;
+          if (valA > valB) return this.sortAsc ? 1 : -1;
+          return 0;
+       });
+
+       this.renderTableHeader();
+       this.renderTableBody();
+    },
+
+    getColumnsForType: function() {
+       switch(this.currentReportType) {
+          case 'event':
+          case 'daterange':
+             return [
+               { key: 'event_name', label: 'Event Name' },
+               { key: 'coordinator', label: 'Coordinator' },
+               { key: 'venue', label: 'Venue' },
+               { key: 'start_date', label: 'Start Date' },
+               { key: 'end_date', label: 'End Date' },
+               { key: 'participants', label: 'Participants' },
+               { key: 'present', label: 'Present' },
+               { key: 'absent', label: 'Absent' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true },
+               { key: 'status', label: 'Status', badge: true }
+             ];
+          case 'student':
+             return [
+               { key: 'roll_number', label: 'Roll Number' },
+               { key: 'student_name', label: 'Name' },
+               { key: 'department', label: 'Dept' },
+               { key: 'year', label: 'Year' },
+               { key: 'event_name', label: 'Event' },
+               { key: 'date', label: 'Date' },
+               { key: 'status', label: 'Status', badge: true }
+             ];
+          case 'student_history':
+             return [
+               { key: 'event_name', label: 'Event' },
+               { key: 'event_id', label: 'Event ID' },
+               { key: 'venue', label: 'Venue' },
+               { key: 'coordinator', label: 'Coordinator' },
+               { key: 'date', label: 'Event Date' },
+               { key: 'attendance_time', label: 'Marked On' },
+               { key: 'status', label: 'Status', badge: true }
+             ];
+          case 'department':
+             return [
+               { key: 'department', label: 'Department' },
+               { key: 'total_students', label: 'Total Students' },
+               { key: 'events_conducted', label: 'Events Conducted' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true }
+             ];
+          case 'dept_comparison':
+             return [
+               { key: 'rank', label: 'Rank' },
+               { key: 'department', label: 'Department' },
+               { key: 'total_students', label: 'Total Students' },
+               { key: 'events_conducted', label: 'Events Conducted' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true }
+             ];
+          case 'coordinator':
+             return [
+               { key: 'coordinator', label: 'Coordinator' },
+               { key: 'events_managed', label: 'Events Managed' },
+               { key: 'participants', label: 'Participants' },
+               { key: 'attendance_records', label: 'Attendance Records' },
+               { key: 'last_activity', label: 'Last Activity' }
+             ];
+          case 'coord_performance':
+             return [
+               { key: 'coordinator', label: 'Coordinator' },
+               { key: 'events_managed', label: 'Events' },
+               { key: 'events_completed', label: 'Completed' },
+               { key: 'events_cancelled', label: 'Cancelled' },
+               { key: 'total_participants', label: 'Participants' },
+               { key: 'avg_attendance_rate', label: 'Avg Rate %', suffix: '%', progress: true },
+               { key: 'performance', label: 'Performance', badge: true }
+             ];
+          case 'monthly':
+             return [
+               { key: 'month', label: 'Month' },
+               { key: 'events_count', label: 'Events' },
+               { key: 'participants', label: 'Participants' },
+               { key: 'present', label: 'Present' },
+               { key: 'absent', label: 'Absent' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true }
+             ];
+          case 'event_trend':
+             return [
+               { key: 'period', label: 'Period' },
+               { key: 'events', label: 'Events' },
+               { key: 'total_attendance', label: 'Total Records' },
+               { key: 'present', label: 'Present' },
+               { key: 'absent', label: 'Absent' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true },
+               { key: 'trend', label: 'Trend', badge: true }
+             ];
+          case 'yearwise':
+             return [
+               { key: 'year', label: 'Year' },
+               { key: 'total_students', label: 'Students' },
+               { key: 'events_conducted', label: 'Events' },
+               { key: 'present', label: 'Present' },
+               { key: 'absent', label: 'Absent' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true }
+             ];
+          case 'defaulters':
+             return [
+               { key: 'roll_number', label: 'Roll No' },
+               { key: 'student_name', label: 'Name' },
+               { key: 'department', label: 'Dept' },
+               { key: 'year', label: 'Year' },
+               { key: 'events_enrolled', label: 'Events' },
+               { key: 'present', label: 'Present' },
+               { key: 'absent', label: 'Absent' },
+               { key: 'attendance_percentage', label: 'Attendance %', suffix: '%', progress: true },
+               { key: 'status', label: 'Status', badge: true }
+             ];
+          case 'top_participants':
+             return [
+               { key: 'rank', label: 'Rank' },
+               { key: 'roll_number', label: 'Roll Number' },
+               { key: 'student_name', label: 'Name' },
+               { key: 'department', label: 'Dept' },
+               { key: 'year', label: 'Year' },
+               { key: 'events_attended', label: 'Events Attended' }
+             ];
+          case 'college_ranking':
+             return [
+               { key: 'rank', label: 'Rank' },
+               { key: 'college', label: 'College Name' },
+               { key: 'unique_students_count', label: 'Unique Students Participated' }
+             ];
+          case 'dept_ranking':
+             return [
+               { key: 'rank', label: 'Rank' },
+               { key: 'department', label: 'Department Name' },
+               { key: 'total_participations', label: 'Total Participations' },
+               { key: 'unique_students_count', label: 'Unique Students Count' }
+             ];
+          case 'hod_outbound':
+             return [
+               { key: 'roll', label: 'Roll Number' },
+               { key: 'name', label: 'Student Name' },
+               { key: 'dept', label: 'Department' },
+               { key: 'branch', label: 'Branch' },
+               { key: 'year', label: 'Year' },
+               { key: 'eventName', label: 'Attended Event' },
+               { key: 'hostDept', label: 'Hosted By Dept' },
+               { key: 'timestamp', label: 'Attended Time' }
+             ];
+          case 'hod_branch_ranking':
+             return [
+               { key: 'rank', label: 'Rank' },
+               { key: 'branch', label: 'Branch' },
+               { key: 'year', label: 'Year' },
+               { key: 'section', label: 'Section' },
+               { key: 'total_participations', label: 'Total Participations' },
+               { key: 'unique_students_count', label: 'Unique Students Count' }
+             ];
+          case 'absent':
+             return [
+               { key: 'roll_number', label: 'Roll No' },
+               { key: 'student_name', label: 'Name' },
+               { key: 'department', label: 'Dept' },
+               { key: 'year', label: 'Year' },
+               { key: 'event_name', label: 'Event' },
+               { key: 'date', label: 'Date' },
+               { key: 'status', label: 'Status', badge: true }
+             ];
+          case 'cancelled':
+             return [
+               { key: 'event_id', label: 'Event ID' },
+               { key: 'event_name', label: 'Event Name' },
+               { key: 'coordinator', label: 'Coordinator' },
+               { key: 'venue', label: 'Venue' },
+               { key: 'start_date', label: 'Start Date' },
+               { key: 'end_date', label: 'End Date' },
+               { key: 'status', label: 'Status', badge: true }
+             ];
+          default:
+             return [];
+       }
+    },
+
+    renderCellValue: function(row, col) {
+       let val = row[col.key];
+       if (val === undefined || val === null || val === '') val = '-';
+
+       if (col.progress && val !== '-') {
+          const num = parseFloat(val);
+          const pct = isNaN(num) ? 0 : Math.min(100, Math.max(0, num));
+          let barClass = 'bg-success';
+          if (pct < 50) barClass = 'bg-danger';
+          else if (pct < 75) barClass = 'bg-warning';
+          return `<div class="d-flex align-items-center gap-2">
+            <div class="progress flex-grow-1" style="height:8px;min-width:80px;">
+              <div class="progress-bar ${barClass}" style="width:${pct}%"></div>
+            </div>
+            <span class="small fw-semibold">${pct}%</span>
+          </div>`;
+       }
+
+       if (col.badge) {
+          let badgeClass = 'bg-secondary';
+          const s = String(val);
+          if (['Active', 'Present', 'Good', 'Completed'].includes(s)) badgeClass = 'bg-success';
+          else if (['Warning', 'Upcoming', 'Idle'].includes(s)) badgeClass = 'bg-warning text-dark';
+          else if (['Critical', 'Absent', 'Cancelled', 'Needs Improvement'].includes(s)) badgeClass = 'bg-danger';
+          else if (s === 'Completed') badgeClass = 'bg-primary';
+          return `<span class="badge ${badgeClass}">${App.Utils.escapeHtml(s)}</span>`;
+       }
+
+       if (col.suffix && val !== '-') val = val + col.suffix;
+       return App.Utils.escapeHtml(String(val));
+    },
+
+    renderTableHeader: function() {
+       const cols = this.getColumnsForType();
+       if (cols.length === 0) return;
+
+       let html = '<tr>';
+       cols.forEach(c => {
+          let icon = '';
+          if (this.sortCol === c.key) {
+             icon = this.sortAsc ? ' <i class="bi bi-sort-up"></i>' : ' <i class="bi bi-sort-down"></i>';
+          }
+          html += `<th class="py-3" style="cursor:pointer;" data-sort="${c.key}">${c.label}${icon}</th>`;
+       });
+       html += '</tr>';
+       const header = document.getElementById('reportTableHeader');
+       header.innerHTML = html;
+
+       // Bind sort events
+       header.querySelectorAll('th[data-sort]').forEach(th => {
+          th.addEventListener('click', (e) => {
+             this.handleSort(e.currentTarget.getAttribute('data-sort'));
+          });
+       });
+    },
+
+    renderTableBody: function() {
+       const tbody = document.getElementById('reportTableBody');
+       const cols = this.getColumnsForType();
+
+       if (this.filteredData.length === 0) {
+          tbody.innerHTML = `<tr><td class="text-center text-muted py-5" colspan="${cols.length}">
+            <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+            No Records Found
+          </td></tr>`;
+          this.updatePagination();
+          return;
+       }
+
+       const start = (this.currentPage - 1) * this.rowsPerPage;
+       const end = start + this.rowsPerPage;
+       const paginated = this.filteredData.slice(start, end);
+
+       let html = '';
+       paginated.forEach(row => {
+          html += '<tr>';
+          cols.forEach(c => {
+             html += `<td>${this.renderCellValue(row, c)}</td>`;
+          });
+          html += '</tr>';
+       });
+
+       tbody.innerHTML = html;
+       this.updatePagination();
+    },
+
+    updatePagination: function() {
+       const total = this.filteredData.length;
+       const start = total === 0 ? 0 : (this.currentPage - 1) * this.rowsPerPage + 1;
+       const end = Math.min(this.currentPage * this.rowsPerPage, total);
+       document.getElementById('reportTableInfo').textContent = `Showing ${start} to ${end} of ${total} records`;
+
+       const totalPages = Math.ceil(total / this.rowsPerPage);
+       const pagination = document.getElementById('reportTablePagination');
+       
+       let html = '';
+       html += `<li class="page-item ${this.currentPage === 1 ? 'disabled' : ''}">
+                 <a class="page-link" href="#" data-page="${this.currentPage - 1}">Previous</a>
+               </li>`;
+       
+       for (let i = 1; i <= totalPages; i++) {
+          if (i === 1 || i === totalPages || (i >= this.currentPage - 1 && i <= this.currentPage + 1)) {
+             html += `<li class="page-item ${i === this.currentPage ? 'active' : ''}">
+                       <a class="page-link" href="#" data-page="${i}">${i}</a>
+                     </li>`;
+          } else if (i === this.currentPage - 2 || i === this.currentPage + 2) {
+             html += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+          }
+       }
+
+       html += `<li class="page-item ${this.currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}">
+                 <a class="page-link" href="#" data-page="${this.currentPage + 1}">Next</a>
+               </li>`;
+       
+       pagination.innerHTML = html;
+
+       pagination.querySelectorAll('.page-link[data-page]').forEach(a => {
+          a.addEventListener('click', (e) => {
+             e.preventDefault();
+             const page = parseInt(e.target.getAttribute('data-page'), 10);
+             if (page > 0 && page <= totalPages) {
+                this.currentPage = page;
+                this.renderTableBody();
+             }
+          });
+       });
+    },
+
+    exportCSV: function() {
+       if (this.currentData.length === 0) {
+          App.UI.showInfo('No data to export. Please generate a report first.');
+          return;
+       }
+       const cols = this.getColumnsForType();
+       let csv = cols.map(c => '"' + c.label + '"').join(',') + '\n';
+       
+       this.currentData.forEach(row => {
+          csv += cols.map(c => {
+             let val = row[c.key];
+             if (val === undefined || val === null) val = '';
+             return '"' + String(val).replace(/"/g, '""') + '"';
+          }).join(',') + '\n';
+       });
+
+       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+       const url = URL.createObjectURL(blob);
+       const link = document.createElement('a');
+       link.setAttribute('href', url);
+       link.setAttribute('download', `Report_${this.currentReportType}_${new Date().getTime()}.csv`);
+       document.body.appendChild(link);
+       link.click();
+       document.body.removeChild(link);
+    },
+
+     exportPDF: function() {
+        if (this.currentData.length === 0) {
+           App.UI.showInfo('No data to export. Please generate a report first.');
+           return;
+        }
+
+        const reportTitle = document.getElementById('reportTypeSelect')
+           ? document.getElementById('reportTypeSelect').options[document.getElementById('reportTypeSelect').selectedIndex].text
+           : 'Report';
+
+        // Build table headers from the first row keys
+        const headers = Object.keys(this.currentData[0] || {});
+
+        // Build HTML rows
+        const tableRows = this.currentData.map(row => {
+           return '<tr>' + headers.map(h => `<td style="padding:6px 10px;border:1px solid #dee2e6;font-size:12px;">${row[h] !== null && row[h] !== undefined ? row[h] : ''}</td>`).join('') + '</tr>';
+        }).join('');
+
+        const tableHeaders = headers.map(h => `<th style="padding:8px 10px;background:#1a56db;color:#fff;border:1px solid #1a56db;font-size:12px;text-align:left;">${h}</th>`).join('');
+
+        const now = new Date().toLocaleString();
+        const user = (App.Auth && App.Auth.currentUser && App.Auth.currentUser.full_name) ? App.Auth.currentUser.full_name : 'System User';
+
+        const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${reportTitle}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+    .header { text-align: center; border-bottom: 3px solid #1a56db; padding-bottom: 12px; margin-bottom: 20px; }
+    .header h1 { margin: 0; font-size: 20px; color: #1a56db; }
+    .header h2 { margin: 4px 0 0; font-size: 14px; font-weight: normal; color: #555; }
+    .meta { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    @media print { button { display: none; } }
+    .footer { text-align: center; font-size: 11px; color: #aaa; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>BVC Engineering College</h1>
+    <h2>Event Attendance Management System &mdash; ${reportTitle}</h2>
+  </div>
+  <div class="meta">
+    <span>Generated By: <strong>${user}</strong></span>
+    <span>Date: <strong>${now}</strong></span>
+    <span>Total Records: <strong>${this.currentData.length}</strong></span>
+  </div>
+  <table>
+    <thead><tr>${tableHeaders}</tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+  <div class="footer">BVC Event Attendance System &copy; ${new Date().getFullYear()} &mdash; Confidential</div>
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
+
+        const win = window.open('', '_blank', 'width=1000,height=700');
+        if (win) {
+           win.document.write(htmlContent);
+           win.document.close();
+        } else {
+           App.UI.showError('Popup blocked! Please allow popups for this site to export PDF.');
+        }
+     },
+
+    printReport: function() {
+       if (this.currentData.length === 0) {
+          App.UI.showInfo('No data to print. Please generate a report first.');
+          return;
+       }
+
+       document.getElementById('printReportTitle').textContent = 
+          document.getElementById('reportTypeSelect').options[document.getElementById('reportTypeSelect').selectedIndex].text;
+       
+       document.getElementById('printGeneratedBy').textContent = 'Generated By: ' + (App.Auth.currentUser?.full_name || 'System User');
+       document.getElementById('printGeneratedOn').textContent = 'Date: ' + new Date().toLocaleString();
+       
+       // Build filters string
+       const f = this.getCommonFilters();
+       let filters = [];
+       const type = this.currentReportType;
+       switch (type) {
+          case 'event':
+             if (f.eventId) filters.push('Event: ' + f.eventId);
+             if (f.coordinatorId) filters.push('Coordinator: ' + f.coordinatorId);
+             if (f.status) filters.push('Status: ' + f.status);
+             break;
+          case 'student':
+          case 'student_history':
+             filters.push('Roll No: ' + document.getElementById('filterRollNo').value);
+             break;
+          case 'department':
+             if (f.department) filters.push('Dept: ' + f.department);
+             break;
+          case 'coordinator':
+          case 'coord_performance':
+             if (f.coordinatorId) filters.push('Coordinator: ' + f.coordinatorId);
+             break;
+          case 'daterange':
+          case 'event_trend':
+          case 'cancelled':
+             if (f.fromDate) filters.push('From: ' + f.fromDate);
+             if (f.toDate) filters.push('To: ' + f.toDate);
+             break;
+          case 'monthly':
+             if (f.month) filters.push('Month: ' + f.month);
+             if (f.calendarYear) filters.push('Year: ' + f.calendarYear);
+             break;
+          case 'yearwise':
+             if (f.year) filters.push('Year: ' + f.year);
+             break;
+          case 'defaulters':
+             if (f.department) filters.push('Dept: ' + f.department);
+             if (f.year) filters.push('Year: ' + f.year);
+             filters.push('Threshold: ' + f.threshold + '%');
+             break;
+          case 'top_participants':
+             if (f.department) filters.push('Dept: ' + f.department);
+             if (f.year) filters.push('Year: ' + f.year);
+             filters.push('Top: ' + f.limit);
+             break;
+          case 'absent':
+             if (f.eventId) filters.push('Event: ' + f.eventId);
+             if (f.department) filters.push('Dept: ' + f.department);
+             break;
+          default:
+             break;
+       }
+       document.getElementById('printAppliedFilters').innerHTML = '<strong>Filters:</strong> ' + (filters.length > 0 ? filters.join(', ') : 'None');
+
+       const cols = this.getColumnsForType();
+       let thead = '<tr>' + cols.map(c => `<th>${c.label}</th>`).join('') + '</tr>';
+       document.getElementById('printTableHeader').innerHTML = thead;
+
+       let tbody = '';
+       this.currentData.forEach(row => {
+          tbody += '<tr>';
+          cols.forEach(c => {
+             let val = row[c.key];
+             if (val === undefined || val === null) val = '-';
+             if (c.suffix && val !== '-') val = val + c.suffix;
+             tbody += `<td>${val}</td>`;
+          });
+          tbody += '</tr>';
+       });
+       document.getElementById('printTableBody').innerHTML = tbody;
+
+       const printContent = document.getElementById('printContainer').innerHTML;
+       const originalContent = document.body.innerHTML;
+
+       document.body.innerHTML = printContent;
+       window.print();
+       document.body.innerHTML = originalContent;
+       
+       // Re-initialize app after print rewrites DOM
+       window.location.reload();
+    }
+  };
+
+
+  App.Modules.reports = Reports;
+})();
+
+// Auto-initialize module on direct injection trigger
+if (typeof App !== 'undefined' && App.Modules && App.Modules.reports) {
+  App.Modules.reports.init();
+}
+</script>

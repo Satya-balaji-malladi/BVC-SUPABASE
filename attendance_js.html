@@ -1,0 +1,440 @@
+<script>
+App.Modules.attendance = {
+  currentEventId: null,
+  attendanceData: [],
+  studentsData: [],
+
+  init: function() {
+    this.bindEvents();
+    this.loadEventsDropdown();
+    this.loadStudentsData();
+  },
+
+  bindEvents: function() {
+    const select = document.getElementById('attendanceEventSelect');
+    if (select) {
+      select.addEventListener('change', (e) => {
+        this.currentEventId = e.target.value;
+        if (this.currentEventId) {
+          document.getElementById('attendanceEntrySection').classList.remove('d-none');
+          this.loadAttendanceData();
+        } else {
+          document.getElementById('attendanceEntrySection').classList.add('d-none');
+          document.getElementById('attendance-table-body').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">Please select an event</td></tr>';
+          const filterSelect = document.getElementById('attendanceDayFilter');
+          if (filterSelect) filterSelect.classList.add('d-none');
+        }
+      });
+    }
+
+    const filterSelect = document.getElementById('attendanceDayFilter');
+    if (filterSelect) {
+      filterSelect.addEventListener('change', () => {
+        this.applyDayFilterAndRender();
+      });
+    }
+
+    const collegeSelect = document.getElementById('attendanceCollegeSelect');
+    if (collegeSelect) {
+      collegeSelect.addEventListener('change', () => {
+        this.applyDayFilterAndRender();
+      });
+    }
+
+    const markBtn = document.getElementById('attMarkBtn');
+    if (markBtn) {
+      markBtn.addEventListener('click', () => this.markAttendance());
+    }
+
+    const rollInput = document.getElementById('attRollNumber');
+    if (rollInput) {
+      rollInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.markAttendance();
+        }
+      });
+    }
+    
+    const tbody = document.getElementById('attendance-table-body');
+    if (tbody) {
+      tbody.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action="delete-attendance"]');
+        if (btn) {
+          const id = btn.getAttribute('data-id');
+          this.deleteAttendance(id);
+        }
+      });
+    }
+  },
+
+  loadStudentsData: function() {
+    App.API._call('getAllStudents').then(res => {
+      const rawStudents = Array.isArray(res)
+        ? res
+        : (res.students || res.data || []);
+      this.studentsData = rawStudents.map(s => ({
+        roll_number: s.roll_number || s['Roll Number'] || '',
+        student_name: s.student_name || s['Student Name'] || '',
+        department: s.department || s['Department ID'] || '',
+        college_name: s.college_name || s.college || s['College Name'] || 'BVC Engineering College'
+      }));
+
+      const collegeSelect = document.getElementById('attendanceCollegeSelect');
+      if (collegeSelect) {
+        const colSet = new Set();
+        this.studentsData.forEach(s => {
+          if (s.college_name) colSet.add(s.college_name);
+        });
+        let html = '<option value="">All Colleges</option>';
+        colSet.forEach(c => {
+          html += `<option value="${App.Utils.escapeHtml(c)}">${App.Utils.escapeHtml(c)}</option>`;
+        });
+        collegeSelect.innerHTML = html;
+      }
+    }).catch(console.error);
+  },
+
+  loadEventsDropdown: function() {
+    const userId = App.State.currentUser ? App.State.currentUser.user_id : null;
+    const role = App.State.currentUser ? App.State.currentUser.role : null;
+    
+    App.API._call('getAllEvents').then(events => {
+      const select = document.getElementById('attendanceEventSelect');
+      if (!select) return;
+      
+      select.innerHTML = '<option value="">Select Event...</option>';
+      let activeEvents = events.filter(e => e.status === 'Active' || e.status === 'Upcoming'); // Allow upcoming too for testing
+      
+      // Filter by coordinator if not admin
+      if (role === App.Constants.ROLES.COORDINATOR) {
+        activeEvents = activeEvents.filter(e => e.coordinator_id === userId);
+      }
+      
+      activeEvents.forEach(e => {
+        const option = document.createElement('option');
+        option.value = e.event_id;
+        option.textContent = `${e.event_name} (${e.start_date})`;
+        select.appendChild(option);
+      });
+    }).catch(err => App.ErrorHandler.handle(err));
+  },
+
+  loadAttendanceData: function() {
+    if (!this.currentEventId) return;
+    
+    document.getElementById('attendance-table-body').innerHTML = '<tr><td colspan="6" class="text-center py-5">Loading...</td></tr>';
+    
+    // Get both Attendance and Event data for analytics
+    Promise.all([
+      App.API._call('getAttendanceByEvent', this.currentEventId),
+      App.API._call('getEventById', this.currentEventId),
+      App.API._call('getEventParticipants', this.currentEventId)
+    ]).then(([attRes, eventRes, partsRes]) => {
+      const rawAtt = attRes || [];
+      this.attendanceData = rawAtt.map(a => {
+        let attTime = a.attendance_time || a['Attendance Time'] || a['Timestamp'] || '';
+        if (!attTime && a['Date'] && a['Time']) {
+          attTime = a['Date'] + ' ' + a['Time'];
+        }
+        return {
+          attendance_id: a.attendance_id || a['Attendance ID'] || '',
+          event_id: a.event_id || a['Event ID'] || '',
+          roll_number: a.roll_number || a['Roll Number'] || '',
+          status: a.status || a['Attendance Status'] || '',
+          attendance_time: attTime
+        };
+      });
+      const eventObj = eventRes || {};
+      const parts = partsRes || [];
+      
+      this.currentEventObj = eventObj;
+      this.currentEventParts = parts;
+      
+      this.setupDayFilter(eventObj);
+      this.applyDayFilterAndRender();
+    }).catch(err => {
+      document.getElementById('attendance-table-body').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-5">Error loading attendance</td></tr>';
+      App.ErrorHandler.handle(err);
+    });
+  },
+
+  setupDayFilter: function(eventObj) {
+    const filterSelect = document.getElementById('attendanceDayFilter');
+    if (!filterSelect) return;
+    
+    const startDateStr = eventObj.start_date || eventObj['Start Date'];
+    const endDateStr = eventObj.end_date || eventObj['End Date'];
+    
+    if (!startDateStr || !endDateStr) {
+      filterSelect.classList.add('d-none');
+      return;
+    }
+    
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      filterSelect.classList.add('d-none');
+      return;
+    }
+    
+    // Calculate total days
+    const diffTime = Math.abs(end - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    
+    if (diffDays <= 1) {
+      filterSelect.classList.add('d-none');
+      filterSelect.innerHTML = '<option value="ALL">All Days</option>';
+      filterSelect.value = 'ALL';
+      return;
+    }
+    
+    filterSelect.innerHTML = '';
+    
+    // Add "All Days" option
+    const optAll = document.createElement('option');
+    optAll.value = 'ALL';
+    optAll.textContent = 'All Days';
+    filterSelect.appendChild(optAll);
+    
+    // Generate individual day options
+    for (let i = 1; i <= diffDays; i++) {
+      const targetDate = new Date(start.getTime());
+      targetDate.setDate(start.getDate() + (i - 1));
+      const formattedDate = targetDate.toISOString().split('T')[0];
+      
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `Day ${i} (${formattedDate})`;
+      filterSelect.appendChild(opt);
+    }
+    
+    filterSelect.classList.remove('d-none');
+  },
+
+  applyDayFilterAndRender: function() {
+    const filterSelect = document.getElementById('attendanceDayFilter');
+    const collegeSelect = document.getElementById('attendanceCollegeSelect');
+    const selectedVal = filterSelect ? filterSelect.value : 'ALL';
+    const selectedCollege = collegeSelect ? collegeSelect.value : '';
+    
+    let filteredAtt = [...this.attendanceData];
+    
+    if (selectedVal !== 'ALL' && this.currentEventObj) {
+      const dayNum = parseInt(selectedVal, 10);
+      const startDateStr = this.currentEventObj.start_date || this.currentEventObj['Start Date'];
+      const start = new Date(startDateStr);
+      
+      const targetDate = new Date(start.getTime());
+      targetDate.setDate(start.getDate() + (dayNum - 1));
+      const targetDateStr = targetDate.toISOString().split('T')[0];
+      
+      filteredAtt = this.attendanceData.filter(a => {
+        const timeStr = a.attendance_time;
+        if (!timeStr) return false;
+        try {
+          const d = new Date(timeStr);
+          return d.toISOString().split('T')[0] === targetDateStr;
+        } catch (e) {
+          return false;
+        }
+      });
+    }
+
+    if (selectedCollege) {
+      filteredAtt = filteredAtt.filter(a => {
+        const student = this.studentsData.find(s => String(s.roll_number || s['Roll Number']).toUpperCase() === String(a.roll_number).toUpperCase()) || {};
+        const col = student.college_name || student.college || student['College Name'] || 'BVC Engineering College';
+        return col === selectedCollege;
+      });
+    }
+    
+    this.updateAnalytics(this.currentEventObj, this.currentEventParts, filteredAtt);
+    this.renderTable(filteredAtt);
+  },
+
+  updateAnalytics: function(eventObj, parts, dataToUse) {
+    const isFixed = (eventObj.attendance_type || 'Fixed') === 'Fixed';
+    
+    let expected = 0;
+    if (isFixed) {
+      expected = parts.filter(p => p.status === 'Active').length;
+    } else {
+      let parsed = parseInt(eventObj.capacity);
+      expected = isNaN(parsed) ? 0 : parsed;
+    }
+    
+    let present = 0;
+    let absent = 0;
+    
+    const attList = dataToUse || this.attendanceData;
+    
+    attList.forEach(a => {
+      if (a.status === 'Present') present++;
+      if (a.status === 'Absent') absent++;
+    });
+    
+    if (!isFixed && expected < present) {
+      expected = present;
+    }
+    
+    const percentage = expected === 0 ? 0 : Math.round((present / expected) * 100);
+    
+    document.getElementById('statExpected').textContent = expected === 0 && !isFixed ? '∞' : expected;
+    document.getElementById('statPresent').textContent = present;
+    document.getElementById('statAbsent').textContent = absent;
+    document.getElementById('statPercentage').textContent = percentage + '%';
+  },
+
+  renderTable: function(dataToUse) {
+    const tbody = document.getElementById('attendance-table-body');
+    if (!tbody) return;
+    
+    const list = dataToUse || this.attendanceData;
+    
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5">No attendance marked yet.</td></tr>';
+      return;
+    }
+    
+    const sorted = [...list].sort((a, b) => new Date(b.attendance_time) - new Date(a.attendance_time));
+    
+    let html = '';
+    sorted.forEach(a => {
+      const student = this.studentsData.find(s => String(s.roll_number || s['Roll Number']).toUpperCase() === String(a.roll_number).toUpperCase()) || {};
+      const colDisplay = student.college_name || student.college || student['College Name'] || 'BVC Engineering College';
+
+      html += `
+        <tr>
+          <td class="fw-bold font-monospace">${App.Utils.escapeHtml(a.roll_number)}</td>
+          <td>${App.Utils.escapeHtml(student.student_name || student['Student Name'] || '--')}</td>
+          <td><span class="badge bg-info bg-opacity-10 text-info border border-info-subtle fw-semibold">${App.Utils.escapeHtml(colDisplay)}</span></td>
+          <td><span class="badge bg-secondary bg-opacity-10 text-secondary">${App.Utils.escapeHtml(student.department || student['Department ID'] || '--')}</span></td>
+          <td>${App.Utils.formatDateTime(a.attendance_time)}</td>
+          <td><span class="badge ${a.status === 'Present' ? 'bg-success' : 'bg-danger'}">${App.Utils.escapeHtml(a.status)}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger" onclick="App.Modules.attendance.deleteRecord('${App.Utils.escapeHtml(a.attendance_id)}')"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>
+      `;
+    });
+          <td>${App.Utils.escapeHtml(student.student_name || 'Unknown')}</td>
+          <td>${App.Utils.escapeHtml(student.department || '-')}</td>
+          <td>${(() => {
+            if (!a.attendance_time) return '-';
+            const d = new Date(a.attendance_time);
+            return isNaN(d.getTime()) ? App.Utils.escapeHtml(a.attendance_time) : d.toLocaleString();
+          })()}</td>
+          <td><span class="badge bg-success">${App.Utils.escapeHtml(a.status)}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger" data-action="delete-attendance" data-id="${App.Utils.escapeHtml(a.attendance_id)}">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+  },
+
+  markAttendance: function() {
+    if (!this.currentEventId) return;
+    const input = document.getElementById('attRollNumber');
+    const msg = document.getElementById('attMessage');
+    const roll = input.value.trim().toUpperCase();
+    
+    if (!roll) return;
+    
+    // Client-side duplicate check (Instant feedback)
+    const existing = this.attendanceData.find(a => String(a.roll_number).toUpperCase() === roll);
+    if (existing) {
+      msg.textContent = `⚠️ Roll number ${roll} is already marked present!`;
+      msg.className = 'text-warning fw-bold';
+      input.value = '';
+      input.focus();
+      return;
+    }
+    
+    // ⚡ OPTIMISTIC UI: Instantly add record to client memory & table (50ms response)
+    const now = new Date();
+    const tempRecord = {
+      attendance_id: 'TEMP-' + Date.now(),
+      event_id: this.currentEventId,
+      roll_number: roll,
+      status: 'Present',
+      attendance_time: now.toISOString(),
+      pendingSync: true
+    };
+    
+    this.attendanceData.unshift(tempRecord);
+    this.applyDayFilterAndRender();
+    
+    // Instant UI feedback to user
+    msg.textContent = `⚡ ${roll} marked Present! (Saving...)`;
+    msg.className = 'text-success fw-bold';
+    input.value = '';
+    input.focus();
+
+    const payload = {
+      event_id: this.currentEventId,
+      roll_number: roll,
+      status: 'Present',
+      action_by: App.State.currentUser ? App.State.currentUser.user_id : 'Admin'
+    };
+    
+    // Asynchronous backend call using markAttendanceFast for faster queue processing
+    App.API._call('markAttendanceFast', payload).then(res => {
+      const isOk = (res && res.success !== undefined) ? res.success : !!res;
+      if (isOk) {
+        msg.textContent = `✔ ${roll} saved to database successfully!`;
+        msg.className = 'text-success fw-bold';
+        // Remove temp tag
+        const rec = this.attendanceData.find(a => a.roll_number === roll);
+        if (rec) delete rec.pendingSync;
+      } else {
+        msg.textContent = `❌ ${roll} save failed: ${res && res.message ? res.message : 'Failed'}`;
+        msg.className = 'text-danger fw-bold';
+        // Revert optimistic addition if failed
+        this.attendanceData = this.attendanceData.filter(a => a.roll_number !== roll);
+        this.applyDayFilterAndRender();
+      }
+    }).catch(err => {
+      msg.textContent = `❌ Error saving ${roll}: ${err.message || 'Network error'}`;
+      msg.className = 'text-danger fw-bold';
+      // Revert optimistic addition
+      this.attendanceData = this.attendanceData.filter(a => a.roll_number !== roll);
+      this.applyDayFilterAndRender();
+    });
+  },
+
+  deleteAttendance: function(id) {
+    if (!confirm('Are you sure you want to remove this attendance record?')) return;
+    
+    App.API._call('deleteAttendance', id).then(res => {
+      if (res.success) {
+        App.UI.showSuccess('Deleted successfully');
+        this.loadAttendanceData();
+      } else {
+        App.UI.showError(res.message);
+      }
+    }).catch(err => App.ErrorHandler.handle(err));
+  },
+  
+  refresh: function() {
+    this.loadEventsDropdown();
+    this.loadStudentsData();
+    if (this.currentEventId) this.loadAttendanceData();
+  },
+  
+  destroy: function() {
+    this.currentEventId = null;
+    this.attendanceData = [];
+  }
+};
+
+// Auto-initialize module on direct injection trigger
+if (typeof App !== 'undefined' && App.Modules && App.Modules.attendance) {
+  App.Modules.attendance.init();
+}
+</script>
