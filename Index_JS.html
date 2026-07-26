@@ -144,12 +144,14 @@
             App.State.activeModule = pageName.toLowerCase();
           }
           
-          // Optionally update the history state for navigation (ignore if it fails)
+          // Optionally update the history state for navigation (ignore if it fails in iframe sandbox)
           try {
-            if (google.script.history && google.script.history.push) {
+            if (typeof google !== 'undefined' && google.script && google.script.history && typeof google.script.history.push === 'function') {
                google.script.history.push(null, { page: pageName.toLowerCase() }, null);
             }
-          } catch(e) {}
+          } catch(e) {
+            console.warn("History push ignored in iframe context:", e);
+          }
           
         })
         .withFailureHandler(function(error) {
