@@ -268,8 +268,15 @@ window.App = {
             const token = localStorage.getItem('sessionToken');
             const callArgs = (serverMethod !== 'login' && serverMethod !== 'authenticate') ? [token, ...args] : args;
 
+            if (serverMethod === 'createDepartment') {
+              console.log("[DEPT-08] calling google.script.run.createDepartment with args:", callArgs);
+            }
+
             google.script.run
               .withSuccessHandler((res) => {
+                if (serverMethod === 'createDepartment') {
+                  console.log("[DEPT-13] google.script.run successHandler received raw res:", res);
+                }
                 App.LoadingManager.hide();
                 let resolvedData = null;
                 if (Array.isArray(res)) {

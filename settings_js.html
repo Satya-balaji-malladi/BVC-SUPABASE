@@ -83,24 +83,15 @@
         this.openDeptModal('add');
       });
 
-      // Department form submit & button handler
+      // Department form submit handler with trace markers
       const addDeptForm = document.getElementById('departmentForm');
       if (addDeptForm) {
         addDeptForm.addEventListener('submit', (e) => {
           e.preventDefault();
+          console.log("[DEPT-04] submit handler entered");
           this.saveDepartment();
         });
       }
-
-      document.getElementById('btnSaveDept')?.addEventListener('click', (e) => {
-        const form = document.getElementById('departmentForm');
-        if (form && form.checkValidity()) {
-          e.preventDefault();
-          this.saveDepartment();
-        } else if (form) {
-          form.classList.add('was-validated');
-        }
-      });
 
       // Table row actions (Edit/Delete)
       const deptsTableBody = document.getElementById('departmentsTableBody');
@@ -606,14 +597,17 @@
     },
 
     saveDepartment: function() {
+      console.log("[DEPT-05] form data collection started");
       const form = document.getElementById('departmentForm');
       if (!form) return;
 
       if (!form.checkValidity()) {
+        console.warn("[DEPT-05a] Form HTML validation failed");
         form.classList.add('was-validated');
         return;
       }
 
+      console.log("[DEPT-06] HTML validation passed");
       const mode = document.getElementById('deptFormMode').value;
       const id = document.getElementById('deptFormId').value;
       const deptData = {
@@ -625,15 +619,19 @@
         status: document.getElementById('deptStatus').value
       };
 
+      console.log("[DEPT-07] calling App.API.createDepartment with payload:", JSON.stringify(deptData));
       App.LoadingManager.show();
       const apiCall = mode === 'add' ? App.API.createDepartment(deptData) : App.API.updateDepartment(id, deptData);
       apiCall.then(res => {
+        console.log("[DEPT-14] backend response received by frontend promise:", res);
         App.LoadingManager.hide();
         if (res && res.success === false) {
+          console.error("[DEPT-14a] Backend returned error status:", res.message);
           App.UI.showError(res.message || "Failed to save department.");
           return;
         }
         
+        console.log("[DEPT-15] frontend success handler displaying UI toast");
         const modalEl = document.getElementById('departmentModal');
         if (modalEl) {
           if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
@@ -650,6 +648,7 @@
         App.UI.showSuccess(msg);
         this.loadDepartments();
       }).catch(err => {
+        console.error("[DEPT-14b] frontend error handler caught promise rejection:", err);
         App.LoadingManager.hide();
         App.UI.showError("Failed to save department: " + (err.message || err));
       });
