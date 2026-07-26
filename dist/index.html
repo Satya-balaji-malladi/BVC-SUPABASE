@@ -1196,20 +1196,10 @@ body {
 .d-none { display: none !important; }
 </style>
   <script>
-    // ============================================================
-    // NETLIFY STATIC HOSTING CONFIG
-    // These flags tell the coordinator terminal it's running as
-    // a standalone static site (NOT inside Google Apps Script).
-    // Token comes from URL ?token= parameter after login redirect.
-    // ============================================================
+    // Inject session token from backend template parameter to bypass iframe query limitations
+    window.SESSION_TOKEN_FROM_BACKEND = "<?= token ?>";
     window.DEBUG_MODE = true;
-    window.IS_NETLIFY_HOST = true;           // Never call handleRedirect() on Netlify
-    window.BACKEND_API_URL = "https://script.google.com/macros/s/AKfycbyNNwTvx9zOTA9sd0GmCFrdSFKZqXHjOKPyoTbbXxuVX74MufNTB_fQ2CFcrcZvEFdEVQ/exec";
   </script>
-
-
-
-
 </head>
 
 <body>

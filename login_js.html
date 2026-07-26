@@ -318,47 +318,33 @@
   // ==========================
 
   if (role === 'COORDINATOR') {
-    // Hide form, show direct user gesture button to prevent browser blocking top-level navigation
     loginForm.classList.add('d-none');
     const redirectContainer = document.getElementById('coordinatorRedirectContainer');
-    const btnOpen = document.getElementById('btnOpenCoordinator');
+    const portalUrl = window.COORDINATOR_PORTAL_URL || '';
     
-    if (redirectContainer && btnOpen) {
-      redirectContainer.classList.remove('d-none');
-      
-      const portalUrl = window.COORDINATOR_PORTAL_URL || '';
-      if (portalUrl && portalUrl.indexOf('script.google.com') === -1) {
-        // Redirect to external scanner (Netlify)
-        const coordUrl = portalUrl + '?token=' + encodeURIComponent(actualToken);
-        btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_blank" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
-      } else {
-        // Request script URL in advance so it is ready
-        google.script.run
-          .withSuccessHandler(function(scriptUrl) {
-            const coordUrl = scriptUrl + '?page=coordinator&token=' + encodeURIComponent(actualToken);
-            // Turn the button into a direct link targeting _top to escape the iframe sandbox
-            btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
-          })
-          .withFailureHandler(function(err) {
-            console.error('Failed to pre-fetch script URL:', err);
-            const fallbackUrl = window.APP_SCRIPT_URL + '?page=coordinator&token=' + encodeURIComponent(actualToken);
-            btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${fallbackUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
-          })
-          .getScriptUrl();
-      }
-    } else {
-      // Fallback if elements are missing
-      const portalUrl = window.COORDINATOR_PORTAL_URL || '';
-      const fallbackUrl = (portalUrl && portalUrl.indexOf('script.google.com') === -1)
-        ? (portalUrl + '?token=' + encodeURIComponent(actualToken))
-        : (window.APP_SCRIPT_URL + '?page=coordinator&token=' + encodeURIComponent(actualToken));
-      try {
-        window.open(fallbackUrl, (portalUrl && portalUrl.indexOf('script.google.com') === -1) ? '_blank' : '_top');
-      } catch (e) {
-        window.location.href = fallbackUrl;
-      }
+    if (portalUrl && portalUrl.indexOf('script.google.com') === -1) {
+      // Direct navigation on Netlify (same window) so token is never lost or desynced
+      const coordUrl = portalUrl + (portalUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(actualToken);
+      console.log('Redirecting coordinator directly to:', coordUrl);
+      window.location.href = coordUrl;
+      return;
     }
 
+    const btnOpen = document.getElementById('btnOpenCoordinator');
+    if (redirectContainer && btnOpen) {
+      redirectContainer.classList.remove('d-none');
+      google.script.run
+        .withSuccessHandler(function(scriptUrl) {
+          const coordUrl = scriptUrl + '?page=coordinator&token=' + encodeURIComponent(actualToken);
+          btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
+        })
+        .withFailureHandler(function(err) {
+          console.error('Failed to pre-fetch script URL:', err);
+          const fallbackUrl = window.APP_SCRIPT_URL + '?page=coordinator&token=' + encodeURIComponent(actualToken);
+          btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${fallbackUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
+        })
+        .getScriptUrl();
+    }
   } else {
     const targetPage = 'dashboard';
     // Admin / Super Admin: load the full dashboard shell via document.write
