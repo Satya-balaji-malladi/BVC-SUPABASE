@@ -106,7 +106,10 @@ function runCoordinatorParticipantWorkflowTests() {
     };
     DatabaseService.insertRow(CONFIG.SHEETS.SESSIONS, sessionRecord);
 
-    // Seed Events with mandatory dates
+    // Seed Events with mandatory dates and active attendance window
+    const nowStartWindow = new Date(Date.now() - 3600000).toISOString();
+    const nowEndWindow = new Date(Date.now() + 86400000).toISOString();
+
     const noRegEvent = {
       'Event ID': eventNoRegId,
       'event_id': eventNoRegId,
@@ -114,8 +117,10 @@ function runCoordinatorParticipantWorkflowTests() {
       'event_name': 'Test No Reg Event',
       'start_date': nowDateStr,
       'end_date': nowDateStr,
-      'start_time': '09:00:00',
-      'end_time': '17:00:00',
+      'start_time': '00:00:00',
+      'end_time': '23:59:59',
+      'attendance_window_start': nowStartWindow,
+      'attendance_window_end': nowEndWindow,
       'Event Status': 'Active',
       'event_status': 'Active',
       'Enable Registration': 'false',
@@ -133,8 +138,10 @@ function runCoordinatorParticipantWorkflowTests() {
       'event_name': 'Test Reg Event',
       'start_date': nowDateStr,
       'end_date': nowDateStr,
-      'start_time': '09:00:00',
-      'end_time': '17:00:00',
+      'start_time': '00:00:00',
+      'end_time': '23:59:59',
+      'attendance_window_start': nowStartWindow,
+      'attendance_window_end': nowEndWindow,
       'Event Status': 'Active',
       'event_status': 'Active',
       'Enable Registration': 'true',
