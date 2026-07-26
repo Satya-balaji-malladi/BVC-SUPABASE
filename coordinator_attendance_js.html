@@ -335,23 +335,35 @@ const CoordinatorUI = (() => {
     try {
       console.log('=== FRONTEND SESSION INVESTIGATION ===');
       
-      const templateToken = (typeof window.SESSION_TOKEN_FROM_BACKEND !== 'undefined') ? window.SESSION_TOKEN_FROM_BACKEND : null;
-      console.log('Token received after login (from server template parameter):', templateToken);
+      const rawTemplateToken = (typeof window.SESSION_TOKEN_FROM_BACKEND !== 'undefined') ? window.SESSION_TOKEN_FROM_BACKEND : null;
       
-      // 1. Primary: token injected by backend template context
+      // Detect unevaluated GAS template syntax (served as static file on Netlify)
+      // e.g. "<?= token ?>" means GAS template was NOT processed — treat as null
+      const isUnevaluatedTemplate = rawTemplateToken && (
+        String(rawTemplateToken).indexOf('<?') !== -1 ||
+        String(rawTemplateToken).indexOf('?>') !== -1
+      );
+      const templateToken = isUnevaluatedTemplate ? null : rawTemplateToken;
+
+      if (isUnevaluatedTemplate) {
+        console.warn('⚠️ GAS template tag detected as literal string (static hosting) — skipping template token, falling back to URL params.');
+      }
+      console.log('Template token (raw):', rawTemplateToken, '| Valid:', !!templateToken);
+      
+      // 1. Primary: token injected by backend template context (only valid inside GAS)
       if (templateToken) {
         localStorage.setItem('sessionToken', templateToken);
         state.sessionToken = templateToken;
-        console.log('Session token loaded from server-injected template parameter:', templateToken);
+        console.log('Session token loaded from GAS template parameter:', templateToken);
       } else {
-        // 2. Secondary: token passed in URL by login redirect (?page=coordinator&token=...)
+        // 2. Secondary: token passed in URL by login redirect (?token=...)
         const params = new URLSearchParams(window.location.search);
         const urlToken = params.get('token');
         console.log('Token retrieved from URL parameter:', urlToken);
         if (urlToken) {
           localStorage.setItem('sessionToken', urlToken);
           state.sessionToken = urlToken;
-          console.log('Session token loaded from URL parameter and stored in localStorage:', urlToken);
+          console.log('✅ Session token loaded from URL parameter:', urlToken);
         } else {
           // 3. Fallback: token stored in localStorage (e.g. page refresh)
           state.sessionToken = localStorage.getItem('sessionToken') || null;
@@ -361,19 +373,13 @@ const CoordinatorUI = (() => {
 
       const storedToken = localStorage.getItem('sessionToken');
       console.log('Token stored in localStorage:', storedToken);
-
-      if (templateToken && storedToken && templateToken !== storedToken) {
-        console.warn('⚠️ WARNING: Stored token in localStorage differs from the login response template token!');
-        console.warn('Template Token:', templateToken);
-        console.warn('Stored Token:', storedToken);
-      }
-      
       console.log('Final resolved token to be used:', state.sessionToken);
       console.log('=======================================');
     } catch (e) {
       console.error('Session token extraction error:', e);
     }
   };
+
 
   // ==========================================================================
   //  NETWORK MONITOR
