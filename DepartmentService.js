@@ -163,35 +163,72 @@ const DepartmentService = {
 
       var responseDeptRestored = Object.assign({}, existingDeleted, restoreUpdates);
       
-      // Auto-create HOD user if provided
+      // Auto-create or reactivate HOD user if provided
       var hodEmailR = departmentData['HOD Email'] || departmentData.hod_email || '';
       var hodEmpIdR = departmentData['HOD Emp ID'] || departmentData.hod_emp_id || '';
       var hodNameR = departmentData['HOD Name'] || departmentData.hod_name || '';
+      var hodCreationMsg = "";
       if (hodEmailR && hodEmpIdR) {
         try {
-          var namePartsR = hodNameR.trim().split(" ");
-          var hodUserDataR = {
-            username: String(hodEmpIdR).toLowerCase(),
-            password: "BVC@" + String(hodEmpIdR).toUpperCase(),
-            email_address: hodEmailR,
-            first_name: namePartsR[0] || hodNameR,
-            last_name: namePartsR.slice(1).join(" ") || "",
-            employee_id: hodEmpIdR,
-            role: "HOD",
-            department: deptCode,
-            title_designation: "Head of Department (" + deptCode + ")",
-            status: "Active"
-          };
-          var adminContextR = (createdBy && typeof createdBy === 'object') ? createdBy : { isSuperAdmin: true, role: 'Super Admin', username: 'SuperAdmin' };
-          UserService.createUser(hodUserDataR, adminContextR);
+          // Check if user already exists (active or deleted)
+          var allUsers = DatabaseService.readAllRowsIncludingDeleted(CONFIG.SHEETS.USERS) || [];
+          var empIdCol = CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'Employee ID';
+          var existingHodUser = allUsers.find(function(u) {
+            var eid = String(u[empIdCol] || u['Employee ID'] || u.employee_id || '').trim().toUpperCase();
+            return eid === String(hodEmpIdR).trim().toUpperCase();
+          });
+
+          if (existingHodUser) {
+            // User exists — check if soft-deleted and reactivate
+            var isUserDeleted = existingHodUser[CONFIG.COLUMNS.DELETION_FLAG] === true || existingHodUser[CONFIG.COLUMNS.DELETION_FLAG] === 'true' || existingHodUser.deletion_flag === true || existingHodUser.deletion_flag === 'true';
+            if (isUserDeleted) {
+              var userIdToRestore = existingHodUser[CONFIG.COLUMNS.USER_ID] || existingHodUser.user_id;
+              DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID, userIdToRestore, {
+                [CONFIG.COLUMNS.DELETION_FLAG]: false,
+                [CONFIG.COLUMNS.STATUS]: 'Active',
+                [CONFIG.COLUMNS.UPDATED_AT]: Utils.getCurrentTimestamp()
+              });
+              hodCreationMsg = " HOD User Account (" + hodEmpIdR + ") reactivated.";
+              Logger.log("Reactivated soft-deleted HOD user: " + hodEmpIdR);
+            } else {
+              hodCreationMsg = " HOD User Account (" + hodEmpIdR + ") already exists.";
+              Logger.log("HOD user already exists (active): " + hodEmpIdR);
+            }
+          } else {
+            // Create brand new HOD user
+            var namePartsR = hodNameR.trim().split(" ");
+            var initialPwdR = "BVC@" + String(hodEmpIdR).toUpperCase();
+            var hodUserDataR = {
+              username: String(hodEmpIdR).toLowerCase(),
+              password: initialPwdR,
+              email_address: hodEmailR,
+              first_name: namePartsR[0] || hodNameR,
+              last_name: namePartsR.slice(1).join(" ") || "",
+              employee_id: hodEmpIdR,
+              role: "HOD",
+              department: deptCode,
+              title_designation: "Head of Department (" + deptCode + ")",
+              status: "Active"
+            };
+            var adminContextR = (createdBy && typeof createdBy === 'object') ? createdBy : { isSuperAdmin: true, role: 'Super Admin', username: 'SuperAdmin' };
+            var createResult = UserService.createUser(hodUserDataR, adminContextR);
+            Logger.log("HOD User createUser result: " + JSON.stringify(createResult));
+            if (createResult && createResult.success) {
+              hodCreationMsg = " HOD User Account (" + hodEmpIdR + ") created with password: " + initialPwdR + ".";
+            } else {
+              hodCreationMsg = " HOD User creation note: " + (createResult && createResult.message ? createResult.message : "Unknown error");
+              Logger.log("HOD User creation failed: " + JSON.stringify(createResult));
+            }
+          }
         } catch (uErr) {
-          Logger.log("HOD Auto-Creation note on restore: " + uErr.message);
+          hodCreationMsg = " HOD User creation error: " + (uErr.message || uErr);
+          Logger.log("HOD Auto-Creation error on restore: " + uErr.message);
         }
       }
 
       return Utils.buildResponse(
         true,
-        "Department (" + deptCode + ") reactivated successfully!",
+        "Department (" + deptCode + ") reactivated successfully!" + hodCreationMsg,
         { department: Utils.sanitizeDepartment(responseDeptRestored) }
       );
     }
@@ -270,11 +307,33 @@ const DepartmentService = {
     var hodEmail = departmentData['HOD Email'] || departmentData.hod_email || '';
     var hodEmpId = departmentData['HOD Emp ID'] || departmentData.hod_emp_id || '';
     var hodName = departmentData['HOD Name'] || departmentData.hod_name || '';
+    var hodSuccessMsg = "";
+    var emailSent = false;
 
     if (hodEmail && hodEmpId) {
       try {
-        var existingUser = UserService.getUserByEmployeeId ? UserService.getUserByEmployeeId(hodEmpId) : null;
-        if (!existingUser) {
+        // Check if user already exists (active or soft-deleted) using unfiltered query
+        var allUsersForHod = DatabaseService.readAllRowsIncludingDeleted(CONFIG.SHEETS.USERS) || [];
+        var empIdColHod = CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'Employee ID';
+        var existingHodCheck = allUsersForHod.find(function(u) {
+          var eid = String(u[empIdColHod] || u['Employee ID'] || u.employee_id || '').trim().toUpperCase();
+          return eid === String(hodEmpId).trim().toUpperCase();
+        });
+
+        if (existingHodCheck) {
+          var isHodDeleted = existingHodCheck[CONFIG.COLUMNS.DELETION_FLAG] === true || existingHodCheck[CONFIG.COLUMNS.DELETION_FLAG] === 'true' || existingHodCheck.deletion_flag === true || existingHodCheck.deletion_flag === 'true';
+          if (isHodDeleted) {
+            var hodUserId = existingHodCheck[CONFIG.COLUMNS.USER_ID] || existingHodCheck.user_id;
+            DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID, hodUserId, {
+              [CONFIG.COLUMNS.DELETION_FLAG]: false,
+              [CONFIG.COLUMNS.STATUS]: 'Active',
+              [CONFIG.COLUMNS.UPDATED_AT]: Utils.getCurrentTimestamp()
+            });
+            hodSuccessMsg = " HOD User Account (" + hodEmpId + ") reactivated.";
+          } else {
+            hodSuccessMsg = " HOD User Account (" + hodEmpId + ") already exists.";
+          }
+        } else {
           // Create new HOD User Account
           var nameParts = hodName.trim().split(" ");
           var firstName = nameParts[0] || hodName;
@@ -295,35 +354,42 @@ const DepartmentService = {
           };
           
           var adminContext = (createdBy && typeof createdBy === 'object') ? createdBy : { isSuperAdmin: true, role: 'Super Admin', username: 'SuperAdmin' };
-          UserService.createUser(hodUserData, adminContext);
-          
-          // Send email notification with login credentials using MailApp and GmailApp fallback
-          var emailSent = false;
-          var emailErrMessage = "";
-          try {
-            var emailSubject = "BVC Attendance Portal - HOD Account Credentials";
-            var emailBody = "Dear " + hodName + ",\n\n" +
-                            "Your HOD Account for the " + deptName + " (" + deptCode + ") has been created successfully on the BVC Event Attendance Portal.\n\n" +
-                            "LOGIN CREDENTIALS:\n" +
-                            "Username / Employee ID: " + hodEmpId + "\n" +
-                            "Temporary Password: " + initialPassword + "\n\n" +
-                            "Please log in and update your password upon first sign-in.\n\n" +
-                            "Regards,\nBVC System Administration";
+          var hodCreateResult = UserService.createUser(hodUserData, adminContext);
+          Logger.log("HOD User createUser result: " + JSON.stringify(hodCreateResult));
 
-            if (typeof MailApp !== 'undefined' && MailApp.sendEmail) {
-              MailApp.sendEmail(hodEmail, emailSubject, emailBody);
-              emailSent = true;
-            } else if (typeof GmailApp !== 'undefined' && GmailApp.sendMessage) {
-              GmailApp.sendEmail(hodEmail, emailSubject, emailBody);
-              emailSent = true;
+          if (hodCreateResult && hodCreateResult.success) {
+            hodSuccessMsg = " HOD User Account (" + hodEmpId + ") created with password: " + initialPassword + ".";
+            
+            // Send email notification
+            try {
+              var emailSubject = "BVC Attendance Portal - HOD Account Credentials";
+              var emailBody = "Dear " + hodName + ",\n\n" +
+                              "Your HOD Account for the " + deptName + " (" + deptCode + ") has been created successfully on the BVC Event Attendance Portal.\n\n" +
+                              "LOGIN CREDENTIALS:\n" +
+                              "Username / Employee ID: " + hodEmpId + "\n" +
+                              "Temporary Password: " + initialPassword + "\n\n" +
+                              "Please log in and update your password upon first sign-in.\n\n" +
+                              "Regards,\nBVC System Administration";
+
+              if (typeof MailApp !== 'undefined' && MailApp.sendEmail) {
+                MailApp.sendEmail(hodEmail, emailSubject, emailBody);
+                emailSent = true;
+              } else if (typeof GmailApp !== 'undefined' && GmailApp.sendEmail) {
+                GmailApp.sendEmail(hodEmail, emailSubject, emailBody);
+                emailSent = true;
+              }
+            } catch(eMailErr) {
+              Logger.log("Failed to send HOD credentials email: " + (eMailErr.message || eMailErr));
             }
-          } catch(eMailErr) {
-            emailErrMessage = eMailErr.message || String(eMailErr);
-            Logger.log("Failed to send HOD credentials email: " + emailErrMessage);
+            if (emailSent) hodSuccessMsg += " Login credentials emailed to " + hodEmail + ".";
+          } else {
+            hodSuccessMsg = " HOD User creation note: " + (hodCreateResult && hodCreateResult.message ? hodCreateResult.message : "Unknown error");
+            Logger.log("HOD User creation failed: " + JSON.stringify(hodCreateResult));
           }
         }
       } catch (userCreateErr) {
-        Logger.log("HOD User Auto-Creation note: " + userCreateErr.message);
+        hodSuccessMsg = " HOD User creation error: " + (userCreateErr.message || userCreateErr);
+        Logger.log("HOD User Auto-Creation error: " + userCreateErr.message);
       }
     }
 
@@ -344,12 +410,7 @@ const DepartmentService = {
       Logger.log(auditError);
     }
 
-    var successMsg = "Department created successfully! HOD User Account (" + hodEmpId + ") created with password: BVC@" + String(hodEmpId).toUpperCase() + ".";
-    if (emailSent) {
-      successMsg += " Login credentials emailed to " + hodEmail + ".";
-    } else if (emailErrMessage) {
-      successMsg += " Email notification note: " + emailErrMessage;
-    }
+    var successMsg = "Department created successfully!" + hodSuccessMsg;
 
     var responseDept = (inserted && typeof inserted === 'object' && !Array.isArray(inserted)) ? inserted : (Array.isArray(inserted) && inserted.length > 0 ? inserted[0] : newDepartment);
     return Utils.buildResponse(
