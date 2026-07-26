@@ -83,7 +83,7 @@
         this.openDeptModal('add');
       });
 
-      // Department form submit
+      // Department form submit & button handler
       const addDeptForm = document.getElementById('departmentForm');
       if (addDeptForm) {
         addDeptForm.addEventListener('submit', (e) => {
@@ -91,6 +91,16 @@
           this.saveDepartment();
         });
       }
+
+      document.getElementById('btnSaveDept')?.addEventListener('click', (e) => {
+        const form = document.getElementById('departmentForm');
+        if (form && form.checkValidity()) {
+          e.preventDefault();
+          this.saveDepartment();
+        } else if (form) {
+          form.classList.add('was-validated');
+        }
+      });
 
       // Table row actions (Edit/Delete)
       const deptsTableBody = document.getElementById('departmentsTableBody');
