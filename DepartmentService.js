@@ -190,20 +190,29 @@ const DepartmentService = {
           
           UserService.createUser(hodUserData, createdBy || 'SuperAdmin');
           
-          // Send email notification with login credentials
+          // Send email notification with login credentials using MailApp and GmailApp fallback
+          var emailSent = false;
+          var emailErrMessage = "";
           try {
+            var emailSubject = "BVC Attendance Portal - HOD Account Credentials";
+            var emailBody = "Dear " + hodName + ",\n\n" +
+                            "Your HOD Account for the " + deptName + " (" + deptCode + ") has been created successfully on the BVC Event Attendance Portal.\n\n" +
+                            "LOGIN CREDENTIALS:\n" +
+                            "Username / Employee ID: " + hodEmpId + "\n" +
+                            "Temporary Password: " + initialPassword + "\n\n" +
+                            "Please log in and update your password upon first sign-in.\n\n" +
+                            "Regards,\nBVC System Administration";
+
             if (typeof MailApp !== 'undefined' && MailApp.sendEmail) {
-              var emailBody = "Dear " + hodName + ",\n\n" +
-                              "Your HOD Account for the " + deptName + " (" + deptCode + ") has been created successfully on the BVC Event Attendance Portal.\n\n" +
-                              "LOGIN CREDENTIALS:\n" +
-                              "Username / Employee ID: " + hodEmpId + "\n" +
-                              "Temporary Password: " + initialPassword + "\n\n" +
-                              "Please log in and update your password upon first sign-in.\n\n" +
-                              "Regards,\nBVC System Administration";
-              MailApp.sendEmail(hodEmail, "BVC Attendance Portal - HOD Account Credentials", emailBody);
+              MailApp.sendEmail(hodEmail, emailSubject, emailBody);
+              emailSent = true;
+            } else if (typeof GmailApp !== 'undefined' && GmailApp.sendMessage) {
+              GmailApp.sendEmail(hodEmail, emailSubject, emailBody);
+              emailSent = true;
             }
           } catch(eMailErr) {
-            Logger.log("Failed to send HOD credentials email: " + eMailErr.message);
+            emailErrMessage = eMailErr.message || String(eMailErr);
+            Logger.log("Failed to send HOD credentials email: " + emailErrMessage);
           }
         }
       } catch (userCreateErr) {
@@ -228,9 +237,16 @@ const DepartmentService = {
       Logger.log(auditError);
     }
 
+    var successMsg = "Department created successfully! HOD User Account (" + hodEmpId + ") created with password: BVC@" + String(hodEmpId).toUpperCase() + ".";
+    if (emailSent) {
+      successMsg += " Login credentials emailed to " + hodEmail + ".";
+    } else if (emailErrMessage) {
+      successMsg += " Email notification note: " + emailErrMessage;
+    }
+
     return Utils.buildResponse(
       true,
-      "Department created and HOD account (" + hodEmpId + ") successfully configured!",
+      successMsg,
       {
         department: Utils.sanitizeDepartment(
           inserted === true ? newDepartment : inserted
