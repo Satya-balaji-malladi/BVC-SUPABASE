@@ -1196,10 +1196,17 @@ body {
 .d-none { display: none !important; }
 </style>
   <script>
-    // Note: SESSION_TOKEN_FROM_BACKEND is set by GAS template when served via Apps Script.
-    // On Netlify (static hosting), the token is read from the URL ?token= parameter instead.
+    // ============================================================
+    // NETLIFY STATIC HOSTING CONFIG
+    // These flags tell the coordinator terminal it's running as
+    // a standalone static site (NOT inside Google Apps Script).
+    // Token comes from URL ?token= parameter after login redirect.
+    // ============================================================
     window.DEBUG_MODE = true;
+    window.IS_NETLIFY_HOST = true;           // Never call handleRedirect() on Netlify
+    window.BACKEND_API_URL = 'netlify';      // Signals standalone hosting mode
   </script>
+
 
 </head>
 
