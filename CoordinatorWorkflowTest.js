@@ -156,7 +156,7 @@ function runCoordinatorParticipantWorkflowTests() {
     };
     DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, regEvent);
 
-    // Seed Coordinator assignments
+    // Seed Coordinator assignments in both legacy and Supabase tables
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
       'Assignment ID': 'ASSIGN_1_' + randNum,
       'assignment_id': 'ASSIGN_1_' + randNum,
@@ -164,10 +164,24 @@ function runCoordinatorParticipantWorkflowTests() {
       'event_id': eventNoRegId,
       'User ID': testUserId,
       'user_id': testUserId,
+      'Employee ID': 'EMP_' + randNum,
+      'employee_id': 'EMP_' + randNum,
       'Assignment Role': 'Coordinator',
       'Assignment Status': 'Active',
       'assignment_status': 'Active'
     });
+
+    try {
+      DatabaseService.insertRow('event_assignments', {
+        'assignment_id': 'ASSIGN_1_SUB_' + randNum,
+        'event_id': eventNoRegId,
+        'user_id': testUserId,
+        'employee_id': 'EMP_' + randNum,
+        'role': 'Coordinator',
+        'status': 'Active'
+      });
+    } catch(e) {}
+
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
       'Assignment ID': 'ASSIGN_2_' + randNum,
       'assignment_id': 'ASSIGN_2_' + randNum,
@@ -175,10 +189,23 @@ function runCoordinatorParticipantWorkflowTests() {
       'event_id': eventRegId,
       'User ID': testUserId,
       'user_id': testUserId,
+      'Employee ID': 'EMP_' + randNum,
+      'employee_id': 'EMP_' + randNum,
       'Assignment Role': 'Coordinator',
       'Assignment Status': 'Active',
       'assignment_status': 'Active'
     });
+
+    try {
+      DatabaseService.insertRow('event_assignments', {
+        'assignment_id': 'ASSIGN_2_SUB_' + randNum,
+        'event_id': eventRegId,
+        'user_id': testUserId,
+        'employee_id': 'EMP_' + randNum,
+        'role': 'Coordinator',
+        'status': 'Active'
+      });
+    } catch(e) {}
 
     // Seed Students with student_id, roll_number, year, name
     DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, {

@@ -610,7 +610,7 @@ const CoordinatorService = {
         return Utils.buildResponse(false, 'Session does not exist.');
       }
 
-      const userId = sessionUser.userId || sessionUser.id || sessionUser['User ID'];
+      const userId = sessionUser.userId || sessionUser.id || sessionUser['User ID'] || sessionUser['user_id'] || sessionUser.user_id;
 
       // 2. Check if User Exists
       Logger.log('[DATABASE QUERY] Finding user by ID: ' + userId);
@@ -634,17 +634,21 @@ const CoordinatorService = {
       // 4. Check if Assignment Exists & 5. Assignment is Active
       Logger.log('[DATABASE QUERY] Querying Event Coordinators sheet for active assignments.');
       const allAssignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
+      const supabaseAssignments = (DatabaseService.readAllRows('event_assignments') || []);
+      const combinedAssignments = allAssignments.concat(supabaseAssignments);
       Logger.log('[DATABASE RESULT] Assignment rows gathered.');
 
-      const hasActiveAssignment = allAssignments.some(row => {
+      const normTargetUser = this._normId(userId);
+      const hasActiveAssignment = combinedAssignments.some(row => {
         // Handle both snake_case (Supabase) and Title Case field names
-        const rowUserId = row['User ID'] || row['user_id'] || '';
-        const rowStatus = row['Assignment Status'] || row['assignment_status'] || '';
-        return this._normId(rowUserId) === this._normId(userId) &&
+        const rowUserId = row['User ID'] || row['user_id'] || row.userId || row.user_id || '';
+        const rowStatus = row['Assignment Status'] || row['assignment_status'] || row.status || '';
+        return this._normId(rowUserId) === normTargetUser &&
                String(rowStatus).trim().toLowerCase() === 'active';
       });
 
-      if (!hasActiveAssignment) {
+      // Admins and SuperAdmins bypass active assignment restriction
+      if (!hasActiveAssignment && userRole !== 'SUPERADMIN' && userRole !== 'ADMIN') {
         Logger.log('[OUTPUT] CoordinatorService.validateCoordinatorSession -> No active event assignment found.');
         return Utils.buildResponse(false, 'No active event assignment found for this coordinator.');
       }
