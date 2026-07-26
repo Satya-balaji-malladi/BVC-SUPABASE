@@ -127,6 +127,10 @@ const ValidationService = (function() {
   }
 
   function _validateRole(value) {
+    if (_isMissing(value)) return null;
+    var target = String(value).trim().toUpperCase().replace(/_/g, ' ');
+    var allowed = ['SUPER ADMIN', 'ADMIN', 'EVENT ADMIN', 'HOD', 'COORDINATOR', 'FACULTY', 'STUDENT'];
+    if (allowed.indexOf(target) !== -1) return null;
     return _validateEnumOptional(value, CONFIG.ROLES, 'Role');
   }
 
@@ -248,44 +252,29 @@ const ValidationService = (function() {
 
     var err;
 
-    err = this.validateRequired(
-      userData[CONFIG.COLUMNS.USER_EMPLOYEE_ID],
-      "Employee ID"
-    );
+    var empId = userData[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || userData.employee_id || userData.employeeId;
+    var firstName = userData[CONFIG.COLUMNS.USER_FIRST_NAME] || userData.first_name || userData.firstName;
+    var lastName = userData[CONFIG.COLUMNS.USER_LAST_NAME] || userData.last_name || userData.lastName || 'User';
+    var username = userData[CONFIG.COLUMNS.USER_USERNAME] || userData.username;
+    var email = userData[CONFIG.COLUMNS.USER_EMAIL_ADDRESS] || userData.email_address || userData.email;
+    var role = userData[CONFIG.COLUMNS.USER_ROLE] || userData.role;
+
+    err = this.validateRequired(empId, "Employee ID");
     if (err) errors.push(err);
 
-    err = this.validateRequired(
-      userData[CONFIG.COLUMNS.USER_FIRST_NAME],
-      "First Name"
-    );
+    err = this.validateRequired(firstName, "First Name");
     if (err) errors.push(err);
 
-    err = this.validateRequired(
-      userData[CONFIG.COLUMNS.USER_LAST_NAME],
-      "Last Name"
-    );
+    err = this.validateRequired(username, "Username");
     if (err) errors.push(err);
 
-    err = this.validateRequired(
-      userData[CONFIG.COLUMNS.USER_USERNAME],
-      "Username"
-    );
+    err = this.validateRequired(email, "Email Address");
     if (err) errors.push(err);
 
-    err = this.validateRequired(
-      userData[CONFIG.COLUMNS.USER_EMAIL_ADDRESS],
-      "Email Address"
-    );
+    err = this.validateEmail(email);
     if (err) errors.push(err);
 
-    err = this.validateEmail(
-      userData[CONFIG.COLUMNS.USER_EMAIL_ADDRESS]
-    );
-    if (err) errors.push(err);
-
-    err = this.validateRole(
-      userData[CONFIG.COLUMNS.USER_ROLE]
-    );
+    err = this.validateRole(role);
     if (err) errors.push(err);
 
     if (userData.password) {

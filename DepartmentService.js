@@ -277,13 +277,12 @@ const DepartmentService = {
       successMsg += " Email notification note: " + emailErrMessage;
     }
 
+    var responseDept = (inserted && typeof inserted === 'object' && !Array.isArray(inserted)) ? inserted : (Array.isArray(inserted) && inserted.length > 0 ? inserted[0] : newDepartment);
     return Utils.buildResponse(
       true,
       successMsg,
       {
-        department: Utils.sanitizeDepartment(
-          inserted === true ? newDepartment : inserted
-        )
+        department: Utils.sanitizeDepartment(responseDept)
       }
     );
 
