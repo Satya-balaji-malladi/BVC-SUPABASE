@@ -487,20 +487,39 @@ const CoordinatorService = {
       const allRows = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
       Logger.log('[DATABASE RESULT] Fetched ' + allRows.length + ' rows.');
 
+      // Handle both snake_case (from Supabase) and Title Case field names
       const assignedEventIds = allRows
-        .filter(row => this._normId(row['User ID']) === this._normId(userId) && String(row['Assignment Status']).trim() === 'Active')
-        .map(row => String(row['Event ID']).trim());
+        .filter(row => {
+          const rowUserId = row['User ID'] || row['user_id'] || '';
+          const rowStatus = row['Assignment Status'] || row['assignment_status'] || '';
+          return this._normId(rowUserId) === this._normId(userId) &&
+                 String(rowStatus).trim().toLowerCase() === 'active';
+        })
+        .map(row => String(row['Event ID'] || row['event_id'] || '').trim())
+        .filter(id => id.length > 0);
 
-      // Fallback: Also check EVENTS sheet for events where user is primary coordinator_id or creator
+      Logger.log('[getAssignedEventIds] Assigned Event IDs from EventCoordinators: ' + JSON.stringify(assignedEventIds));
+
+      // Fallback: Also check EVENTS table for events where user is primary coordinator_id or creator
       const allEvents = EventService.getAllEvents() || [];
+      const coordinatorIdCol = CONFIG.COLUMNS.COORDINATOR_ID || 'Organizer';
+      const createdByCol = CONFIG.COLUMNS.CREATED_BY || 'Created By';
       const primaryEvents = allEvents.filter(ev => {
-        const cId = this._normId(ev.coordinator_id || ev['Coordinator ID'] || ev.Organizer);
-        const crId = this._normId(ev.created_by || ev['Created By']);
+        const cId = this._normId(
+          ev[coordinatorIdCol] || ev.coordinatorId || ev.coordinator_id || ev['Coordinator ID'] || ev.Organizer
+        );
+        const crId = this._normId(
+          ev[createdByCol] || ev.created_by || ev.createdBy || ev['Created By']
+        );
         const uId = this._normId(userId);
         return (cId === uId || crId === uId);
-      }).map(ev => String(ev.event_id || ev['Event ID']).trim());
+      }).map(ev => String(ev[CONFIG.COLUMNS.EVENT_ID] || ev.eventId || ev.event_id || ev['Event ID'] || '').trim())
+        .filter(id => id.length > 0);
+
+      Logger.log('[getAssignedEventIds] Primary Event IDs (coordinator/creator): ' + JSON.stringify(primaryEvents));
 
       const combinedIds = Array.from(new Set(assignedEventIds.concat(primaryEvents)));
+      Logger.log('[getAssignedEventIds] Combined Event IDs: ' + JSON.stringify(combinedIds));
 
       const activeEventIds = combinedIds.filter(id => {
         const event = EventService.getEventById(id);
