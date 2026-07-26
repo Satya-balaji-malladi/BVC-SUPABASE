@@ -954,15 +954,6 @@ const CoordinatorService = {
     var yearVal = String(spotData.year || '1');
     var sectionVal = String(spotData.section || 'A');
 
-    var isBvc = !collegeName || collegeName.toLowerCase().includes('bvc') || collegeName.toLowerCase().includes('bonam');
-    
-    // Save to master tables
-    if (studentName) {
-      if (isBvc) {
-        var studentPayload = {};
-        studentPayload[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
-        studentPayload[CONFIG.COLUMNS.STUDENT_NAME] = studentName;
-        studentPayload[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = branch;
     // Create or update Student entity
     var existingStudent = StudentService.getStudentByRollNumber(normRoll);
     if (!existingStudent) {
