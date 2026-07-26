@@ -261,9 +261,10 @@ const DepartmentService = {
       (error && error.message ? error.message : error)
     );
 
+    var errMsg = (error && error.message) ? error.message : String(error);
     return Utils.buildResponse(
       false,
-      CONFIG.MESSAGES.DEPARTMENT_CREATE_FAILED
+      "Failed to create department: " + errMsg
     );
   }
 },
