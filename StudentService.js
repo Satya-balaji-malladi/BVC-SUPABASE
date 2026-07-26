@@ -43,8 +43,15 @@ var StudentService = {
       if (!rollNumber) return null;
       var searchRoll = String(rollNumber).trim().toUpperCase();
       var records = this._getStudents();
-      return records.find(function (s) {
-        return String(s[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER]).trim().toUpperCase() === searchRoll;
+      var found = records.find(function (s) {
+        return String(s[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] || s.roll_number).trim().toUpperCase() === searchRoll;
+      });
+      if (found) return found;
+
+      // Check other_college_students table for external students
+      var otherRecords = DatabaseService.readAllRows(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS) || [];
+      return otherRecords.find(function (s) {
+        return !s.deletion_flag && String(s.roll_number || s['Roll Number']).trim().toUpperCase() === searchRoll;
       }) || null;
     } catch (error) {
       Logger.log('StudentService._getStudent error: ' + (error && error.message ? error.message : error));

@@ -1400,12 +1400,52 @@ const Controller = {
         const student = StudentService.getStudentByRollNumber(normalizedRoll);
         if (!student) return Utils.buildResponse(false, 'Student not found in database.');
         return Utils.buildResponse(true, 'Student verified successfully.', {
-          name: student['Student Name'] || 'Unknown',
+          student_name: student['Student Name'] || student.student_name || 'Unknown',
+          name: student['Student Name'] || student.student_name || 'Unknown',
           roll: normalizedRoll,
-          dept: student['Department ID'] || 'Unknown',
-          branch: student['Branch'] || student['Department ID'] || 'Unknown',
-          year: student['Year'] || 'Unknown'
+          roll_number: normalizedRoll,
+          department_id: student['Department ID'] || student.department_id || student.department || 'Unknown',
+          dept: student['Department ID'] || student.department_id || student.department || 'Unknown',
+          branch: student['Branch'] || student.department || student['Department ID'] || 'Unknown',
+          year: student['Year'] || student.year || 'Unknown',
+          college: student['College'] || student.college_name || 'BVC Engineering College',
+          email_address: student['Email Address'] || student.email_address || '',
+          phone_number: student['Phone Number'] || student.phone_number || '',
+          gender: student['Gender'] || student.gender || '',
+          city: student['City'] || student.city || '',
+          state: student['State'] || student.state || '',
+          emergency_contact: student['Emergency Contact'] || student.emergency_contact || '',
+          accommodation_needed: student['Accommodation Needed'] || student.accommodation_needed || 'No',
+          food_preference: student['Food Preference'] || student.food_preference || '',
+          id_proof_number: student['ID Proof Number'] || student.id_proof_number || ''
         });
+      });
+    },
+
+    getStudentDetailsByRoll: function (rollNumber) {
+      if (!rollNumber) return Utils.buildResponse(false, 'Missing roll number parameter.');
+      const normalizedRoll = String(rollNumber).trim().toUpperCase();
+      const student = StudentService.getStudentByRollNumber(normalizedRoll);
+      if (!student) return Utils.buildResponse(false, 'Student not found in database.');
+      return Utils.buildResponse(true, 'Student details retrieved.', {
+        student_name: student['Student Name'] || student.student_name || 'Unknown',
+        name: student['Student Name'] || student.student_name || 'Unknown',
+        roll: normalizedRoll,
+        roll_number: normalizedRoll,
+        department_id: student['Department ID'] || student.department_id || student.department || 'Unknown',
+        dept: student['Department ID'] || student.department_id || student.department || 'Unknown',
+        branch: student['Branch'] || student.department || student['Department ID'] || 'Unknown',
+        year: student['Year'] || student.year || 'Unknown',
+        college: student['College'] || student.college_name || 'BVC Engineering College',
+        email_address: student['Email Address'] || student.email_address || '',
+        phone_number: student['Phone Number'] || student.phone_number || '',
+        gender: student['Gender'] || student.gender || '',
+        city: student['City'] || student.city || '',
+        state: student['State'] || student.state || '',
+        emergency_contact: student['Emergency Contact'] || student.emergency_contact || '',
+        accommodation_needed: student['Accommodation Needed'] || student.accommodation_needed || 'No',
+        food_preference: student['Food Preference'] || student.food_preference || '',
+        id_proof_number: student['ID Proof Number'] || student.id_proof_number || ''
       });
     },
 
