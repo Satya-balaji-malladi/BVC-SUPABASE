@@ -1200,7 +1200,50 @@ const Controller = {
       }
     },
 
+    processParticipant: function (sessionToken, rollNumber, eventId) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        let targetEventId = eventId;
+        if (!targetEventId) {
+          const activeAssignedIds = CoordinatorService.getAssignedEventIds(userId) || [];
+          if (activeAssignedIds.length === 0) {
+            return Utils.buildResponse(false, 'No active event assignments associated with this account credentials.', { state: 'EVENT_NOT_AVAILABLE' });
+          }
+          targetEventId = activeAssignedIds[0];
+        }
+        return CoordinatorService.processParticipantForEvent(sessionToken, targetEventId, rollNumber);
+      });
+    },
+
+    confirmMarkParticipation: function (sessionToken, rollNumber, eventId, additionalData) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        let targetEventId = eventId;
+        if (!targetEventId) {
+          const activeAssignedIds = CoordinatorService.getAssignedEventIds(userId) || [];
+          if (activeAssignedIds.length === 0) {
+            return Utils.buildResponse(false, 'No active event assignments associated with this account credentials.', { state: 'EVENT_NOT_AVAILABLE' });
+          }
+          targetEventId = activeAssignedIds[0];
+        }
+        return CoordinatorService.confirmMarkParticipation(sessionToken, targetEventId, rollNumber, additionalData);
+      });
+    },
+
+    spotRegisterParticipant: function (sessionToken, rollNumber, eventId, spotData) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        let targetEventId = eventId;
+        if (!targetEventId) {
+          const activeAssignedIds = CoordinatorService.getAssignedEventIds(userId) || [];
+          if (activeAssignedIds.length === 0) {
+            return Utils.buildResponse(false, 'No active event assignments associated with this account credentials.', { state: 'EVENT_NOT_AVAILABLE' });
+          }
+          targetEventId = activeAssignedIds[0];
+        }
+        return CoordinatorService.spotRegisterParticipant(sessionToken, targetEventId, rollNumber, spotData);
+      });
+    },
+
     markAttendance: function (sessionToken, rollNumber, attendanceMethod) {
+
       return SessionService.withSession(sessionToken, function (userId) {
         const activeAssignedIds = CoordinatorService.getAssignedEventIds(userId) || [];
         if (activeAssignedIds.length === 0) {

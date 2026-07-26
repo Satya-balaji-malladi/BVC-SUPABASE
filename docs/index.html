@@ -2712,51 +2712,118 @@ const CoordinatorUI = (() => {
     isRegistered: false
   };
 
-  const submitAttendance = () => {
-    if (!dom.input || !dom.input.value.trim()) return;
+  let isProcessingRoll = false;
 
-    const rawInput = dom.input.value.trim().toUpperCase();
+  const submitAttendance = (scannedRoll = null) => {
+    const rawVal = scannedRoll || (dom.input ? dom.input.value : '');
+    if (!rawVal || !rawVal.trim()) return;
 
-    // Client-side duplicate check
-    const isDup = state.allScans.some(s => s.roll === rawInput && !s.isError);
-    if (isDup) {
-      playTone('error');
-      showToast('warning', `Student ${rawInput} has already been scanned for today.`);
-      clearInput();
-      focusInput();
+    const rawInput = rawVal.trim().toUpperCase();
+
+    // Rapid double scan protection
+    if (isProcessingRoll) {
+      console.log('[COORDINATOR-UI] Rapid processing lock active. Ignoring duplicate attempt for:', rawInput);
       return;
     }
+    isProcessingRoll = true;
 
-    setScannerStatus('Fetching details...', 'status-info');
+    setSubmitEnabled(false, '<span class="spinner-border spinner-border-sm"></span>');
+    setScannerStatus('Checking participant...', 'status-info');
 
-    // 1. Fetch details first without direct push
+    // Call Central Orchestrator
     google.script.run
       .withSuccessHandler((res) => {
-        if (res && res.success && res.student) {
-          playTone('success');
-          pendingScanState.roll = rawInput;
-          pendingScanState.name = res.student.student_name || res.student.name || 'Student';
-          pendingScanState.dept = res.student.department_id || res.student.department || 'General';
-          pendingScanState.year = res.student.year || '1';
-          pendingScanState.college = res.student.college || 'BVC Engineering College';
-
-          openVerificationModal(pendingScanState);
-        } else {
-          // Unregistered candidate -> trigger spot registration modal
-          playTone('warning');
-          setScannerStatus('Not registered – opening form', 'status-warn');
-          openSpotModal(rawInput);
+        isProcessingRoll = false;
+        setSubmitEnabled(true);
+        if (!res) {
+          showToast('error', 'No response received from server.');
+          setScannerStatus('Error', 'status-error');
+          return;
         }
+
+        const stateType = res.state || (res.data ? res.data.state : null);
+        const stateData = res.data || res;
+
+        // Save roll to pending state
+        pendingScanState.roll = rawInput;
+        pendingScanState.studentData = stateData.studentData || {};
+        pendingScanState.event = stateData.event || {};
+        pendingScanState.stateType = stateType;
+
+        if (stateData.studentData) {
+          pendingScanState.name = stateData.studentData.studentName || 'Student';
+          pendingScanState.dept = stateData.studentData.branch || 'General';
+          pendingScanState.year = stateData.studentData.year || '1';
+          pendingScanState.college = stateData.studentData.college || 'BVC Engineering College';
+        }
+
+        // Handle States:
+        if (stateType === 'ALREADY_MARKED') {
+          playTone('warning');
+          setScannerStatus('Already Marked', 'status-warn');
+          showToast('warning', `Participation was already recorded for ${rawInput}.`);
+          showAlreadyMarkedModal(stateData);
+          clearInput();
+          focusInput();
+          return;
+        }
+
+        if (stateType === 'NOT_REGISTERED_SPOT_DISABLED') {
+          playTone('error');
+          setScannerStatus('Spot Reg Disabled', 'status-error');
+          showToast('error', res.message || 'Participant is not registered for this event and spot registration is not available.');
+          showSpotDisabledModal(stateData);
+          clearInput();
+          focusInput();
+          return;
+        }
+
+        if (stateType === 'SPOT_REGISTRATION_REQUIRED') {
+          playTone('info');
+          setScannerStatus('Spot Registration Available', 'status-warn');
+          showSpotPromptModal(stateData);
+          clearInput();
+          focusInput();
+          return;
+        }
+
+        if (stateType === 'MISSING_REQUIRED_FIELDS') {
+          playTone('info');
+          setScannerStatus('Fields Required', 'status-info');
+          openVerificationModal(stateData.studentData || pendingScanState, stateData.missingFields || []);
+          clearInput();
+          focusInput();
+          return;
+        }
+
+        if (stateType === 'READY_TO_MARK' || res.success) {
+          playTone('success');
+          setScannerStatus('Ready to confirm', 'status-success');
+          openVerificationModal(stateData.studentData || pendingScanState, []);
+          clearInput();
+          focusInput();
+          return;
+        }
+
+        playTone('error');
+        showToast('error', res.message || 'Failed to process participant.');
+        setScannerStatus('Processing Failed', 'status-error');
+        clearInput();
+        focusInput();
       })
       .withFailureHandler((err) => {
-        setScannerStatus('Fetch failed – offline', 'status-warn');
-        showToast('error', 'Failed to fetch student profile.');
+        isProcessingRoll = false;
+        setSubmitEnabled(true);
+        setScannerStatus('Server Error', 'status-error');
+        showToast('error', 'Server communication error: ' + (err?.message || 'Unreachable'));
+        focusInput();
       })
-      .getStudentDetailsByRoll(rawInput);
+      .processParticipant(state.sessionToken, rawInput, state.eventId);
 
     clearInput();
     focusInput();
   };
+
 
   const openVerificationModal = (studentData) => {
     const nameEl = document.getElementById('verif-name');
@@ -2840,13 +2907,13 @@ const CoordinatorUI = (() => {
   const confirmVerificationAttendance = () => {
     if (!pendingScanState.roll) return;
 
-    // Collect any missing field inputs
+    // Collect missing inputs if any
     const missingInputs = document.querySelectorAll('.missing-field-input');
     let isValid = true;
     const additionalData = {};
 
     missingInputs.forEach(inp => {
-      const fieldKey = inp.getAttribute('data-field');
+      const fieldKey = inp.getAttribute('data-field') || inp.getAttribute('name');
       const val = inp.value.trim();
       if (inp.required && !val) {
         isValid = false;
@@ -2858,32 +2925,59 @@ const CoordinatorUI = (() => {
     });
 
     if (!isValid) {
-      showToast('warning', 'Please fill in all missing required fields marked by the Event Admin.');
+      showToast('warning', 'Please fill in all missing required fields.');
       return;
     }
 
-    const rawInput = pendingScanState.roll;
-
-    // Optimistic UI updates
-    state.statistics.present++;
-    state.statistics.remaining = Math.max(0, state.statistics.remaining - 1);
-    renderStats();
-
-    setScannerStatus('✔ Attendance Marked', 'status-success');
-    showStudentPreview({ name: pendingScanState.name, roll: rawInput, dept: pendingScanState.dept, year: pendingScanState.year }, 'success');
-    prependScanLocally(pendingScanState.name, rawInput, pendingScanState.dept, false, 'syncing');
-
-    state.uploadQueue.push({ roll: rawInput, additionalData });
-
-    const modalEl = document.getElementById('scanVerificationModal');
-    if (modalEl && typeof bootstrap !== 'undefined') {
-      const verifModal = bootstrap.Modal.getInstance(modalEl);
-      if (verifModal) verifModal.hide();
+    const btnConfirm = document.getElementById('btn-confirm-attendance');
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+      btnConfirm.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Marking...';
     }
 
-    processUploadQueue();
-    renderAttendanceTwoColumns();
+    setScannerStatus('Marking participation...', 'status-info');
+
+    google.script.run
+      .withSuccessHandler((res) => {
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
+          btnConfirm.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> MARK PARTICIPATED';
+        }
+
+        if (res && res.success) {
+          playTone('success');
+          showToast('success', res.message || 'Participation marked successfully.');
+          setScannerStatus('Participation Recorded', 'status-success');
+
+          const modalEl = document.getElementById('scanVerificationModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            const verifModal = bootstrap.Modal.getInstance(modalEl);
+            if (verifModal) verifModal.hide();
+          }
+
+          if (res.data && res.data.statistics) {
+            state.statistics = res.data.statistics;
+            renderStats();
+          }
+          loadBackendTerminalData();
+        } else {
+          playTone('error');
+          showToast('error', res?.message || 'Failed to mark participation.');
+          setScannerStatus('Mark Failed', 'status-error');
+        }
+      })
+      .withFailureHandler((err) => {
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
+          btnConfirm.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> MARK PARTICIPATED';
+        }
+        playTone('error');
+        showToast('error', 'Error calling backend: ' + (err?.message || 'Unreachable'));
+        setScannerStatus('Server Error', 'status-error');
+      })
+      .confirmMarkParticipation(state.sessionToken, pendingScanState.roll, state.eventId, additionalData);
   };
+
 
   // ==========================================================================
   //  SPOT REGISTRATION

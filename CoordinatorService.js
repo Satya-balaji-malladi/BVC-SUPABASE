@@ -653,5 +653,478 @@ const CoordinatorService = {
       Logger.log('[END] CoordinatorService.validateCoordinatorSession');
       return Utils.buildResponse(true, 'Coordinator session is valid and active.', { user: user });
     });
+  },
+
+  // ==========================================================================
+  //  DYNAMIC FIELD PARSER
+  // ==========================================================================
+  parseRegistrationFields: function(event) {
+    if (!event) return [];
+    var rawFields = event[CONFIG.COLUMNS.EVENT_REGISTRATION_FIELDS] !== undefined 
+      ? event[CONFIG.COLUMNS.EVENT_REGISTRATION_FIELDS] 
+      : (event.registration_fields || event.registrationFields || event['Registration Fields']);
+    
+    if (!rawFields) return [];
+    if (Array.isArray(rawFields)) return rawFields;
+    
+    try {
+      if (typeof rawFields === 'string') {
+        var parsed = JSON.parse(rawFields);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.fields)) return parsed.fields;
+          return [parsed];
+        }
+      }
+    } catch(e) {
+      Logger.log('[CoordinatorService.parseRegistrationFields] Warn: Malformed JSON fields: ' + e.message);
+    }
+    return [];
+  },
+
+  // ==========================================================================
+  //  CENTRAL ORCHESTRATOR: processParticipantForEvent
+  // ==========================================================================
+  processParticipantForEvent: function(sessionToken, eventId, rawRollNumber) {
+    var startTime = Date.now();
+    Logger.log('[COORDINATOR-FLOW][01] Roll number received: ' + rawRollNumber + ' | Event ID: ' + eventId);
+
+    if (!rawRollNumber || String(rawRollNumber).trim() === '') {
+      Logger.log('[COORDINATOR-FLOW][13] Response state: INVALID_ROLL_NUMBER');
+      return Utils.buildResponse(false, 'Roll number is required.', { state: 'INVALID_ROLL_NUMBER' });
+    }
+    var normRoll = String(rawRollNumber).trim().toUpperCase();
+
+    // 1. Validate Session & Coordinator Authorization
+    var userId = SessionService.getCurrentUser(sessionToken);
+    if (!userId) {
+      Logger.log('[COORDINATOR-FLOW][02] Session validation FAILED');
+      return Utils.buildResponse(false, 'Invalid or expired session.', { state: 'UNAUTHORIZED' });
+    }
+    var actionUser = UserService.getUserById(userId);
+    var validation = this.validateCoordinatorSession(actionUser);
+    if (!validation.success) {
+      Logger.log('[COORDINATOR-FLOW][02] Coordinator validation FAILED: ' + validation.message);
+      return Utils.buildResponse(false, validation.message, { state: 'UNAUTHORIZED' });
+    }
+    Logger.log('[COORDINATOR-FLOW][02] Session validation PASS | User ID: ' + userId);
+
+    // 2. Validate Event & Eligibility
+    Logger.log('[COORDINATOR-FLOW][03] Loading event configuration');
+    var event = EventService.getEventById(eventId);
+    if (!event) {
+      Logger.log('[COORDINATOR-FLOW][03] Event NOT FOUND: ' + eventId);
+      return Utils.buildResponse(false, 'Event not found or deleted.', { state: 'EVENT_NOT_AVAILABLE' });
+    }
+    var status = String(event.status || event['Event Status'] || '').toUpperCase();
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      Logger.log('[COORDINATOR-FLOW][03] Event status inactive: ' + status);
+      return Utils.buildResponse(false, 'Event is no longer active for attendance.', { state: 'EVENT_NOT_AVAILABLE' });
+    }
+
+    // 3. Duplicate Participation Check
+    Logger.log('[COORDINATOR-FLOW][15] Checking duplicate participation');
+    var alreadyAttended = AttendanceService.hasStudentAttended(eventId, normRoll);
+    if (alreadyAttended) {
+      Logger.log('[COORDINATOR-FLOW][15] Duplicate detected for roll: ' + normRoll);
+      var attendanceList = AttendanceService.getAttendanceByEvent(eventId) || [];
+      var existingRecord = attendanceList.find(function(a) {
+        var r = a['Roll Number'] || a.roll_number || '';
+        return String(r).trim().toUpperCase() === normRoll && !a['Deletion Flag'];
+      });
+      var studentObj = StudentService.getStudentByRollNumber(normRoll) || {};
+      return Utils.buildResponse(true, 'Participation has already been recorded for this student.', {
+        state: 'ALREADY_MARKED',
+        rollNumber: normRoll,
+        studentName: studentObj['Student Name'] || studentObj.student_name || 'Participant',
+        recordedAt: existingRecord ? (existingRecord.Timestamp || existingRecord.timestamp || existingRecord.Date || existingRecord.time) : new Date().toISOString(),
+        record: existingRecord
+      });
+    }
+
+    // 4. Student Database Lookup (BVC & External)
+    Logger.log('[COORDINATOR-FLOW][05] BVC lookup started');
+    var student = StudentService.getStudentByRollNumber(normRoll);
+    var studentSource = 'UNKNOWN';
+    if (student) {
+      var college = String(student.College || student.college_name || '').toLowerCase();
+      studentSource = (!college || college.includes('bvc') || college.includes('bonam')) ? 'BVC' : 'EXTERNAL';
+      Logger.log('[COORDINATOR-FLOW][06] Student found. Source: ' + studentSource);
+    } else {
+      Logger.log('[COORDINATOR-FLOW][06] Student NOT FOUND in master databases');
+    }
+    Logger.log('[COORDINATOR-FLOW][08] Participant source: ' + studentSource);
+
+    // 5. Parse Configured Registration Fields
+    var configuredFields = this.parseRegistrationFields(event);
+    Logger.log('[COORDINATOR-FLOW][11] Configured fields loaded: ' + configuredFields.length);
+
+    // 6. Registration Requirement Evaluation
+    var regRequiredVal = event[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION] !== undefined 
+      ? event[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION] 
+      : (event.enable_registration || event.enableRegistration || false);
+    var isRegRequired = String(regRequiredVal).toLowerCase() === 'true';
+    Logger.log('[COORDINATOR-FLOW][04] Registration required: ' + (isRegRequired ? 'TRUE' : 'FALSE'));
+
+    // Extract student attributes helper
+    var studentName = student ? (student['Student Name'] || student.student_name || student.name || '') : '';
+    var branch = student ? (student['Department ID'] || student.department || student.branch || '') : '';
+    var collegeName = student ? (student.College || student.college_name || 'BVC Engineering College') : 'BVC Engineering College';
+    var yearVal = student ? (student.Year || student.year || '1') : '';
+    var sectionVal = student ? (student.Section || student.section || 'A') : '';
+
+    var knownData = {
+      rollNumber: normRoll,
+      studentName: studentName,
+      branch: branch,
+      college: collegeName,
+      year: yearVal,
+      section: sectionVal,
+      studentSource: studentSource,
+      isKnownStudent: !!student
+    };
+
+    // Calculate missing required fields helper
+    var checkMissingFields = function(configured, known) {
+      var missing = [];
+      configured.forEach(function(f) {
+        var isReq = f.required === true || f.isRequired === true;
+        if (!isReq) return;
+        var key = (f.name || f.label || '').toLowerCase();
+        var val = known[key] || (known.customData ? known.customData[key] : null);
+        
+        // Map common field names
+        if (key.includes('name') && known.studentName) val = known.studentName;
+        if (key.includes('roll') && known.rollNumber) val = known.rollNumber;
+        if ((key.includes('branch') || key.includes('dept')) && known.branch) val = known.branch;
+        if (key.includes('college') && known.college) val = known.college;
+        
+        if (!val || String(val).trim() === '') {
+          missing.push(f);
+        }
+      });
+      return missing;
+    };
+
+    // ------------------------------------------------------------------------
+    // FLOW A: NO REGISTRATION REQUIRED
+    // ------------------------------------------------------------------------
+    if (!isRegRequired) {
+      var missingFieldsA = checkMissingFields(configuredFields, knownData);
+      Logger.log('[COORDINATOR-FLOW][12] Missing required fields: ' + JSON.stringify(missingFieldsA.map(m => m.name)));
+
+      if (missingFieldsA.length > 0 && !student) {
+        Logger.log('[COORDINATOR-FLOW][13] Response state: MISSING_REQUIRED_FIELDS');
+        return Utils.buildResponse(true, 'Required participant details missing.', {
+          state: 'MISSING_REQUIRED_FIELDS',
+          event: event,
+          studentData: knownData,
+          missingFields: missingFieldsA,
+          configuredFields: configuredFields
+        });
+      }
+
+      Logger.log('[COORDINATOR-FLOW][13] Response state: READY_TO_MARK');
+      return Utils.buildResponse(true, 'Participant ready for attendance confirmation.', {
+        state: 'READY_TO_MARK',
+        event: event,
+        studentData: knownData,
+        missingFields: missingFieldsA,
+        configuredFields: configuredFields
+      });
+    }
+
+    // ------------------------------------------------------------------------
+    // FLOW B: REGISTRATION REQUIRED
+    // ------------------------------------------------------------------------
+    Logger.log('[COORDINATOR-FLOW][09] Checking event registration for roll: ' + normRoll);
+    var participantsList = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'Event ID', eventId) || [];
+    var registrationRecord = participantsList.find(function(p) {
+      var r = p['Roll Number'] || p.roll_number || p.rollNumber || '';
+      var status = String(p['Registration Status'] || p.registration_status || p.status || '').toLowerCase();
+      return String(r).trim().toUpperCase() === normRoll && status !== 'cancelled' && status !== 'rejected' && !p['Deletion Flag'];
+    });
+
+    if (registrationRecord) {
+      Logger.log('[COORDINATOR-FLOW][10] Registration found: REGISTERED');
+      var customData = {};
+      if (registrationRecord.custom_fields_data) {
+        try { customData = JSON.parse(registrationRecord.custom_fields_data); } catch(e) {}
+      }
+      knownData.registrationRecord = registrationRecord;
+      knownData.customData = customData;
+
+      var missingFieldsB = checkMissingFields(configuredFields, knownData);
+      if (missingFieldsB.length > 0) {
+        Logger.log('[COORDINATOR-FLOW][13] Response state: MISSING_REQUIRED_FIELDS');
+        return Utils.buildResponse(true, 'Registered participant is missing additional required fields.', {
+          state: 'MISSING_REQUIRED_FIELDS',
+          event: event,
+          studentData: knownData,
+          missingFields: missingFieldsB,
+          configuredFields: configuredFields
+        });
+      }
+
+      Logger.log('[COORDINATOR-FLOW][13] Response state: READY_TO_MARK');
+      return Utils.buildResponse(true, 'Registered participant ready for attendance confirmation.', {
+        state: 'READY_TO_MARK',
+        event: event,
+        studentData: knownData,
+        missingFields: [],
+        configuredFields: configuredFields
+      });
+    }
+
+    // Student is NOT registered for this event
+    Logger.log('[COORDINATOR-FLOW][10] Registration NOT FOUND');
+    var allowSpotVal = event[CONFIG.COLUMNS.EVENT_ALLOW_SPOT_REGISTRATION] !== undefined 
+      ? event[CONFIG.COLUMNS.EVENT_ALLOW_SPOT_REGISTRATION] 
+      : (event.allow_spot_registration || event.allowSpotRegistration || true);
+    var isSpotAllowed = String(allowSpotVal).toLowerCase() === 'true';
+    Logger.log('[COORDINATOR-FLOW][10] Spot registration allowed: ' + (isSpotAllowed ? 'TRUE' : 'FALSE'));
+
+    if (!isSpotAllowed) {
+      Logger.log('[COORDINATOR-FLOW][13] Response state: NOT_REGISTERED_SPOT_DISABLED');
+      return Utils.buildResponse(false, 'This participant is not registered for this event and spot registration is not available.', {
+        state: 'NOT_REGISTERED_SPOT_DISABLED',
+        event: event,
+        rollNumber: normRoll
+      });
+    }
+
+    // Spot registration IS allowed
+    var missingSpotFields = checkMissingFields(configuredFields, knownData);
+    Logger.log('[COORDINATOR-FLOW][13] Response state: SPOT_REGISTRATION_REQUIRED');
+    return Utils.buildResponse(true, 'Participant is not registered for this event. Spot registration is available.', {
+      state: 'SPOT_REGISTRATION_REQUIRED',
+      event: event,
+      studentData: knownData,
+      configuredFields: configuredFields,
+      missingFields: missingSpotFields
+    });
+  },
+
+  // ==========================================================================
+  //  SPOT REGISTRATION ACTION
+  // ==========================================================================
+  spotRegisterParticipant: function(sessionToken, eventId, rawRollNumber, spotData) {
+    Logger.log('[COORDINATOR-FLOW][14] Spot registration requested for roll: ' + rawRollNumber);
+    spotData = spotData || {};
+
+    if (!rawRollNumber || String(rawRollNumber).trim() === '') {
+      return Utils.buildResponse(false, 'Roll number is required for spot registration.', { state: 'INVALID_ROLL_NUMBER' });
+    }
+    var normRoll = String(rawRollNumber).trim().toUpperCase();
+
+    // Session check
+    var userId = SessionService.getCurrentUser(sessionToken);
+    if (!userId) return Utils.buildResponse(false, 'Invalid or expired session.', { state: 'UNAUTHORIZED' });
+
+    var event = EventService.getEventById(eventId);
+    if (!event) return Utils.buildResponse(false, 'Event not found.', { state: 'EVENT_NOT_AVAILABLE' });
+
+    // Capacity Check
+    var maxSeats = event[CONFIG.COLUMNS.EVENT_MAXIMUM_SEATS] || event.maximum_seats || event.capacity || 0;
+    if (maxSeats > 0) {
+      var currentCount = event[CONFIG.COLUMNS.EVENT_REGISTERED_COUNT] || event.registered_count || 0;
+      if (currentCount >= maxSeats) {
+        return Utils.buildResponse(false, 'Spot registration failed: Maximum capacity reached for this event.', { state: 'CAPACITY_REACHED' });
+      }
+    }
+
+    // Check duplicate registration
+    var participantsList = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'Event ID', eventId) || [];
+    var existing = participantsList.find(function(p) {
+      var r = p['Roll Number'] || p.roll_number || p.rollNumber || '';
+      return String(r).trim().toUpperCase() === normRoll && !p['Deletion Flag'];
+    });
+    if (existing) {
+      Logger.log('[COORDINATOR-FLOW] Duplicate registration prevented for roll: ' + normRoll);
+      // Already registered -> continue directly to process
+      return this.processParticipantForEvent(sessionToken, eventId, normRoll);
+    }
+
+    // Save/update student details
+    var studentName = (spotData.studentName || spotData.name || '').trim();
+    var collegeName = (spotData.college || spotData.collegeName || 'BVC Engineering College').trim();
+    var branch = (spotData.branch || spotData.department || 'CSE').trim().toUpperCase();
+    var yearVal = String(spotData.year || '1');
+    var sectionVal = String(spotData.section || 'A');
+
+    var isBvc = !collegeName || collegeName.toLowerCase().includes('bvc') || collegeName.toLowerCase().includes('bonam');
+    
+    // Save to master tables
+    if (studentName) {
+      if (isBvc) {
+        var studentPayload = {};
+        studentPayload[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
+        studentPayload[CONFIG.COLUMNS.STUDENT_NAME] = studentName;
+        studentPayload[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = branch;
+        studentPayload[CONFIG.COLUMNS.STUDENT_YEAR] = yearVal;
+        studentPayload[CONFIG.COLUMNS.STUDENT_SECTION] = sectionVal;
+        studentPayload[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
+        studentPayload["College"] = collegeName;
+        StudentService.createStudent(studentPayload, 'Coordinator');
+      } else {
+        var otherStudentPayload = {
+          id: 'OCS' + Date.now(),
+          roll_number: normRoll,
+          student_name: studentName,
+          college_name: collegeName,
+          department: branch,
+          year: yearVal,
+          section: sectionVal,
+          status: 'Active',
+          created_by: 'Coordinator',
+          created_at: new Date().toISOString()
+        };
+        try { DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, otherStudentPayload); } catch(e) {}
+        
+        // Also stub in main students table for foreign key safety
+        try {
+          var mainStudentStub = {};
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normRoll;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_NAME] = studentName;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = branch;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_YEAR] = yearVal;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_SECTION] = sectionVal;
+          mainStudentStub[CONFIG.COLUMNS.STUDENT_STATUS] = 'Active';
+          mainStudentStub["College"] = collegeName;
+          StudentService.createStudent(mainStudentStub, 'Coordinator');
+        } catch(e) {}
+      }
+    }
+
+    // Insert Participant Record into event_participants
+    var participantId = IdService._generateNextIdWithLock('EVENT_PARTICIPANTS');
+    var nowIso = new Date().toISOString();
+    var nowDate = Utils.formatDate(new Date());
+
+    var participantRecord = {
+      'Participant ID': participantId,
+      'Event ID': eventId,
+      'Roll Number': normRoll,
+      'Registration Type': 'Spot',
+      'Registration Status': 'Active',
+      'Attendance Status': 'Absent',
+      'Approval Status': 'Approved',
+      'Registration Date': nowDate,
+      'Registration Timestamp': nowIso,
+      'Custom Fields Data': JSON.stringify(spotData.customFields || {}),
+      'Created By': 'Coordinator',
+      'Created At': nowIso
+    };
+
+    var insertOk = DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, participantRecord);
+    if (!insertOk) {
+      return Utils.buildResponse(false, 'Failed to create spot registration in database.', { state: 'ERROR' });
+    }
+
+    // Increment registered_count in events table
+    try {
+      var currentRegistered = event[CONFIG.COLUMNS.EVENT_REGISTERED_COUNT] || event.registered_count || 0;
+      var updatePayload = {};
+      updatePayload[CONFIG.COLUMNS.EVENT_REGISTERED_COUNT] = currentRegistered + 1;
+      DatabaseService.updateRow(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID || 'Event ID', eventId, updatePayload);
+    } catch(e) {
+      Logger.log('[CoordinatorService.spotRegisterParticipant] Registered count update warning: ' + e.message);
+    }
+
+    Logger.log('[COORDINATOR-FLOW] Spot registration successful for roll: ' + normRoll);
+
+    // DIRECTLY continue to participant confirmation without forcing re-scan
+    return this.processParticipantForEvent(sessionToken, eventId, normRoll);
+  },
+
+  // ==========================================================================
+  //  CONFIRM PARTICIPATION ACTION (MARK PARTICIPATED)
+  // ==========================================================================
+  confirmMarkParticipation: function(sessionToken, eventId, rawRollNumber, additionalData) {
+    Logger.log('[COORDINATOR-FLOW][14] Mark participation requested for roll: ' + rawRollNumber);
+    
+    if (!rawRollNumber || String(rawRollNumber).trim() === '') {
+      return Utils.buildResponse(false, 'Roll number is required.', { state: 'INVALID_ROLL_NUMBER' });
+    }
+    var normRoll = String(rawRollNumber).trim().toUpperCase();
+
+    // 1. Session check
+    var userId = SessionService.getCurrentUser(sessionToken);
+    if (!userId) return Utils.buildResponse(false, 'Invalid or expired session.', { state: 'UNAUTHORIZED' });
+
+    var actionUser = UserService.getUserById(userId);
+    var validation = this.validateCoordinatorSession(actionUser);
+    if (!validation.success) return Utils.buildResponse(false, validation.message, { state: 'UNAUTHORIZED' });
+
+    // 2. Event check
+    var event = EventService.getEventById(eventId);
+    if (!event) return Utils.buildResponse(false, 'Event not found.', { state: 'EVENT_NOT_AVAILABLE' });
+
+    // 3. Double-click & Rapid Double Scan Protection
+    Logger.log('[COORDINATOR-FLOW][15] Immediate pre-insertion duplicate check');
+    var alreadyAttended = AttendanceService.hasStudentAttended(eventId, normRoll);
+    if (alreadyAttended) {
+      Logger.log('[COORDINATOR-FLOW][15] Duplicate prevented immediately before insertion');
+      return Utils.buildResponse(true, 'Participation has already been recorded for this student.', {
+        state: 'ALREADY_MARKED',
+        rollNumber: normRoll
+      });
+    }
+
+    // Save additional fields if provided by Coordinator
+    if (additionalData && typeof additionalData === 'object') {
+      var student = StudentService.getStudentByRollNumber(normRoll);
+      if (student && (additionalData.studentName || additionalData.phone || additionalData.email)) {
+        var studentUpdates = {};
+        if (additionalData.studentName) studentUpdates[CONFIG.COLUMNS.STUDENT_NAME] = additionalData.studentName;
+        if (additionalData.phone) studentUpdates['Phone'] = additionalData.phone;
+        if (additionalData.email) studentUpdates['Email'] = additionalData.email;
+        try { DatabaseService.updateRow(CONFIG.SHEETS.STUDENTS, CONFIG.COLUMNS.STUDENT_ROLL_NUMBER, normRoll, studentUpdates); } catch(e) {}
+      }
+    }
+
+    // 4. Save Attendance Record
+    Logger.log('[COORDINATOR-FLOW][16] Attendance insertion started');
+    var result = this.markAttendanceByCoordinator(eventId, normRoll, userId, 'Barcode');
+
+    if (!result || !result.success) {
+      Logger.log('[COORDINATOR-FLOW][16] Attendance insertion failed: ' + (result ? result.message : 'Unknown error'));
+      return result || Utils.buildResponse(false, 'Failed to mark participation.', { state: 'ERROR' });
+    }
+
+    // 5. Database Verification
+    Logger.log('[COORDINATOR-FLOW][17] Database verification started');
+    var dbVerified = AttendanceService.hasStudentAttended(eventId, normRoll);
+    if (!dbVerified) {
+      Logger.log('[COORDINATOR-FLOW][17] Database verification FAILED');
+      return Utils.buildResponse(false, 'Participation was processed but database verification failed.', { state: 'ERROR' });
+    }
+    Logger.log('[COORDINATOR-FLOW][17] Database verification PASSED');
+    Logger.log('[COORDINATOR-FLOW][18] Workflow completed successfully for roll: ' + normRoll);
+
+    // Build refreshed terminal stats & scan item for UI UI hydration
+    var counts = AttendanceService.getEventAttendanceCount(eventId);
+    var stats = {
+      present: counts.present || 0,
+      remaining: counts.absent || counts.total - counts.present || 0,
+      total: counts.total || 0
+    };
+
+    var studentObj = StudentService.getStudentByRollNumber(normRoll) || {};
+    var scanItem = {
+      roll_number: normRoll,
+      student_name: studentObj['Student Name'] || studentObj.student_name || additionalData?.studentName || 'Participant',
+      timestamp: new Date().toLocaleTimeString(),
+      status: 'Present',
+      attendance_method: 'Barcode'
+    };
+
+    return Utils.buildResponse(true, 'Participation marked successfully.', {
+      state: 'COMPLETED',
+      rollNumber: normRoll,
+      statistics: stats,
+      scanItem: scanItem
+    });
   }
+
 };
