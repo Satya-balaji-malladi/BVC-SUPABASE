@@ -375,15 +375,18 @@ const ProjectTesting = {
 
     var start = new Date().getTime();
     try {
+      var depts = DatabaseService.readAllRows('DEPARTMENTS') || [];
+      var validDept = depts.length > 0 ? (depts[0].department_code || depts[0]['Department Code'] || 'CSE') : 'CSE';
+
       var studRes = StudentService.createStudent({
         roll_number: rollNo,
         student_name: 'Automated Test Student',
-        department: 'CSE',
+        department: validDept,
         year: '3',
         section: 'A',
         email: 'student.' + timestamp + '@bvcgroup.in',
         status: 'Active'
-      }, 'HOD_TestSuite');
+      }, { role: 'HOD', department: validDept });
 
       var dur = new Date().getTime() - start;
       if (studRes && (studRes.success || studRes.data)) {
@@ -448,7 +451,7 @@ const ProjectTesting = {
         allowed_departments: ['CSE'],
         allowed_years: ['3'],
         status: 'Active'
-      }, 'EventAdmin_TestSuite');
+      }, { role: 'Event Admin', isEventAdmin: true, isSuperAdmin: false, username: 'eventadmin_test' });
 
       var dur = new Date().getTime() - start;
       if (eventRes && eventRes.success) {
@@ -504,13 +507,14 @@ const ProjectTesting = {
       var sampleEvent = (activeEvents && activeEvents.length > 0) ? activeEvents[0] : null;
       var eventId = sampleEvent ? (sampleEvent.event_id || sampleEvent['Event ID']) : 'EVT0001';
 
+      var coordContext = { role: 'Coordinator', isCoordinator: true, employee_id: 'EMP777', username: 'emp777' };
       var attRes = AttendanceService.markAttendance({
         event_id: eventId,
         roll_number: '216W1A0501',
         scanned_by: 'EMP777',
         scan_mode: 'QR_SCAN',
         status: 'PRESENT'
-      });
+      }, coordContext);
 
       var dur = new Date().getTime() - start;
       if (attRes && (attRes.success || (attRes.message && attRes.message.indexOf('already') !== -1))) {
