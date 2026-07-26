@@ -10,12 +10,20 @@ function runCreateSampleData() {
   try {
     // 1. Departments
     Logger.log("Seeding DEPARTMENTS...");
+    var existingDepts = DatabaseService.readAllRows("DEPARTMENTS") || [];
+    var existingCodes = existingDepts.map(d => String(d.department_code || d['Department Code'] || '').toUpperCase());
+
     var departments = [
       { "Department ID": "DEP-001", "Department Code": "CSE", "Department Name": "Computer Science & Engineering", "Status": "Active" },
       { "Department ID": "DEP-002", "Department Code": "ECE", "Department Name": "Electronics & Communication Engineering", "Status": "Active" },
       { "Department ID": "DEP-003", "Department Code": "ME", "Department Name": "Mechanical Engineering", "Status": "Active" }
-    ];
-    DatabaseService.insertRows("DEPARTMENTS", departments);
+    ].filter(d => existingCodes.indexOf(d["Department Code"].toUpperCase()) === -1);
+
+    if (departments.length > 0) {
+      DatabaseService.insertRows("DEPARTMENTS", departments);
+    } else {
+      Logger.log("Departments already exist. Skipping department insertion.");
+    }
 
     // 2. Users (HODs & Coordinators)
     Logger.log("Seeding USERS...");
