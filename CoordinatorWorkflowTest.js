@@ -106,10 +106,7 @@ function runCoordinatorParticipantWorkflowTests() {
     };
     DatabaseService.insertRow(CONFIG.SHEETS.SESSIONS, sessionRecord);
 
-    // Seed Events with mandatory dates and active attendance window
-    const nowStartWindow = new Date(Date.now() - 3600000).toISOString();
-    const nowEndWindow = new Date(Date.now() + 86400000).toISOString();
-
+    // Seed Events with mandatory dates
     const noRegEvent = {
       'Event ID': eventNoRegId,
       'event_id': eventNoRegId,
@@ -119,8 +116,6 @@ function runCoordinatorParticipantWorkflowTests() {
       'end_date': nowDateStr,
       'start_time': '00:00:00',
       'end_time': '23:59:59',
-      'attendance_window_start': nowStartWindow,
-      'attendance_window_end': nowEndWindow,
       'Event Status': 'Active',
       'event_status': 'Active',
       'Enable Registration': 'false',
@@ -140,8 +135,6 @@ function runCoordinatorParticipantWorkflowTests() {
       'end_date': nowDateStr,
       'start_time': '00:00:00',
       'end_time': '23:59:59',
-      'attendance_window_start': nowStartWindow,
-      'attendance_window_end': nowEndWindow,
       'Event Status': 'Active',
       'event_status': 'Active',
       'Enable Registration': 'true',
@@ -156,7 +149,7 @@ function runCoordinatorParticipantWorkflowTests() {
     };
     DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, regEvent);
 
-    // Seed Coordinator assignments in both legacy and Supabase tables
+    // Seed Coordinator assignments in event_coordinators
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
       'Assignment ID': 'ASSIGN_1_' + randNum,
       'assignment_id': 'ASSIGN_1_' + randNum,
@@ -171,17 +164,6 @@ function runCoordinatorParticipantWorkflowTests() {
       'assignment_status': 'Active'
     });
 
-    try {
-      DatabaseService.insertRow('event_assignments', {
-        'assignment_id': 'ASSIGN_1_SUB_' + randNum,
-        'event_id': eventNoRegId,
-        'user_id': testUserId,
-        'employee_id': 'EMP_' + randNum,
-        'role': 'Coordinator',
-        'status': 'Active'
-      });
-    } catch(e) {}
-
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, {
       'Assignment ID': 'ASSIGN_2_' + randNum,
       'assignment_id': 'ASSIGN_2_' + randNum,
@@ -195,17 +177,6 @@ function runCoordinatorParticipantWorkflowTests() {
       'Assignment Status': 'Active',
       'assignment_status': 'Active'
     });
-
-    try {
-      DatabaseService.insertRow('event_assignments', {
-        'assignment_id': 'ASSIGN_2_SUB_' + randNum,
-        'event_id': eventRegId,
-        'user_id': testUserId,
-        'employee_id': 'EMP_' + randNum,
-        'role': 'Coordinator',
-        'status': 'Active'
-      });
-    } catch(e) {}
 
     // Seed Students with student_id, roll_number, year, name
     DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, {

@@ -634,12 +634,10 @@ const CoordinatorService = {
       // 4. Check if Assignment Exists & 5. Assignment is Active
       Logger.log('[DATABASE QUERY] Querying Event Coordinators sheet for active assignments.');
       const allAssignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
-      const supabaseAssignments = (DatabaseService.readAllRows('event_assignments') || []);
-      const combinedAssignments = allAssignments.concat(supabaseAssignments);
       Logger.log('[DATABASE RESULT] Assignment rows gathered.');
 
       const normTargetUser = this._normId(userId);
-      const hasActiveAssignment = combinedAssignments.some(row => {
+      const hasActiveAssignment = allAssignments.some(row => {
         // Handle both snake_case (Supabase) and Title Case field names
         const rowUserId = row['User ID'] || row['user_id'] || row.userId || row.user_id || '';
         const rowStatus = row['Assignment Status'] || row['assignment_status'] || row.status || '';
