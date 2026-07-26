@@ -49,9 +49,9 @@ function runCoordinatorParticipantWorkflowTests() {
   const testUserId = 'USER_TEST_' + randNum;
   const eventNoRegId = 'EVT_NO_REG_' + randNum;
   const eventRegId = 'EVT_REG_' + randNum;
-  const testRollBvc = '23A91A05' + String(Math.floor(Math.random()*89 + 10));
-  const testRollExt = '23EXT99' + String(Math.floor(Math.random()*89 + 10));
-  const testRollUnk = '23UNK88' + String(Math.floor(Math.random()*89 + 10));
+  const testRollBvc = '23A91A' + String(Math.floor(Math.random()*89999 + 10000));
+  const testRollExt = '23EXT' + String(Math.floor(Math.random()*89999 + 10000));
+  const testRollUnk = '23UNK' + String(Math.floor(Math.random()*89999 + 10000));
   const nowDateStr = new Date().toISOString().split('T')[0];
 
   try {
