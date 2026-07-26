@@ -55,15 +55,23 @@ function runCoordinatorParticipantWorkflowTests() {
   const nowDateStr = new Date().toISOString().split('T')[0];
 
   try {
-    // 0. Ensure Department CSE exists
-    try {
-      DatabaseService.insertRow(CONFIG.SHEETS.DEPARTMENTS, {
-        'Department ID': 'CSE',
-        'Department Code': 'CSE',
-        'Department Name': 'Computer Science and Engineering',
-        'Status': 'Active'
-      });
-    } catch(e) {}
+    // 0. Ensure a valid Department exists for foreign key references
+    var existingDepts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+    var testDeptId = 'CSE';
+    if (existingDepts.length > 0) {
+      testDeptId = existingDepts[0]['Department ID'] || existingDepts[0].department_id || 'CSE';
+    } else {
+      try {
+        DatabaseService.insertRow(CONFIG.SHEETS.DEPARTMENTS, {
+          'Department ID': 'CSE',
+          'department_id': 'CSE',
+          'Department Code': 'CSE_' + randNum,
+          'department_code': 'CSE_' + randNum,
+          'Department Name': 'Computer Science and Engineering',
+          'Status': 'Active'
+        });
+      } catch(e) {}
+    }
 
     // 1. Seed Test User with all mandatory Supabase PostgreSQL fields
     const testUserObj = {
@@ -172,8 +180,8 @@ function runCoordinatorParticipantWorkflowTests() {
       'roll_number': testRollBvc,
       'Student Name': 'Test BVC Student',
       'student_name': 'Test BVC Student',
-      'Department ID': 'CSE',
-      'department_id': 'CSE',
+      'Department ID': testDeptId,
+      'department_id': testDeptId,
       'Year': '2',
       'year': 2,
       'Section': 'A',

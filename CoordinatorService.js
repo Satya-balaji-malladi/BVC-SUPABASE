@@ -716,8 +716,8 @@ const CoordinatorService = {
       Logger.log('[COORDINATOR-FLOW][03] Event NOT FOUND: ' + eventId);
       return Utils.buildResponse(false, 'Event not found or deleted.', { state: 'EVENT_NOT_AVAILABLE' });
     }
-    var status = String(event.status || event['Event Status'] || '').toUpperCase();
-    if (status === 'COMPLETED' || status === 'CANCELLED') {
+    var status = String(event.event_status || event['Event Status'] || event.status || '').toUpperCase();
+    if (status === 'CANCELLED') {
       Logger.log('[COORDINATOR-FLOW][03] Event status inactive: ' + status);
       return Utils.buildResponse(false, 'Event is no longer active for attendance.', { state: 'EVENT_NOT_AVAILABLE' });
     }
@@ -1085,7 +1085,12 @@ const CoordinatorService = {
 
     // 4. Save Attendance Record
     Logger.log('[COORDINATOR-FLOW][16] Attendance insertion started');
-    var result = this.markAttendanceByCoordinator(eventId, normRoll, userId, 'Barcode');
+    var attendancePayload = {
+      eventId: eventId,
+      rollNumber: normRoll,
+      attendanceMethod: 'Barcode'
+    };
+    var result = AttendanceService.markAttendance(attendancePayload, userId);
 
     if (!result || !result.success) {
       Logger.log('[COORDINATOR-FLOW][16] Attendance insertion failed: ' + (result ? result.message : 'Unknown error'));
