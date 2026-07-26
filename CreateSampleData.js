@@ -59,9 +59,89 @@ function runCreateSampleData() {
       { "Setting ID": "SET-002", "Category": "Attendance", "Key": "auto_approve_scans", "Value": "true", "Data Type": "Boolean", "Description": "Enable automatic scan validation" }
     ];
     DatabaseService.insertRows("SETTINGS", settings);
+    
+    Logger.log("🎉 Sample Data Seeding Completed Successfully!");
+    return "Sample Data Seeded!";
+  } catch (err) {
+    Logger.log("❌ Error Seeding Data: " + err.message);
+    return "Failed: " + err.message;
+  }
+}
 
-    Logger.log("✅ All sample data seeded successfully!");
-  } catch (e) {
-    Logger.log("❌ Error seeding sample data: " + e.message + "\n" + e.stack);
+/**
+ * Seed 100 realistic BVC Engineering College Student Records into Supabase.
+ * Call seed100CollegeStudents() in Google Apps Script Editor.
+ */
+function seed100CollegeStudents() {
+  Logger.log("🎓 Generating & Seeding 100 BVC College Students...");
+
+  var firstNames = [
+    "Sai", "Aditya", "Venkatesh", "Lakshmi", "Bhavana", "Harsha", "Pavan", "Kalyan", "Deepika", "Srinivas",
+    "Anusha", "Tarun", "Divya", "Charan", "Nikhil", "Sneha", "Prasad", "Teja", "Manish", "Ramya",
+    "Ganesh", "Mahesh", "Sravani", "Krishna", "Meghana", "Rajesh", "Kavya", "Varun", "Sindhu", "Pradeep",
+    "Mounika", "Kiran", "Lavanya", "Rahul", "Pooja", "Vikram", "Swathi", "Ramesh", "Anitha", "Gopi",
+    "Sailaja", "Vamsi", "Aparna", "Sandeep", "Sirisha", "Naveen", "Madhuri", "Satish", "Yamini", "Suresh"
+  ];
+
+  var lastNames = [
+    "Malladi", "Vaddi", "Kolla", "Penumarthy", "Reddy", "Kakarla", "Chintala", "Gudimetla", "Kondeti", "Yeluri",
+    "Medapati", "Golla", "Boddapati", "Gandu", "Adapa", "Dondapati", "Kotta", "Nallamothu", "Vangapandu", "Kilaru",
+    "Bandaru", "Challa", "Meka", "Alluri", "Akula", "Pasupuleti", "Nidamanuri", "Rayavarapu", "Grandhi", "Guduru"
+  ];
+
+  var deptConfigs = [
+    { code: "CSE", codeNum: "05", name: "Computer Science & Engineering" },
+    { code: "ECE", codeNum: "04", name: "Electronics & Communication Engineering" },
+    { code: "AIDS", codeNum: "54", name: "Artificial Intelligence & Data Science" },
+    { code: "EEE", codeNum: "02", name: "Electrical & Electronics Engineering" },
+    { code: "ME", codeNum: "03", name: "Mechanical Engineering" },
+    { code: "CIVIL", codeNum: "01", name: "Civil Engineering" }
+  ];
+
+  var years = ["1", "2", "3", "4"];
+  var sections = ["A", "B", "C"];
+  var genders = ["Male", "Female"];
+
+  var studentsToInsert = [];
+
+  for (var i = 1; i <= 100; i++) {
+    var fName = firstNames[Math.floor(Math.random() * firstNames.length)];
+    var lName = lastNames[Math.floor(Math.random() * lastNames.length)];
+    var fullName = fName + " " + lName;
+    var deptObj = deptConfigs[i % deptConfigs.length];
+    var year = years[i % years.length];
+    var sem = (parseInt(year) * 2 - (i % 2)).toString();
+    var section = sections[i % sections.length];
+    var gender = genders[i % genders.length];
+    
+    var seqStr = (i < 10 ? "00" + i : (i < 100 ? "0" + i : "" + i));
+    var rollNo = "23W11A" + deptObj.codeNum + seqStr;
+    var studentId = "STD" + String(1000 + i);
+    var email = fName.toLowerCase() + "." + rollNo.toLowerCase() + "@bvcgroup.in";
+    var phone = "9848" + Math.floor(100000 + Math.random() * 900000);
+
+    studentsToInsert.push({
+      "Student ID": studentId,
+      "Roll Number": rollNo,
+      "Student Name": fullName,
+      "Email Address": email,
+      "Year": year,
+      "Semester": sem,
+      "Section": section,
+      "Gender": gender,
+      "Student Status": "Active",
+      "Department ID": deptObj.code,
+      "Phone Number": phone,
+      "Notes": "BVC Batch 2023-2027"
+    });
+  }
+
+  try {
+    var inserted = DatabaseService.insertRows("STUDENTS", studentsToInsert);
+    Logger.log("✅ Successfully seeded 100 college students into BVC database!");
+    return Utils.buildResponse(true, "100 BVC College Students successfully created!", { count: studentsToInsert.length });
+  } catch (err) {
+    Logger.log("❌ Failed to seed 100 students: " + err.message);
+    return Utils.buildResponse(false, "Failed to seed students: " + err.message);
   }
 }

@@ -1954,6 +1954,17 @@ const Controller = {
         return DepartmentService.deleteDepartment(departmentId);
       });
     }
+  },
+
+  Seed: {
+    seed100CollegeStudents: function(sessionToken) {
+      return SessionService.withSession(sessionToken, function() {
+        if (typeof seed100CollegeStudents === 'function') {
+          return seed100CollegeStudents();
+        }
+        return Utils.buildResponse(false, "Seed function not available.");
+      });
+    }
   }
 
 };
