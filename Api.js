@@ -1698,3 +1698,38 @@ function getActiveDepartments(sessionToken) {
     return [];
   }
 }
+
+// ==========================================
+// Coordinator Terminal API Wrappers
+// ==========================================
+function getCoordinatorContext(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.CoordinatorTerminal.getContext(sessionToken) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function processParticipant(sessionToken, rollNumber, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.CoordinatorTerminal.processParticipant(sessionToken, rollNumber, eventId) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.CoordinatorTerminal.confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.CoordinatorTerminal.spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
