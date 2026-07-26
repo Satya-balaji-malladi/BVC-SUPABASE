@@ -221,7 +221,8 @@ const DepartmentService = {
             status: "Active"
           };
           
-          UserService.createUser(hodUserData, createdBy || 'SuperAdmin');
+          var adminContext = (createdBy && typeof createdBy === 'object') ? createdBy : { isSuperAdmin: true, role: 'Super Admin', username: 'SuperAdmin' };
+          UserService.createUser(hodUserData, adminContext);
           
           // Send email notification with login credentials using MailApp and GmailApp fallback
           var emailSent = false;
