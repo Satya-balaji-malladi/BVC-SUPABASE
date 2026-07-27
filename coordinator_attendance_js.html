@@ -67,6 +67,7 @@
     // ==========================================================================
     const state = {
       sessionToken: null,
+      eventId: null,
       isProcessing: false,
       lastInputType: 'Barcode',
       activeEventAttendanceType: 'Fixed',
@@ -749,6 +750,15 @@
 
       // Event details
       const ev = data.event || {};
+
+      state.eventId =
+        ev['Event ID'] ||
+        ev.event_id ||
+        ev.eventId ||
+        null;
+
+      console.log('[COORDINATOR-UI] Active Event ID:', state.eventId);
+
       const eventName = ev['Event Name'] || ev.eventName || 'Event Active';
       if (dom.eventTitleDisplay) dom.eventTitleDisplay.textContent = eventName;
       if (dom.terminalEventName) dom.terminalEventName.textContent = eventName;
