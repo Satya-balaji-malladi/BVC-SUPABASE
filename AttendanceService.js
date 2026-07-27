@@ -7,13 +7,23 @@ const AttendanceService = {
   // ------------------------------
   // Internal helpers (private)
   // ------------------------------
-  _tryWrap: function(methodName, failureMessage, fn) {
-    // Supports both call styles:
-    // 1) _tryWrap(methodName, fn)
-    // 2) _tryWrap(methodName, failureMessage, fn)
+
+  /**
+   * Safely parses any value into a boolean.
+   * Prevents String("false") from evaluating to true.
+   */
+  _parseBoolean: function (val) {
+    if (val === undefined || val === null) return false;
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return val === 1;
+    const clean = String(val).trim().toLowerCase();
+    return clean === 'true' || clean === '1';
+  },
+
+  _tryWrap: function (methodName, failureMessage, fn) {
     if (typeof failureMessage === 'function') {
       fn = failureMessage;
-      failureMessage = (CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED) ? CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED : 'Attendance action failed.';
+      failureMessage = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED) ? CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED : 'Attendance action failed.';
     }
 
     try {
@@ -24,9 +34,7 @@ const AttendanceService = {
     }
   },
 
-  _getAttendanceColumn: function(maybeConfigKey, fallbackKey) {
-    // Centralize “use CONFIG columns if present” behavior to reduce mixed hardcoding.
-    // Supports cases where CONFIG.COLUMNS does not include the key.
+  _getAttendanceColumn: function (maybeConfigKey, fallbackKey) {
     if (CONFIG && CONFIG.COLUMNS && maybeConfigKey && CONFIG.COLUMNS[maybeConfigKey]) {
       return CONFIG.COLUMNS[maybeConfigKey];
     }
@@ -34,37 +42,59 @@ const AttendanceService = {
     return maybeConfigKey;
   },
 
-  _sortByAttendanceTimeDesc: function(list) {
+  _getRecordEventId: function (record) {
+    if (!record) return '';
+    const key = this._getAttendanceColumn('EVENT_ID', 'Event ID');
+    return String(record[key] || record.event_id || record.eventId || record['Event ID'] || '').trim();
+  },
+
+  _getRecordRollNumber: function (record) {
+    if (!record) return '';
+    const key = this._getAttendanceColumn('ROLL_NUMBER', 'Roll Number');
+    return String(record[key] || record.roll_number || record.rollNumber || record['Roll Number'] || '').trim().toUpperCase();
+  },
+
+  _getRecordStatus: function (record) {
+    if (!record) return '';
+    const key = this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status');
+    return String(record[key] || record.attendance_status || record.status || record['Attendance Status'] || 'PRESENT').trim().toUpperCase();
+  },
+
+  _getRecordTimestamp: function (record) {
+    if (!record) return '';
+    const key = this._getAttendanceColumn('ATTENDANCE_TIME', 'attendance_time');
+    return record.Timestamp || record.timestamp || record.Date || record[key] || record.created_at || '';
+  },
+
+  _sortByAttendanceTimeDesc: function (list) {
     if (!Array.isArray(list)) return [];
 
-    const timeKey = this._getAttendanceColumn('ATTENDANCE_TIME', 'attendance_time');
-
     return list.slice().sort((a, b) => {
-      const valA = a && (a.Timestamp || a.Date || a[timeKey]);
-      const valB = b && (b.Timestamp || b.Date || b[timeKey]);
+      const valA = this._getRecordTimestamp(a);
+      const valB = this._getRecordTimestamp(b);
       const ta = valA ? new Date(valA).getTime() : 0;
       const tb = valB ? new Date(valB).getTime() : 0;
       return tb - ta;
     });
   },
 
-  _getDeletionFlagKey: function() {
-    if (CONFIG.COLUMNS && CONFIG.COLUMNS.DELETION_FLAG) return CONFIG.COLUMNS.DELETION_FLAG;
+  _getDeletionFlagKey: function () {
+    if (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.DELETION_FLAG) return CONFIG.COLUMNS.DELETION_FLAG;
     return 'Deletion Flag';
   },
 
-  _getUpdatedByKey: function() {
-    if (CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_BY) return CONFIG.COLUMNS.UPDATED_BY;
+  _getUpdatedByKey: function () {
+    if (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_BY) return CONFIG.COLUMNS.UPDATED_BY;
     return 'Updated By';
   },
 
-  _getUpdatedAtKey: function() {
-    if (CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_AT) return CONFIG.COLUMNS.UPDATED_AT;
+  _getUpdatedAtKey: function () {
+    if (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_AT) return CONFIG.COLUMNS.UPDATED_AT;
     return 'Updated At';
   },
 
-  _getLastActionKeys: function() {
-    if (CONFIG.COLUMNS && CONFIG.COLUMNS.LAST_ACTION && CONFIG.COLUMNS.LAST_ACTION_BY && CONFIG.COLUMNS.LAST_ACTION_AT) {
+  _getLastActionKeys: function () {
+    if (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.LAST_ACTION && CONFIG.COLUMNS.LAST_ACTION_BY && CONFIG.COLUMNS.LAST_ACTION_AT) {
       return {
         lastAction: CONFIG.COLUMNS.LAST_ACTION,
         lastActionBy: CONFIG.COLUMNS.LAST_ACTION_BY,
@@ -78,43 +108,40 @@ const AttendanceService = {
     };
   },
 
-  _isDeletedAttendance: function(record) {
+  _isDeletedAttendance: function (record) {
     if (!record) return false;
     const deletionKey = this._getDeletionFlagKey();
-    return Boolean(record[deletionKey]);
+    const rawVal = record[deletionKey] !== undefined ? record[deletionKey] : record.deletion_flag;
+    return this._parseBoolean(rawVal);
   },
 
-  _filterDeletedAttendance: function(list) {
+  _filterDeletedAttendance: function (list) {
     if (!Array.isArray(list)) return [];
     return list.filter(r => !this._isDeletedAttendance(r));
   },
 
-  _normalizeAttendancePayload: function(attendanceData) {
-    // Backward compatibility: support both snake_case and camelCase keys
+  _normalizeAttendancePayload: function (attendanceData) {
     if (!attendanceData || typeof attendanceData !== 'object') return {};
 
     const eventId = attendanceData.event_id !== undefined ? attendanceData.event_id : attendanceData.eventId;
     const rollNumber = attendanceData.roll_number !== undefined ? attendanceData.roll_number : attendanceData.rollNumber;
-    const attendanceMethod = attendanceData.attendance_method !== undefined ? attendanceData.attendance_method : attendanceData.attendanceMethod;
+    const attendanceMethod = attendanceData.attendance_method !== undefined ? attendanceData.attendance_method : (attendanceData.attendanceMethod || attendanceData.method);
 
-    // Keep original keys for any existing logic that depends on them.
     return {
       ...attendanceData,
-      // keys expected by ValidationService.validateAttendance()
       eventId: eventId,
       rollNumber: rollNumber,
       attendanceMethod: attendanceMethod,
-      // keys used by existing frontend/backend logic
       event_id: eventId,
       roll_number: rollNumber
     };
   },
 
-  _getActionUser: function(userId) {
+  _getActionUser: function (userId) {
     try {
       if (!userId) return null;
 
-      const userIdKey = (CONFIG.COLUMNS && CONFIG.COLUMNS.USER_ID) ? CONFIG.COLUMNS.USER_ID : 'user_id';
+      const userIdKey = (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.USER_ID) ? CONFIG.COLUMNS.USER_ID : 'user_id';
       const users = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, userIdKey, userId) || [];
       return users.length > 0 ? users[0] : null;
     } catch (e) {
@@ -123,72 +150,80 @@ const AttendanceService = {
     }
   },
 
-  _getUserIdFromUser: function(user) {
+  _getUserIdFromUser: function (user) {
     if (!user) return null;
-    // Only use the authorization inputs that exist; never reference an undefined local var.
-    return user.user_id || user.userId || (CONFIG.COLUMNS && CONFIG.COLUMNS.USER_ID ? user[CONFIG.COLUMNS.USER_ID] : null);
+    return user.user_id || user.userId || (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.USER_ID ? user[CONFIG.COLUMNS.USER_ID] : null);
   },
 
-  _validateCoordinatorAccess: function(userId, eventId) {
+  _validateCoordinatorAccess: function (userId, eventId) {
     if (!userId || !eventId) return false;
+
+    // Normalize Super Admin & Admin permissions
     const user = this._getActionUser(userId);
     if (user) {
-      const roleField = CONFIG.COLUMNS.ROLE || 'Role';
-      const role = user[roleField] || user.role;
-      if (role === CONFIG.ROLES.ADMIN) return true;
+      const roleField = (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.ROLE) ? CONFIG.COLUMNS.ROLE : 'Role';
+      const role = String(user[roleField] || user.role || '').toUpperCase();
+      const adminRole = CONFIG && CONFIG.ROLES && CONFIG.ROLES.ADMIN ? String(CONFIG.ROLES.ADMIN).toUpperCase() : 'ADMIN';
+      const superAdminRole = CONFIG && CONFIG.ROLES && CONFIG.ROLES.SUPER_ADMIN ? String(CONFIG.ROLES.SUPER_ADMIN).toUpperCase() : 'SUPER_ADMIN';
+
+      if (role === adminRole || role === superAdminRole || role === 'SUPERADMIN') return true;
     }
-    // Delegate authorization directly to CoordinatorService as the single source of truth
-    return CoordinatorService.canManageEvent(userId, eventId);
+
+    // Delegate authorization directly to CoordinatorService
+    if (typeof CoordinatorService !== 'undefined' && typeof CoordinatorService.canManageEvent === 'function') {
+      return CoordinatorService.canManageEvent(userId, eventId);
+    }
+    return false;
   },
 
-  _validateAttendanceWindow: function(eventId) {
+  _validateAttendanceWindow: function (eventId) {
     try {
-      if (typeof EventService.isAttendanceOpen === 'function') {
-        const open = EventService.isAttendanceOpen(eventId);
-        if (!open) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED);
+      if (typeof EventService !== 'undefined') {
+        if (typeof EventService.isAttendanceOpen === 'function') {
+          const open = EventService.isAttendanceOpen(eventId);
+          if (!open) {
+            const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED) ? CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED : 'Attendance window is closed.';
+            return Utils.buildResponse(false, msg);
           }
-          return Utils.buildResponse(false, 'Attendance window is closed.');
         }
-      }
 
-      if (typeof EventService.canScanAttendance === 'function') {
-        const can = EventService.canScanAttendance(eventId);
-        if (!can) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED);
+        if (typeof EventService.canScanAttendance === 'function') {
+          const can = EventService.canScanAttendance(eventId);
+          if (!can) {
+            const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED) ? CONFIG.MESSAGES.ATTENDANCE_WINDOW_CLOSED : 'Attendance cannot be recorded at this time.';
+            return Utils.buildResponse(false, msg);
           }
-          return Utils.buildResponse(false, 'Attendance cannot be recorded at this time.');
         }
       }
     } catch (e) {
-      Logger.log('AttendanceService._validateAttendanceWindow error: ' + (e && e.message ? e.message : e));
+      Logger.log('AttendanceService._validateAttendanceWindow error (failing closed): ' + (e && e.message ? e.message : e));
+      return Utils.buildResponse(false, 'Failed to validate attendance window. Action blocked.');
     }
 
     return null;
   },
 
-  _getActiveAttendanceIndex: function() {
-    // Read attendance sheet once per call.
+  _getActiveAttendanceIndex: function () {
     const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
     const active = this._filterDeletedAttendance(allAttendance);
 
     const idx = {};
-    const eventKey = this._getAttendanceColumn('EVENT_ID', 'event_id');
-    const rollKey = this._getAttendanceColumn('ROLL_NUMBER', 'roll_number');
-
     active.forEach(r => {
-      const k = String(r[eventKey]).trim() + '|' + String(r[rollKey]).trim().toUpperCase();
-      idx[k] = true;
+      const eId = this._getRecordEventId(r);
+      const roll = this._getRecordRollNumber(r);
+      if (eId && roll) {
+        const k = eId + '|' + roll;
+        idx[k] = true;
+      }
     });
 
     return { active, idx };
   },
 
-  _getEventScannedRolls: function(eventId) {
+  _getEventScannedRolls: function (eventId) {
     try {
-      const cacheKey = "event_scanned_rolls_" + eventId;
+      const normEventId = String(eventId || '').trim();
+      const cacheKey = "event_scanned_rolls_" + normEventId;
       if (typeof CacheManager !== 'undefined') {
         const cached = CacheManager.get(cacheKey);
         if (cached && Array.isArray(cached)) return cached;
@@ -196,12 +231,10 @@ const AttendanceService = {
 
       const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
       const active = this._filterDeletedAttendance(allAttendance);
-      const eventKey = this._getAttendanceColumn('EVENT_ID', 'event_id');
-      const rollKey = this._getAttendanceColumn('ROLL_NUMBER', 'roll_number');
 
       const rolls = active
-        .filter(r => String(r[eventKey]).trim() === String(eventId).trim())
-        .map(r => String(r[rollKey]).trim().toUpperCase());
+        .filter(r => this._getRecordEventId(r) === normEventId)
+        .map(r => this._getRecordRollNumber(r));
 
       if (typeof CacheManager !== 'undefined') {
         CacheManager.put(cacheKey, rolls, 600); // 10 mins TTL
@@ -213,10 +246,11 @@ const AttendanceService = {
     }
   },
 
-  _addEventScannedRoll: function(eventId, rollNumber) {
+  _addEventScannedRoll: function (eventId, rollNumber) {
     try {
-      const cacheKey = "event_scanned_rolls_" + eventId;
-      const rolls = this._getEventScannedRolls(eventId);
+      const normEventId = String(eventId || '').trim();
+      const cacheKey = "event_scanned_rolls_" + normEventId;
+      const rolls = this._getEventScannedRolls(normEventId);
       const upper = String(rollNumber).trim().toUpperCase();
       if (rolls.indexOf(upper) === -1) {
         rolls.push(upper);
@@ -229,10 +263,11 @@ const AttendanceService = {
     }
   },
 
-  _removeEventScannedRoll: function(eventId, rollNumber) {
+  _removeEventScannedRoll: function (eventId, rollNumber) {
     try {
-      const cacheKey = "event_scanned_rolls_" + eventId;
-      const rolls = this._getEventScannedRolls(eventId);
+      const normEventId = String(eventId || '').trim();
+      const cacheKey = "event_scanned_rolls_" + normEventId;
+      const rolls = this._getEventScannedRolls(normEventId);
       const upper = String(rollNumber).trim().toUpperCase();
       const idx = rolls.indexOf(upper);
       if (idx !== -1) {
@@ -246,6 +281,20 @@ const AttendanceService = {
     }
   },
 
+  _isRegistrationEnabled: function (event) {
+    if (!event) return false;
+    const colKey = CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.ENABLE_REGISTRATION ? CONFIG.COLUMNS.ENABLE_REGISTRATION : 'Enable Registration';
+    const rawVal = event[colKey] !== undefined ? event[colKey] : (event.enable_registration !== undefined ? event.enable_registration : event.enableRegistration);
+
+    if (rawVal !== undefined && rawVal !== null) {
+      return this._parseBoolean(rawVal);
+    }
+
+    // Fallback to legacy Attendance Type check if Enable Registration is absent
+    const attType = String(event.attendance_type || event['Attendance Type'] || event.attendanceType || 'Fixed').trim().toLowerCase();
+    return attType !== 'open';
+  },
+
   // ------------------------------
   // Public methods (existing API)
   // ------------------------------
@@ -254,7 +303,7 @@ const AttendanceService = {
    * Checks if an attendance record already exists for a given event and student.
    * @param {string} eventId
    * @param {string} rollNumber
-   * @returns {boolean} True if attendance exists.
+   * @returns {boolean} True if active attendance exists.
    */
   checkAttendanceExists: function (eventId, rollNumber) {
     return this.hasStudentAttended(eventId, rollNumber);
@@ -262,43 +311,49 @@ const AttendanceService = {
 
   hasStudentAttended: function (eventId, rollNumber) {
     if (!eventId || !rollNumber) return false;
-    var cleanRoll = String(rollNumber).trim().toUpperCase();
-    var records = this.getAttendanceByEvent(eventId) || [];
-    return records.some(function (r) {
-      var rRoll = r['Roll Number'] || r.roll_number || '';
-      return String(rRoll).trim().toUpperCase() === cleanRoll && !r['Deletion Flag'] && !r.deletion_flag;
+    const cleanEventId = String(eventId).trim();
+    const cleanRoll = String(rollNumber).trim().toUpperCase();
+    const records = this.getAttendanceByEvent(cleanEventId) || [];
+    return records.some(r => {
+      const rRoll = this._getRecordRollNumber(r);
+      return rRoll === cleanRoll && !this._isDeletedAttendance(r);
     });
   },
 
   /**
-   * Fast asynchronous attendance marking for scanner UI (sub-50ms instant feedback).
+   * Fast attendance marking - safely delegates to main markAttendance pipeline.
    */
-  markAttendanceFast: function(attendanceData, userId) {
-    var eventId = (attendanceData && (attendanceData.event_id || attendanceData.eventId)) || '';
-    var rollNumber = (attendanceData && (attendanceData.roll_number || attendanceData.rollNumber)) || '';
-    var method = (attendanceData && (attendanceData.attendance_method || attendanceData.method)) || 'Barcode';
-    var activeUserId = userId || (attendanceData && attendanceData.action_by) || 'Admin';
-
-    return this.markOpenEventAttendanceFast(eventId, rollNumber, activeUserId, method);
+  markAttendanceFast: function (attendanceData, userId) {
+    return this.markAttendance(attendanceData, userId);
   },
 
   /**
-   * Marks attendance for a student at an event.
+   * Fast attendance writer for Open Events - safely delegates to main markAttendance pipeline.
+   */
+  markOpenEventAttendanceFast: function (eventId, rollNumber, userId, attendanceMethod) {
+    return this.markAttendance({
+      eventId: eventId,
+      rollNumber: rollNumber,
+      attendanceMethod: attendanceMethod || 'Barcode'
+    }, userId);
+  },
+
+  /**
+   * Marks attendance for a student at an event safely.
    * @param {object} attendanceData
    * @param {string} userId - Injected by SessionService
    * @returns {object} Standard response object.
    */
-  markAttendance: function(attendanceData, userId) {
+  markAttendance: function (attendanceData, userId) {
     return this._tryWrap(
       'markAttendance',
-      CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED ? CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED : 'Attendance marking failed.',
+      (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED) ? CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED : 'Attendance marking failed.',
       () => {
         const startTime = Date.now();
         Logger.log('[START] AttendanceService.markAttendance | User: ' + userId);
 
         const normalized = this._normalizeAttendancePayload(attendanceData);
 
-        // ValidationService expects camelCase based on current file.
         const validationResult = ValidationService.validateAttendance({
           eventId: normalized.eventId,
           rollNumber: normalized.rollNumber,
@@ -310,40 +365,37 @@ const AttendanceService = {
           return Utils.buildResponse(false, validationResult.errors.join(' '));
         }
 
-        const eventId = normalized.event_id;
+        const eventId = String(normalized.event_id).trim();
         const rollNumber = String(normalized.roll_number).trim().toUpperCase();
+        const methodStr = String(normalized.attendanceMethod || 'Barcode').trim();
 
-        // 1. Authorization Check (Performance improvement: read once and reuse)
-        Logger.log('[START] Authorization Check');
+        // 1. Authorization Check
         const isAuthorized = this._validateCoordinatorAccess(userId, eventId);
-        Logger.log('[END] Authorization Check | Result: ' + isAuthorized);
-
         if (!isAuthorized) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.UNAUTHORIZED) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.UNAUTHORIZED);
-          }
-          return Utils.buildResponse(false, 'Unauthorized access.');
+          const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.UNAUTHORIZED) ? CONFIG.MESSAGES.UNAUTHORIZED : 'Unauthorized access.';
+          return Utils.buildResponse(false, msg);
         }
 
-        // 2. Attendance Validation
-        Logger.log('[START] Attendance Validation');
-        
-        // Verify event exists
+        // 2. Attendance & Event Validation
         const event = EventService.getEventById(eventId);
         if (!event) {
-          return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_NOT_FOUND);
+          return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_NOT_FOUND) ? CONFIG.MESSAGES.EVENT_NOT_FOUND : 'Event not found.');
         }
 
-        // Verify student exists (skip for Open events — spot auto-registration handled by caller)
-        const eventAttType = event ? (event.attendance_type || event['Attendance Type'] || event.attendanceType || 'Fixed') : 'Fixed';
-        const isOpenEvent = String(eventAttType).trim().toLowerCase() === 'open';
+        // Reject completed/cancelled events
+        const eventStatus = String(event.status || event['Status'] || '').toUpperCase();
+        const completedStatus = CONFIG && CONFIG.EVENT_STATUS && CONFIG.EVENT_STATUS.COMPLETED ? String(CONFIG.EVENT_STATUS.COMPLETED).toUpperCase() : 'COMPLETED';
+        const cancelledStatus = CONFIG && CONFIG.EVENT_STATUS && CONFIG.EVENT_STATUS.CANCELLED ? String(CONFIG.EVENT_STATUS.CANCELLED).toUpperCase() : 'CANCELLED';
 
-        const student = StudentService.getStudentByRollNumber(rollNumber);
-        if (!student && !isOpenEvent) {
-          return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_NOT_FOUND);
+        if (eventStatus === completedStatus) {
+          return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED) ? CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED : 'Event is already completed.');
+        }
+        if (eventStatus === cancelledStatus) {
+          const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_CANCELLED) ? CONFIG.MESSAGES.EVENT_CANCELLED : 'Attendance cannot be recorded for cancelled events.';
+          return Utils.buildResponse(false, msg);
         }
 
-        // Attendance window validation
+        // Attendance window validation (Fail Closed)
         const windowResult = this._validateAttendanceWindow(eventId);
         if (windowResult) return windowResult;
 
@@ -352,29 +404,31 @@ const AttendanceService = {
           const nowMs = new Date().getTime();
           if (event.attendance_window_start) {
             const tStart = new Date(event.attendance_window_start).getTime();
-            if (nowMs < tStart) {
+            if (!isNaN(tStart) && nowMs < tStart) {
               return Utils.buildResponse(false, 'Attendance opening time has not started yet.');
             }
           }
           if (event.attendance_window_end) {
             const tEnd = new Date(event.attendance_window_end).getTime();
-            if (nowMs > tEnd) {
+            if (!isNaN(tEnd) && nowMs > tEnd) {
               return Utils.buildResponse(false, 'Attendance scanning window has closed.');
             }
           }
         }
 
-        if (normalized.attendanceMethod === 'Manual') {
-          if (!attendanceData.reason) {
+        // Manual Attendance Reason Verification
+        if (methodStr.toLowerCase() === 'manual') {
+          if (!attendanceData.reason && !attendanceData.manual_reason && !attendanceData.reasonText) {
             return Utils.buildResponse(false, 'A reason is mandatory for marking manual attendance.');
           }
         }
 
-        // Date and Time Range validation (e.g. 09:00 to 17:00 on event days)
-        if (normalized.attendanceMethod !== 'Manual') {
-          const timezone = CONFIG.DATE_TIME.TIMEZONE || 'Asia/Kolkata';
-          const todayStr = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
-          const currentTimeStr = Utilities.formatDate(new Date(), timezone, 'HH:mm');
+        // Date and Time Range validation (Handling night and overnight time ranges safely)
+        if (methodStr.toLowerCase() !== 'manual') {
+          const timezone = (CONFIG && CONFIG.DATE_TIME && CONFIG.DATE_TIME.TIMEZONE) ? CONFIG.DATE_TIME.TIMEZONE : 'Asia/Kolkata';
+          const now = new Date();
+          const todayStr = Utilities.formatDate(now, timezone, 'yyyy-MM-dd');
+          const currentTimeStr = Utilities.formatDate(now, timezone, 'HH:mm');
 
           const formatYMD = (val) => {
             if (!val || val === 'N/A') return null;
@@ -385,15 +439,19 @@ const AttendanceService = {
             return null;
           };
 
-          const sDate = formatYMD(event[CONFIG.COLUMNS.START_DATE] || event.startDate || event.start_date);
-          const eDate = formatYMD(event[CONFIG.COLUMNS.END_DATE] || event.endDate || event.end_date);
+          const startDateCol = CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.START_DATE ? CONFIG.COLUMNS.START_DATE : 'Start Date';
+          const endDateCol = CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.END_DATE ? CONFIG.COLUMNS.END_DATE : 'End Date';
+          const sDate = formatYMD(event[startDateCol] || event.startDate || event.start_date);
+          const eDate = formatYMD(event[endDateCol] || event.endDate || event.end_date);
 
           if (sDate && eDate && (todayStr < sDate || todayStr > eDate)) {
             return Utils.buildResponse(false, 'Attendance can only be recorded during the event duration (' + sDate + ' to ' + eDate + ').');
           }
 
-          const eventStartTimeRaw = event[CONFIG.COLUMNS.START_TIME] || event.startTime || event.start_time;
-          const eventEndTimeRaw = event[CONFIG.COLUMNS.END_TIME] || event.endTime || event.end_time;
+          const startTimeCol = CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.START_TIME ? CONFIG.COLUMNS.START_TIME : 'Start Time';
+          const endTimeCol = CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.END_TIME ? CONFIG.COLUMNS.END_TIME : 'End Time';
+          const eventStartTimeRaw = event[startTimeCol] || event.startTime || event.start_time;
+          const eventEndTimeRaw = event[endTimeCol] || event.endTime || event.end_time;
 
           if (eventStartTimeRaw && eventEndTimeRaw && eventStartTimeRaw !== 'N/A' && eventEndTimeRaw !== 'N/A') {
             const getHHMM = (val) => {
@@ -408,141 +466,270 @@ const AttendanceService = {
             };
             const sTime = getHHMM(eventStartTimeRaw);
             const eTime = getHHMM(eventEndTimeRaw);
+
             if (sTime && eTime) {
-              if (currentTimeStr < sTime || currentTimeStr > eTime) {
+              let isWithinWindow = false;
+              if (sTime <= eTime) {
+                // Regular same-day window
+                isWithinWindow = (currentTimeStr >= sTime && currentTimeStr <= eTime);
+              } else {
+                // Overnight window (e.g. 22:00 to 01:00)
+                isWithinWindow = (currentTimeStr >= sTime || currentTimeStr <= eTime);
+              }
+
+              if (!isWithinWindow) {
                 return Utils.buildResponse(false, 'Attendance can only be recorded between ' + sTime + ' and ' + eTime + ' (Current time: ' + currentTimeStr + ').');
               }
             }
           }
         }
 
-        // Reject completed/cancelled events
-        if (event.status === CONFIG.EVENT_STATUS.COMPLETED) {
-          return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED);
-        }
-        if (event.status === CONFIG.EVENT_STATUS.CANCELLED) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_CANCELLED) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_CANCELLED);
-          }
-          return Utils.buildResponse(false, 'Attendance cannot be recorded for cancelled events.');
-        }
-
-        // Reject inactive student (only if student record exists)
-        if (student && student.status && student.status !== CONFIG.USER_STATUS.ACTIVE) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.STUDENT_INACTIVE) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_INACTIVE);
-          }
-          return Utils.buildResponse(false, 'Student is inactive.');
-        }
-
-        // Sprint 1 Rules: Check Fixed eligibility (Open events skip participant check)
-        const attendanceType = eventAttType;
-        if (attendanceType === 'Fixed') {
-          const parts = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'Event ID', eventId) || [];
-          const isPart = parts.find(p =>
-            String(p['Roll Number'] || p.roll_number || p.rollNumber).trim().toUpperCase() === rollNumber &&
-            (p['Registration Status'] === 'Confirmed' || p.status === 'Active')
-          );
-          if (!isPart) {
-            if (CONFIG.MESSAGES && CONFIG.MESSAGES.STUDENT_NOT_ACTIVE_PARTICIPANT) {
-              return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_NOT_ACTIVE_PARTICIPANT);
-            }
-            return Utils.buildResponse(false, 'Student is not an active participant for this Fixed event.');
+        // Student existence check (Only if student table record is present or student is BVC)
+        const student = StudentService.getStudentByRollNumber(rollNumber);
+        if (student && student.status) {
+          const studentStatus = String(student.status).toUpperCase();
+          const activeUserStatus = CONFIG && CONFIG.USER_STATUS && CONFIG.USER_STATUS.ACTIVE ? String(CONFIG.USER_STATUS.ACTIVE).toUpperCase() : 'ACTIVE';
+          if (studentStatus !== activeUserStatus) {
+            const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.STUDENT_INACTIVE) ? CONFIG.MESSAGES.STUDENT_INACTIVE : 'Student is inactive.';
+            return Utils.buildResponse(false, msg);
           }
         }
-        Logger.log('[END] Attendance Validation');
 
-        // 3. Duplicate Check & Save (Lock protected critical transaction)
-        Logger.log('[START] Duplicate Check and Attendance Save Lock');
-        if (typeof LockManager !== 'undefined') {
-          return LockManager.withLock('Script', 15000, () => {
-            // 3. Check for Check-out & duplicate check
-            const allAtt = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
-            const existing = allAtt.find(r => 
-              String(r.event_id || r['Event ID']).trim() === String(eventId).trim() && 
-              String(r.roll_number || r['Roll Number']).trim().toUpperCase() === rollNumber && 
-              !r[CONFIG.COLUMNS.DELETION_FLAG]
+        // Registration Eligibility Rules aligned with CoordinatorService
+        // FIX 1 APPLIED
+        const registrationRequired = this._isRegistrationEnabled(event);
+
+        if (registrationRequired) {
+          const participantEventKey =
+            (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.EVENT_ID)
+              ? CONFIG.COLUMNS.EVENT_ID
+              : 'Event ID';
+
+          let parts = [];
+
+          try {
+            parts = DatabaseService.findByColumn(
+              CONFIG.SHEETS.EVENT_PARTICIPANTS,
+              participantEventKey,
+              eventId
+            ) || [];
+          } catch (e) {
+            Logger.log(
+              '[AttendanceService.markAttendance] Participant lookup fallback: ' +
+              (e && e.message ? e.message : e)
             );
 
-            if (existing) {
-              if (event.check_out_enabled || event.check_out_enabled === 'true' || event.check_out_enabled === true) {
-                if (existing.check_out_timestamp) {
-                  return Utils.buildResponse(false, 'Already checked out at ' + new Date(existing.check_out_timestamp).toLocaleTimeString() + '. Initial Check-in: ' + new Date(existing.timestamp || existing.Timestamp).toLocaleTimeString());
-                } else {
-                  // Perform check-out
-                  const checkOutTime = new Date();
-                  const duration = Math.round((checkOutTime - new Date(existing.timestamp || existing.Timestamp)) / 60000);
-                  const success = DatabaseService.updateRow(CONFIG.SHEETS.ATTENDANCE, 'attendance_id', existing.attendance_id || existing['Attendance ID'], {
-                    check_out_timestamp: checkOutTime.toISOString(),
-                    total_duration_minutes: duration
-                  });
-                  if (success) {
-                    return Utils.buildResponse(true, 'Check-out registered successfully! Duration: ' + duration + ' mins.');
-                  }
-                  return Utils.buildResponse(false, 'Failed to register check-out.');
-                }
+            const allParticipants =
+              DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_PARTICIPANTS) || [];
+
+            parts = allParticipants.filter(p => {
+              const pEventId = String(
+                p[participantEventKey] ||
+                p['Event ID'] ||
+                p.event_id ||
+                p.eventId ||
+                ''
+              ).trim();
+
+              return pEventId === eventId;
+            });
+          }
+
+          const validPart = parts.find(p => {
+            const pRoll = String(
+              p[
+              (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.ROLL_NUMBER)
+                ? CONFIG.COLUMNS.ROLL_NUMBER
+                : 'Roll Number'
+              ] ||
+              p['Roll Number'] ||
+              p.roll_number ||
+              p.rollNumber ||
+              ''
+            ).trim().toUpperCase();
+
+            if (pRoll !== rollNumber) return false;
+
+            const pStatus = String(
+              p[
+              (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.REGISTRATION_STATUS)
+                ? CONFIG.COLUMNS.REGISTRATION_STATUS
+                : 'Registration Status'
+              ] ||
+              p['Registration Status'] ||
+              p.registration_status ||
+              p.status ||
+              ''
+            ).trim().toUpperCase();
+
+            const deletionKey =
+              (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.DELETION_FLAG)
+                ? CONFIG.COLUMNS.DELETION_FLAG
+                : 'Deletion Flag';
+
+            const deleted = this._parseBoolean(
+              p[deletionKey] !== undefined
+                ? p[deletionKey]
+                : p.deletion_flag
+            );
+
+            if (deleted) return false;
+
+            if (
+              pStatus === 'CANCELLED' ||
+              pStatus === 'REJECTED' ||
+              pStatus === 'DELETED'
+            ) {
+              return false;
+            }
+
+            return (
+              pStatus === 'CONFIRMED' ||
+              pStatus === 'ACTIVE' ||
+              pStatus === 'APPROVED' ||
+              pStatus === 'REGISTERED'
+            );
+          });
+
+          if (!validPart) {
+            const msg =
+              (CONFIG &&
+                CONFIG.MESSAGES &&
+                CONFIG.MESSAGES.STUDENT_NOT_ACTIVE_PARTICIPANT)
+                ? CONFIG.MESSAGES.STUDENT_NOT_ACTIVE_PARTICIPANT
+                : 'Student is not an active participant for this event.';
+
+            return Utils.buildResponse(false, msg);
+          }
+        }
+
+        // 3. Lock Protected Transaction for Duplicate Check & Database Save
+        const executeTransaction = () => {
+          // Re-read attendance rows inside lock to ensure durable duplicate protection
+          const allAtt = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
+          const activeAtt = this._filterDeletedAttendance(allAtt);
+          const existing = activeAtt.find(r =>
+            this._getRecordEventId(r) === eventId &&
+            this._getRecordRollNumber(r) === rollNumber
+          );
+
+          // FIX 2 APPLIED
+          const checkOutKey =
+            (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.CHECK_OUT_ENABLED)
+              ? CONFIG.COLUMNS.CHECK_OUT_ENABLED
+              : 'Check Out Enabled';
+
+          let checkOutRaw;
+
+          if (event[checkOutKey] !== undefined) {
+            checkOutRaw = event[checkOutKey];
+          } else if (event.check_out_enabled !== undefined) {
+            checkOutRaw = event.check_out_enabled;
+          } else if (event.checkOutEnabled !== undefined) {
+            checkOutRaw = event.checkOutEnabled;
+          } else {
+            checkOutRaw = false;
+          }
+
+          const checkOutEnabled = this._parseBoolean(checkOutRaw);
+
+          if (existing) {
+            if (checkOutEnabled) {
+              if (existing.check_out_timestamp) {
+                return Utils.buildResponse(false, 'Already checked out at ' + new Date(existing.check_out_timestamp).toLocaleTimeString() + '. Initial Check-in: ' + new Date(existing.timestamp || existing.Timestamp).toLocaleTimeString());
               } else {
-                return Utils.buildResponse(false, 'Already checked in at ' + new Date(existing.timestamp || existing.Timestamp).toLocaleTimeString() + '. Duplicate scan blocked.');
+                // Perform Check-Out
+                const checkOutTime = new Date();
+                const duration = Math.round((checkOutTime - new Date(existing.timestamp || existing.Timestamp)) / 60000);
+
+                const attIdCol = this._getAttendanceColumn('ATTENDANCE_ID', 'attendance_id');
+                const targetAttId = existing[attIdCol] || existing.attendance_id || existing['Attendance ID'];
+
+                const success = DatabaseService.updateRow(CONFIG.SHEETS.ATTENDANCE, attIdCol, targetAttId, {
+                  check_out_timestamp: checkOutTime.toISOString(),
+                  total_duration_minutes: duration
+                });
+
+                if (success) {
+                  this._addEventScannedRoll(eventId, rollNumber);
+                  return Utils.buildResponse(true, 'Check-out registered successfully! Duration: ' + duration + ' mins.');
+                }
+                return Utils.buildResponse(false, 'Failed to register check-out.');
               }
+            } else {
+              return Utils.buildResponse(false, 'Already checked in at ' + new Date(existing.timestamp || existing.Timestamp).toLocaleTimeString() + '. Duplicate scan blocked.');
+            }
+          }
+
+          // Determine status
+          let status = String(normalized.status || CONFIG.ATTENDANCE_STATUS.PRESENT).toUpperCase();
+          const presentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.PRESENT ? String(CONFIG.ATTENDANCE_STATUS.PRESENT).toUpperCase() : 'PRESENT';
+          const absentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.ABSENT ? String(CONFIG.ATTENDANCE_STATUS.ABSENT).toUpperCase() : 'ABSENT';
+
+          if (status !== presentVal && status !== absentVal) {
+            const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.INVALID_ATTENDANCE_STATUS) ? CONFIG.MESSAGES.INVALID_ATTENDANCE_STATUS : 'Invalid attendance status.';
+            return Utils.buildResponse(false, msg);
+          }
+
+          // Generate Unique Attendance ID
+          const newAttId = (typeof Utils !== 'undefined' && typeof Utils.generateId === 'function') ? Utils.generateId('ATT') : ('ATT_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+
+          // 4. Attendance Save
+          const now = new Date();
+          const tz = (CONFIG && CONFIG.DATE_TIME && CONFIG.DATE_TIME.TIMEZONE) ? CONFIG.DATE_TIME.TIMEZONE : 'Asia/Kolkata';
+
+          const newAttendance = {
+            [this._getAttendanceColumn('ATTENDANCE_ID', 'Attendance ID')]: newAttId,
+            [this._getAttendanceColumn('EVENT_ID', 'Event ID')]: eventId,
+            [this._getAttendanceColumn('ROLL_NUMBER', 'Roll Number')]: rollNumber,
+            [this._getAttendanceColumn('USER_ID', 'User ID')]: userId,
+            [this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status')]: status,
+            [this._getAttendanceColumn('ATTENDANCE_METHOD', 'Attendance Method')]: methodStr,
+            'Date': Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
+            'Time': Utilities.formatDate(now, tz, 'HH:mm:ss'),
+            'Timestamp': now.toISOString(),
+            'Is Undo': false,
+            'Correction Requested': false,
+            [this._getDeletionFlagKey()]: false
+          };
+
+          if (methodStr.toLowerCase() === 'manual' && (attendanceData.reason || attendanceData.manual_reason)) {
+            newAttendance['Reason'] = attendanceData.reason || attendanceData.manual_reason;
+          }
+
+          const success = DatabaseService.insertRow(CONFIG.SHEETS.ATTENDANCE, newAttendance);
+
+          if (success) {
+            this._addEventScannedRoll(eventId, rollNumber);
+
+            const studentRec = StudentService.getStudentByRollNumber(rollNumber);
+            let studentInfo = null;
+            if (studentRec) {
+              studentInfo = {
+                name: studentRec[CONFIG.COLUMNS.STUDENT_NAME] || studentRec['Student Name'] || '',
+                dept: studentRec[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || studentRec['Department ID'] || studentRec['Department'] || '',
+                year: studentRec[CONFIG.COLUMNS.STUDENT_YEAR] || studentRec['Year'] || '',
+                branch: studentRec['Branch'] || studentRec['Department ID'] || ''
+              };
             }
 
-            // Determine status
-            let status = normalized.status || CONFIG.ATTENDANCE_STATUS.PRESENT;
-            if (status !== CONFIG.ATTENDANCE_STATUS.PRESENT && status !== CONFIG.ATTENDANCE_STATUS.ABSENT) {
-              return Utils.buildResponse(false, CONFIG.MESSAGES.INVALID_ATTENDANCE_STATUS);
+            const successMsg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARKED) ? CONFIG.MESSAGES.ATTENDANCE_MARKED : 'Attendance marked successfully.';
+            const resp = Utils.buildResponse(true, successMsg, {
+              attendance: newAttendance,
+              student: studentInfo
+            });
+
+            // Non-fatal Audit & Notification side effects
+            try {
+              if (typeof AuditService !== 'undefined' && typeof AuditService.logAction === 'function') {
+                AuditService.logAction(userId, 'AttendanceService', 'MARK_ATTENDANCE', eventId, 'Attendance', 'Attendance marked', '', 'SUCCESS', userId);
+              }
+            } catch (error) {
+              Logger.log('Audit Log Error: ' + error.message);
             }
 
-            // 4. Attendance Save
-            Logger.log('[START] Attendance Save');
-            const now = new Date();
-            const newAttendance = {
-              [this._getAttendanceColumn('EVENT_ID', 'Event ID')]: eventId,
-              [this._getAttendanceColumn('ROLL_NUMBER', 'Roll Number')]: rollNumber,
-              [this._getAttendanceColumn('USER_ID', 'User ID')]: userId,
-              [this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status')]: status,
-              [this._getAttendanceColumn('ATTENDANCE_METHOD', 'Attendance Method')]: normalized.attendanceMethod || 'Barcode',
-              'Date': Utils.formatDate(now),
-              'Time': Utilities.formatDate(now, CONFIG.DATE_TIME.TIMEZONE || 'Asia/Kolkata', 'HH:mm:ss'),
-              'Timestamp': now.toISOString(),
-              'Is Undo': false,
-              'Correction Requested': false
-            };
-
-            const success = DatabaseService.insertRow(CONFIG.SHEETS.ATTENDANCE, newAttendance);
-            Logger.log('[END] Attendance Save | Success: ' + success);
-
-            if (success) {
-              this._addEventScannedRoll(eventId, rollNumber);
-              const studentRec = StudentService.getStudentByRollNumber(rollNumber);
-              let studentInfo = null;
-              if (studentRec) {
-                studentInfo = {
-                  name: studentRec[CONFIG.COLUMNS.STUDENT_NAME] || studentRec['Student Name'] || '',
-                  dept: studentRec[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || studentRec['Department ID'] || '',
-                  year: studentRec[CONFIG.COLUMNS.STUDENT_YEAR] || studentRec['Year'] || '',
-                  branch: studentRec['Branch'] || studentRec['Department ID'] || ''
-                };
-              }
-              const resp = Utils.buildResponse(true, CONFIG.MESSAGES.ATTENDANCE_MARKED, { 
-                attendance: newAttendance,
-                student: studentInfo
-              });
-              try {
-                AuditService.logAction(
-                  userId,
-                  'AttendanceService',
-                  'MARK_ATTENDANCE',
-                  eventId,
-                  'Attendance',
-                  'Attendance marked',
-                  '',
-                  'SUCCESS',
-                  userId
-                );
-              } catch (error) {
-                Logger.log('Audit Log Error: ' + error.message);
-              }
-              try {
+            try {
+              if (typeof NotificationService !== 'undefined' && typeof NotificationService.createNotification === 'function') {
                 NotificationService.createNotification({
                   user_id: userId,
                   title: 'Attendance Marked',
@@ -550,126 +737,46 @@ const AttendanceService = {
                   type: 'Attendance',
                   related_event_id: eventId
                 });
-              } catch (error) {
-                Logger.log('Notification Error: ' + error.message);
               }
-              Logger.log('[END] AttendanceService.markAttendance | Execution Time: ' + (Date.now() - startTime) + 'ms');
-              return resp;
+            } catch (error) {
+              Logger.log('Notification Error: ' + error.message);
             }
 
             Logger.log('[END] AttendanceService.markAttendance | Execution Time: ' + (Date.now() - startTime) + 'ms');
-            return Utils.buildResponse(false, CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED);
-          });
-        }
+            return resp;
+          }
 
-        Logger.log('[END] AttendanceService.markAttendance | Execution Time: ' + (Date.now() - startTime) + 'ms');
-        return Utils.buildResponse(false, CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED);
+          return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED) ? CONFIG.MESSAGES.ATTENDANCE_MARK_FAILED : 'Attendance marking failed.');
+        };
+
+        if (typeof LockManager !== 'undefined' && typeof LockManager.withLock === 'function') {
+          return LockManager.withLock('Script', 15000, executeTransaction);
+        } else {
+          const lock = LockService.getScriptLock();
+          try {
+            if (lock.tryLock(15000)) {
+              return executeTransaction();
+            } else {
+              return Utils.buildResponse(false, 'System busy. Unable to acquire lock for attendance write.');
+            }
+          } finally {
+            try { lock.releaseLock(); } catch (e) { }
+          }
+        }
       }
     );
   },
 
   /**
-   * HIGH-PERFORMANCE attendance writer for Open Events.
-   * Eliminates all validation bottlenecks:
-   *   - No student DB lookup/create
-   *   - No participant check
-   *   - No LockManager (CacheService dedup instead)
-   *   - No AuditService / NotificationService writes
-   *   - Single sheet.appendRow() call
-   * Target: 0.5–1s end-to-end.
-   */
-  markOpenEventAttendanceFast: function(eventId, rollNumber, userId, attendanceMethod) {
-    try {
-      var startTime = Date.now();
-      var roll = String(rollNumber || '').trim().toUpperCase();
-      if (!eventId || !roll) {
-        return Utils.buildResponse(false, 'Missing event ID or roll number.');
-      }
-
-      // CacheService duplicate guard — avoids full attendance sheet read
-      var cacheKey = 'event_scanned_rolls_' + eventId;
-      var scannedRolls = [];
-      if (typeof CacheManager !== 'undefined') {
-        var cachedRolls = CacheManager.get(cacheKey);
-        if (cachedRolls && Array.isArray(cachedRolls)) scannedRolls = cachedRolls;
-      }
-      if (scannedRolls.indexOf(roll) !== -1) {
-        return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_ALREADY_EXISTS) || 'Student already marked.');
-      }
-
-      // Direct sheet append — fastest possible Sheets API call
-      var sheet = DatabaseService.getSheet(CONFIG.SHEETS.ATTENDANCE);
-      if (!sheet) return Utils.buildResponse(false, 'Attendance sheet not found.');
-
-      var headers = DatabaseService.getHeaderRow(CONFIG.SHEETS.ATTENDANCE);
-      var now = new Date();
-      var tz = (CONFIG.DATE_TIME && CONFIG.DATE_TIME.TIMEZONE) ? CONFIG.DATE_TIME.TIMEZONE : 'Asia/Kolkata';
-      var dateStr = Utilities.formatDate(now, tz, 'dd-MM-yyyy');
-      var timeStr = Utilities.formatDate(now, tz, 'HH:mm:ss');
-      var tsIso = now.toISOString();
-
-      var row = headers.map(function(h) {
-        switch (h) {
-          case 'Event ID':             return eventId;
-          case 'Roll Number':          return roll;
-          case 'User ID':              return userId || '';
-          case 'Attendance Status':    return 'PRESENT';
-          case 'Attendance Method':    return attendanceMethod || 'Barcode';
-          case 'Date':                 return dateStr;
-          case 'Time':                 return timeStr;
-          case 'Timestamp':            return tsIso;
-          case 'Is Undo':              return false;
-          case 'Correction Requested': return false;
-          default:                     return '';
-        }
-      });
-
-      sheet.appendRow(row);
-
-      // Bust in-memory cache so subsequent reads are consistent
-      if (DatabaseService._cache && DatabaseService._cache['ATTENDANCE']) {
-        delete DatabaseService._cache['ATTENDANCE'];
-      }
-
-      // Append to CacheService dedup list immediately
-      scannedRolls.push(roll);
-      if (typeof CacheManager !== 'undefined') {
-        CacheManager.put(cacheKey, scannedRolls, 600);
-      }
-
-      Logger.log('markOpenEventAttendanceFast completed | roll=' + roll + ' | ' + (Date.now() - startTime) + 'ms');
-      
-      var student = StudentService.getStudentByRollNumber(roll);
-      var studentInfo = null;
-      if (student) {
-        studentInfo = {
-          name: student[CONFIG.COLUMNS.STUDENT_NAME] || student['Student Name'] || '',
-          dept: student[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || student['Department ID'] || '',
-          year: student[CONFIG.COLUMNS.STUDENT_YEAR] || student['Year'] || '',
-          branch: student['Branch'] || student['Department ID'] || ''
-        };
-      }
-
-      return Utils.buildResponse(true, (CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_MARKED) || 'Attendance marked.', {
-        attendance: { eventId: eventId, rollNumber: roll, status: 'PRESENT', timestamp: tsIso },
-        student: studentInfo
-      });
-    } catch (e) {
-      Logger.log('markOpenEventAttendanceFast error: ' + (e && e.message ? e.message : e));
-      return Utils.buildResponse(false, 'Fast attendance write failed.');
-    }
-  },
-
-  /**
-   * Deletes an attendance record.
+   * Deletes an attendance record safely (Soft Delete).
    * @param {string} attendanceId
    * @param {string} userId - Injected by SessionService
    * @returns {object} Standard response object.
    */
-  deleteAttendance: function(attendanceId, userId) {
+  deleteAttendance: function (attendanceId, userId) {
     return this._tryWrap(
       'deleteAttendance',
-      CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED ? CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED : 'Attendance deletion failed.',
+      (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED) ? CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED : 'Attendance deletion failed.',
       () => {
         const startTime = Date.now();
         Logger.log('[START] AttendanceService.deleteAttendance | Attendance ID: ' + attendanceId);
@@ -678,32 +785,29 @@ const AttendanceService = {
 
         const attendanceRecord = this.getAttendanceById(attendanceId);
         if (!attendanceRecord) {
-          return Utils.buildResponse(false, CONFIG.MESSAGES.ATTENDANCE_NOT_FOUND);
+          return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_NOT_FOUND) ? CONFIG.MESSAGES.ATTENDANCE_NOT_FOUND : 'Attendance record not found.');
         }
 
-        const attendanceEventId = attendanceRecord[this._getAttendanceColumn('EVENT_ID', 'event_id')] || attendanceRecord.event_id;
-        
-        // Authorization Check via central service
-        Logger.log('[START] Authorization Check');
-        const isAuthorized = this._validateCoordinatorAccess(userId, attendanceEventId);
-        Logger.log('[END] Authorization Check | Result: ' + isAuthorized);
+        const attendanceEventId = this._getRecordEventId(attendanceRecord);
 
+        // Authorization Check
+        const isAuthorized = this._validateCoordinatorAccess(userId, attendanceEventId);
         if (!isAuthorized) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.UNAUTHORIZED) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.UNAUTHORIZED);
-          }
-          return Utils.buildResponse(false, 'Unauthorized access.');
+          const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.UNAUTHORIZED) ? CONFIG.MESSAGES.UNAUTHORIZED : 'Unauthorized access.';
+          return Utils.buildResponse(false, msg);
         }
 
         const event = EventService.getEventById(attendanceEventId);
-        if (event && event.status === CONFIG.EVENT_STATUS.COMPLETED) {
-          return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED);
+        const eventStatus = event ? String(event.status || event['Status'] || '').toUpperCase() : '';
+        const completedStatus = CONFIG && CONFIG.EVENT_STATUS && CONFIG.EVENT_STATUS.COMPLETED ? String(CONFIG.EVENT_STATUS.COMPLETED).toUpperCase() : 'COMPLETED';
+        const cancelledStatus = CONFIG && CONFIG.EVENT_STATUS && CONFIG.EVENT_STATUS.CANCELLED ? String(CONFIG.EVENT_STATUS.CANCELLED).toUpperCase() : 'CANCELLED';
+
+        if (eventStatus === completedStatus) {
+          return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED) ? CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED : 'Event is already completed.');
         }
-        if (event && event.status === CONFIG.EVENT_STATUS.CANCELLED) {
-          if (CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_CANCELLED) {
-            return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_CANCELLED);
-          }
-          return Utils.buildResponse(false, 'Cannot delete attendance for cancelled events.');
+        if (eventStatus === cancelledStatus) {
+          const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_CANCELLED) ? CONFIG.MESSAGES.EVENT_CANCELLED : 'Cannot delete attendance for cancelled events.';
+          return Utils.buildResponse(false, msg);
         }
 
         // Soft delete updates
@@ -723,27 +827,19 @@ const AttendanceService = {
         };
 
         const attendanceIdKey = this._getAttendanceColumn('ATTENDANCE_ID', 'attendance_id');
-        
-        Logger.log('[START] Attendance Save (Soft Delete Update)');
         const success = DatabaseService.updateRow(sheetName, attendanceIdKey, attendanceId, updateData);
-        Logger.log('[END] Attendance Save (Soft Delete Update) | Success: ' + success);
 
         if (success) {
-          const attendanceRoll = attendanceRecord[this._getAttendanceColumn('ROLL_NUMBER', 'roll_number')] || attendanceRecord.roll_number;
+          const attendanceRoll = this._getRecordRollNumber(attendanceRecord);
           this._removeEventScannedRoll(attendanceEventId, attendanceRoll);
-          const resp = Utils.buildResponse(true, CONFIG.MESSAGES.ATTENDANCE_DELETED);
+
+          const successMsg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_DELETED) ? CONFIG.MESSAGES.ATTENDANCE_DELETED : 'Attendance deleted successfully.';
+          const resp = Utils.buildResponse(true, successMsg);
+
           try {
-            AuditService.logAction(
-              userId,
-              'AttendanceService',
-              'DELETE_ATTENDANCE',
-              attendanceId,
-              'Attendance',
-              'Attendance deleted',
-              '',
-              'SUCCESS',
-              userId
-            );
+            if (typeof AuditService !== 'undefined' && typeof AuditService.logAction === 'function') {
+              AuditService.logAction(userId, 'AttendanceService', 'DELETE_ATTENDANCE', attendanceId, 'Attendance', 'Attendance deleted', '', 'SUCCESS', userId);
+            }
           } catch (error) {
             Logger.log('Audit Log Error: ' + error.message);
           }
@@ -751,18 +847,17 @@ const AttendanceService = {
           return resp;
         }
 
-        Logger.log('[END] AttendanceService.deleteAttendance | Execution Time: ' + (Date.now() - startTime) + 'ms');
-        return Utils.buildResponse(false, CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED);
+        return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED) ? CONFIG.MESSAGES.ATTENDANCE_DELETE_FAILED : 'Attendance deletion failed.');
       }
     );
   },
 
   /**
-   * Retrieves an attendance record by ID.
+   * Retrieves an active attendance record by ID.
    * @param {string} attendanceId
    * @returns {object|null}
    */
-  getAttendanceById: function(attendanceId) {
+  getAttendanceById: function (attendanceId) {
     return this._tryWrap('getAttendanceById', () => {
       if (!attendanceId) return null;
       const idKey = this._getAttendanceColumn('ATTENDANCE_ID', 'attendance_id');
@@ -778,12 +873,14 @@ const AttendanceService = {
    * @param {string} eventId
    * @returns {object[]}
    */
-  getAttendanceByEvent: function(eventId) {
+  getAttendanceByEvent: function (eventId) {
     return this._tryWrap('getAttendanceByEvent', () => {
       if (!eventId) return [];
-      const eventKey = this._getAttendanceColumn('EVENT_ID', 'event_id');
-      const list = DatabaseService.findByColumn(CONFIG.SHEETS.ATTENDANCE, eventKey, eventId) || [];
-      return this._sortByAttendanceTimeDesc(this._filterDeletedAttendance(list));
+      const cleanEventId = String(eventId).trim();
+      const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
+      const active = this._filterDeletedAttendance(allAttendance);
+      const filtered = active.filter(r => this._getRecordEventId(r) === cleanEventId);
+      return this._sortByAttendanceTimeDesc(filtered);
     });
   },
 
@@ -792,13 +889,14 @@ const AttendanceService = {
    * @param {string} rollNumber
    * @returns {object[]}
    */
-  getAttendanceByStudent: function(rollNumber) {
+  getAttendanceByStudent: function (rollNumber) {
     return this._tryWrap('getAttendanceByStudent', () => {
       if (!rollNumber) return [];
-      const rollKey = this._getAttendanceColumn('ROLL_NUMBER', 'roll_number');
-      const normalizedRoll = String(rollNumber).trim().toUpperCase();
-      const list = DatabaseService.findByColumn(CONFIG.SHEETS.ATTENDANCE, rollKey, normalizedRoll) || [];
-      return this._sortByAttendanceTimeDesc(this._filterDeletedAttendance(list));
+      const cleanRoll = String(rollNumber).trim().toUpperCase();
+      const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
+      const active = this._filterDeletedAttendance(allAttendance);
+      const filtered = active.filter(r => this._getRecordRollNumber(r) === cleanRoll);
+      return this._sortByAttendanceTimeDesc(filtered);
     });
   },
 
@@ -807,18 +905,22 @@ const AttendanceService = {
    * @param {string} date
    * @returns {object[]}
    */
-  getAttendanceByDate: function(date) {
+  getAttendanceByDate: function (date) {
     return this._tryWrap('getAttendanceByDate', () => {
       if (!date) return [];
+      const timezone = (CONFIG && CONFIG.DATE_TIME && CONFIG.DATE_TIME.TIMEZONE) ? CONFIG.DATE_TIME.TIMEZONE : 'Asia/Kolkata';
       const targetDate = Utils.formatDate(date);
       const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
       const active = this._filterDeletedAttendance(allAttendance);
 
-      const dateKey = 'Date';
-      const timeKey = this._getAttendanceColumn('ATTENDANCE_TIME', 'attendance_time');
       const filtered = active.filter(record => {
-        const val = record[dateKey] || record['Timestamp'] || record[timeKey];
-        return Utils.formatDate(val) === targetDate;
+        const val = this._getRecordTimestamp(record) || record.Date || record.date;
+        if (!val) return false;
+        let formatted = Utils.formatDate(val);
+        if (val instanceof Date) {
+          formatted = Utilities.formatDate(val, timezone, 'yyyy-MM-dd');
+        }
+        return formatted === targetDate;
       });
 
       return this._sortByAttendanceTimeDesc(filtered);
@@ -830,91 +932,138 @@ const AttendanceService = {
    * @param {string} status
    * @returns {object[]}
    */
-  getAttendanceByStatus: function(status) {
+  getAttendanceByStatus: function (status) {
     return this._tryWrap('getAttendanceByStatus', () => {
       if (!status) return [];
-      const statusKey = this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status');
-      const list = DatabaseService.findByColumn(CONFIG.SHEETS.ATTENDANCE, statusKey, status) || [];
-      return this._sortByAttendanceTimeDesc(this._filterDeletedAttendance(list));
+      const targetStatus = String(status).trim().toUpperCase();
+      const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
+      const active = this._filterDeletedAttendance(allAttendance);
+      const filtered = active.filter(r => this._getRecordStatus(r) === targetStatus);
+      return this._sortByAttendanceTimeDesc(filtered);
     });
   },
 
   /**
-   * Gets the attendance counts for an event.
+   * Gets the attendance counts for an event (Deduplicated per student).
    * @param {string} eventId
    * @returns {object} {total, present, absent}
    */
-  getEventAttendanceCount: function(eventId) {
+  getEventAttendanceCount: function (eventId) {
     return this._tryWrap('getEventAttendanceCount', () => {
       const records = this.getAttendanceByEvent(eventId);
-      let present = 0;
-      let absent = 0;
 
-      const statusKey = this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status');
-
+      // Deduplicate by student roll number
+      const studentMap = new Map();
       records.forEach(record => {
-        if (record[statusKey] === CONFIG.ATTENDANCE_STATUS.PRESENT) present++;
-        else if (record[statusKey] === CONFIG.ATTENDANCE_STATUS.ABSENT) absent++;
+        const roll = this._getRecordRollNumber(record);
+        if (roll && !studentMap.has(roll)) {
+          studentMap.set(roll, record);
+        }
       });
 
-      return { total: records.length, present: present, absent: absent };
+      let present = 0;
+      let absent = 0;
+      const presentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.PRESENT ? String(CONFIG.ATTENDANCE_STATUS.PRESENT).toUpperCase() : 'PRESENT';
+      const absentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.ABSENT ? String(CONFIG.ATTENDANCE_STATUS.ABSENT).toUpperCase() : 'ABSENT';
+
+      studentMap.forEach(record => {
+        const st = this._getRecordStatus(record);
+        if (st === presentVal) present++;
+        else if (st === absentVal) absent++;
+      });
+
+      return { total: studentMap.size, present: present, absent: absent };
     });
   },
 
   /**
-   * Gets the total attendance records count for a student.
+   * Gets the total active attendance records count for a student.
    * @param {string} rollNumber
    * @returns {number} Total attendance records count.
    */
-  getStudentAttendanceCount: function(rollNumber) {
+  getStudentAttendanceCount: function (rollNumber) {
     return this._tryWrap('getStudentAttendanceCount', () => {
       const records = this.getAttendanceByStudent(rollNumber);
-      return records.length;
+      // Deduplicate by Event ID
+      const eventSet = new Set();
+      records.forEach(r => {
+        const eId = this._getRecordEventId(r);
+        if (eId) eventSet.add(eId);
+      });
+      return eventSet.size;
     });
   },
 
   /**
-   * Gets the summarized attendance data for a student.
+   * Gets the summarized attendance data for a student across distinct events.
    * @param {string} rollNumber
    * @returns {object} {totalEvents, present, absent}
    */
-  getStudentAttendanceSummary: function(rollNumber) {
+  getStudentAttendanceSummary: function (rollNumber) {
     return this._tryWrap('getStudentAttendanceSummary', () => {
       const records = this.getAttendanceByStudent(rollNumber);
-      let present = 0;
-      let absent = 0;
 
-      const statusKey = this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status');
-
+      // Deduplicate by event ID
+      const eventMap = new Map();
       records.forEach(record => {
-        if (record[statusKey] === CONFIG.ATTENDANCE_STATUS.PRESENT) present++;
-        else if (record[statusKey] === CONFIG.ATTENDANCE_STATUS.ABSENT) absent++;
+        const eId = this._getRecordEventId(record);
+        if (eId && !eventMap.has(eId)) {
+          eventMap.set(eId, record);
+        }
       });
 
-      return { totalEvents: records.length, present: present, absent: absent };
+      let present = 0;
+      let absent = 0;
+      const presentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.PRESENT ? String(CONFIG.ATTENDANCE_STATUS.PRESENT).toUpperCase() : 'PRESENT';
+      const absentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.ABSENT ? String(CONFIG.ATTENDANCE_STATUS.ABSENT).toUpperCase() : 'ABSENT';
+
+      eventMap.forEach(record => {
+        const st = this._getRecordStatus(record);
+        if (st === presentVal) present++;
+        else if (st === absentVal) absent++;
+      });
+
+      return { totalEvents: eventMap.size, present: present, absent: absent };
     });
   },
 
   /**
-   * Gets overall attendance statistics across all events.
+   * Gets overall attendance statistics across all events (Deduplicated).
    * @returns {object} {totalAttendance, present, absent, attendancePercentage}
    */
-  getOverallAttendanceStatistics: function() {
+  getOverallAttendanceStatistics: function () {
     return this._tryWrap('getOverallAttendanceStatistics', () => {
       const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
       const active = this._filterDeletedAttendance(allAttendance);
 
-      let present = 0;
-      let absent = 0;
-
-      const statusKey = this._getAttendanceColumn('ATTENDANCE_STATUS', 'Attendance Status');
-
+      // Deduplicate active entries by EventID + RollNumber
+      // FIX 5 APPLIED
+      const uniqueMap = new Map();
       active.forEach(record => {
-        if (record[statusKey] === CONFIG.ATTENDANCE_STATUS.PRESENT) present++;
-        else if (record[statusKey] === CONFIG.ATTENDANCE_STATUS.ABSENT) absent++;
+        const eventId = this._getRecordEventId(record);
+        const rollNumber = this._getRecordRollNumber(record);
+
+        if (!eventId || !rollNumber) return;
+
+        const key = eventId + '|' + rollNumber;
+
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, record);
+        }
       });
 
-      const totalAttendance = active.length;
+      let present = 0;
+      let absent = 0;
+      const presentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.PRESENT ? String(CONFIG.ATTENDANCE_STATUS.PRESENT).toUpperCase() : 'PRESENT';
+      const absentVal = CONFIG && CONFIG.ATTENDANCE_STATUS && CONFIG.ATTENDANCE_STATUS.ABSENT ? String(CONFIG.ATTENDANCE_STATUS.ABSENT).toUpperCase() : 'ABSENT';
+
+      uniqueMap.forEach(record => {
+        const st = this._getRecordStatus(record);
+        if (st === presentVal) present++;
+        else if (st === absentVal) absent++;
+      });
+
+      const totalAttendance = uniqueMap.size;
       const percentage = totalAttendance === 0 ? 0 : (present / totalAttendance) * 100;
 
       return {
@@ -931,15 +1080,15 @@ const AttendanceService = {
    * @param {string} eventId
    * @returns {object|null} Summary object or null if event not found.
    */
-  getAttendanceSummaryByEvent: function(eventId) {
+  getAttendanceSummaryByEvent: function (eventId) {
     return this._tryWrap('getAttendanceSummaryByEvent', () => {
       const event = EventService.getEventById(eventId);
       if (!event) return null;
 
       const counts = this.getEventAttendanceCount(eventId);
       return {
-        eventId: event.event_id,
-        eventName: event.event_name,
+        eventId: event.event_id || event['Event ID'] || eventId,
+        eventName: event.event_name || event['Event Name'] || '',
         total: counts.total,
         present: counts.present,
         absent: counts.absent
@@ -947,135 +1096,218 @@ const AttendanceService = {
     });
   },
 
-  getEventDayAttendance: function(eventId, dayNumber, userContext) {
+  /**
+   * Retrieves day-wise attendance for an event with safe local timezone handling.
+   */
+  getEventDayAttendance: function (eventId, dayNumber, userContext) {
     return this._tryWrap('getEventDayAttendance', () => {
-      if (userContext && typeof SecurityUtils !== 'undefined' && SecurityUtils.canAccessEvent) {
+      if (userContext && typeof SecurityUtils !== 'undefined' && typeof SecurityUtils.canAccessEvent === 'function') {
         if (!SecurityUtils.canAccessEvent(eventId, userContext)) {
           return Utils.buildResponse(false, 'Access denied for event attendance.');
         }
       }
 
-      var event = EventService.getEventById(eventId, userContext);
+      const event = EventService.getEventById(eventId, userContext);
       if (!event) return Utils.buildResponse(false, 'Event not found');
 
-      var startDateStr = event[CONFIG.COLUMNS.START_DATE] || event.startDate || event.start_date;
-      var start = new Date(startDateStr);
-      if (isNaN(start.getTime())) start = new Date();
+      const timezone = (CONFIG && CONFIG.DATE_TIME && CONFIG.DATE_TIME.TIMEZONE) ? CONFIG.DATE_TIME.TIMEZONE : 'Asia/Kolkata';
+      const startDateCol = CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.START_DATE ? CONFIG.COLUMNS.START_DATE : 'Start Date';
+      const startDateStr = event[startDateCol] || event.startDate || event.start_date;
 
-      var targetDate = new Date(start.getTime());
-      targetDate.setDate(start.getDate() + (parseInt(dayNumber, 10) - 1));
-      var targetDateStr = targetDate.toISOString().split('T')[0];
+      // FIX 6 APPLIED
+      let start = new Date(startDateStr);
 
-      var records = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
-      var activeRecords = this._filterDeletedAttendance(records);
+      if (!startDateStr || isNaN(start.getTime())) {
+        return Utils.buildResponse(
+          false,
+          'Invalid or missing event start date.'
+        );
+      }
 
-      var eventRecords = activeRecords.filter(r => {
-        var rEventId = String(r[CONFIG.COLUMNS.ATTENDANCE_EVENT_ID] || r.eventId || r.event_id || '').trim();
-        return rEventId === String(eventId).trim();
+      const parsedDayNumber = parseInt(dayNumber, 10);
+
+      if (!Number.isFinite(parsedDayNumber) || parsedDayNumber < 1) {
+        return Utils.buildResponse(
+          false,
+          'Invalid event day number.'
+        );
+      }
+
+      const targetDate = new Date(start.getTime());
+      targetDate.setDate(start.getDate() + (parsedDayNumber - 1));
+      const targetDateStr = Utilities.formatDate(targetDate, timezone, 'yyyy-MM-dd');
+
+      const records = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
+      const activeRecords = this._filterDeletedAttendance(records);
+
+      const cleanEventId = String(eventId).trim();
+      const eventRecords = activeRecords.filter(r => this._getRecordEventId(r) === cleanEventId);
+
+      const dayRecords = eventRecords.filter(r => {
+        const timestampVal = this._getRecordTimestamp(r) || r.Date || r.date;
+        if (!timestampVal) return false;
+        let dStr = '';
+        if (timestampVal instanceof Date) {
+          dStr = Utilities.formatDate(timestampVal, timezone, 'yyyy-MM-dd');
+        } else {
+          const d = new Date(timestampVal);
+          if (!isNaN(d.getTime())) {
+            dStr = Utilities.formatDate(d, timezone, 'yyyy-MM-dd');
+          } else {
+            dStr = Utils.formatDate(timestampVal);
+          }
+        }
+        return dStr === targetDateStr;
       });
 
-      var dayRecords = eventRecords.filter(r => {
-        var timestampStr = r[CONFIG.COLUMNS.TIMESTAMP] || r.timestamp || r.date || r.created_at;
-        if (!timestampStr) return false;
-        var d = new Date(timestampStr);
-        if (isNaN(d.getTime())) return false;
-        return d.toISOString().split('T')[0] === targetDateStr;
-      });
+      // Check registration requirement safely
+      const registrationRequired = this._isRegistrationEnabled(event);
 
-      var participants = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_PARTICIPANTS) || [];
-      var eventParticipants = participants.filter(p => {
-        const isCancelled = p['Registration Status'] === 'Cancelled' || p.status === 'Cancelled';
-        return String(p['Event ID'] || p.event_id).trim() === String(eventId).trim() && !isCancelled;
-      });
+      let eventParticipants = [];
+      if (registrationRequired) {
+        const participants = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_PARTICIPANTS) || [];
+        eventParticipants = participants.filter(p => {
+          const pEventId = String(p['Event ID'] || p.event_id || p.eventId || '').trim();
+          if (pEventId !== cleanEventId) return false;
 
-      var totalRegistered = eventParticipants.length;
+          const pStatus = String(p['Registration Status'] || p.status || p.registration_status || '').trim().toUpperCase();
+          const isCancelled = pStatus === 'CANCELLED' || pStatus === 'REJECTED' || pStatus === 'DELETED';
+          if (isCancelled) return false;
 
-      // Map day records by Roll Number
-      var dayRecordsMap = {};
+          return !this._isDeletedAttendance(p);
+        });
+      }
+
+      // FIX 4 APPLIED
+      if (registrationRequired && eventParticipants.length > 0) {
+        const uniqueParticipants = new Map();
+
+        eventParticipants.forEach(p => {
+          const roll = String(
+            p['Roll Number'] ||
+            p.roll_number ||
+            p.rollNumber ||
+            ''
+          ).trim().toUpperCase();
+
+          if (roll && !uniqueParticipants.has(roll)) {
+            uniqueParticipants.set(roll, p);
+          }
+        });
+
+        eventParticipants = Array.from(uniqueParticipants.values());
+      }
+
+      // Map day records by Roll Number (Deduplicated)
+      const dayRecordsMap = {};
       dayRecords.forEach(r => {
-        var roll = String(r[CONFIG.COLUMNS.ATTENDANCE_ROLL] || r.roll_number || r.rollNumber || '').trim().toUpperCase();
-        if (roll) {
+        const roll = this._getRecordRollNumber(r);
+        if (roll && !dayRecordsMap[roll]) {
           dayRecordsMap[roll] = r;
         }
       });
 
-      var finalAttendance = [];
-      var presentCount = 0;
+      const finalAttendance = [];
+      let presentCount = 0;
 
-      if (totalRegistered > 0) {
+      // FIX 3 APPLIED
+      if (registrationRequired) {
         // Load student profiles for virtual absent mapping
-        const allStudentsResponse = StudentService.getAllStudents();
-        const allStudents = (allStudentsResponse && allStudentsResponse.success) ? allStudentsResponse.students : [];
-        const studentMap = new Map();
-        (allStudents || []).forEach(s => {
-          const roll = s['Roll Number'] || s.roll_number || s.rollNumber;
-          if (roll) studentMap.set(String(roll).trim().toUpperCase(), s);
-        });
+        let studentMap = new Map();
+        try {
+          const allStudentsResponse = StudentService.getAllStudents();
+          const allStudents = (allStudentsResponse && allStudentsResponse.success) ? allStudentsResponse.students : [];
+          (allStudents || []).forEach(s => {
+            const roll = String(s['Roll Number'] || s.roll_number || s.rollNumber || '').trim().toUpperCase();
+            if (roll) studentMap.set(roll, s);
+          });
+        } catch (e) {
+          Logger.log('Student load error in getEventDayAttendance: ' + e.message);
+        }
 
         eventParticipants.forEach(p => {
-          var roll = String(p['Roll Number'] || p.roll_number || p.rollNumber || '').trim().toUpperCase();
+          const roll = String(p['Roll Number'] || p.roll_number || p.rollNumber || '').trim().toUpperCase();
           if (!roll) return;
-          var record = dayRecordsMap[roll];
+          const record = dayRecordsMap[roll];
           if (record) {
-            var status = String(record[CONFIG.COLUMNS.ATTENDANCE_STATUS] || record.status || 'PRESENT').toUpperCase();
+            const status = this._getRecordStatus(record);
             if (status === 'PRESENT') presentCount++;
-            
+
+            const student = studentMap.get(roll) || {};
             finalAttendance.push({
               'Roll Number': roll,
-              'Student Name': record['Student Name'] || record.student_name || record.name || (studentMap.get(roll) ? studentMap.get(roll)['Student Name'] : '--'),
-              'Department ID': record['Department ID'] || record.department_id || record.department || (studentMap.get(roll) ? studentMap.get(roll)['Department'] : '--'),
-              'Year': record['Year'] || record.year || (studentMap.get(roll) ? studentMap.get(roll)['Year'] : '--'),
-              'Section': record['Section'] || record.section || (studentMap.get(roll) ? studentMap.get(roll)['Section'] : '--'),
+              'Student Name': record['Student Name'] || record.student_name || record.name || p['Student Name'] || student['Student Name'] || '--',
+              'Department ID': record['Department ID'] || record.department_id || record.department || p['Department ID'] || student['Department'] || '--',
+              'Year': record['Year'] || record.year || p['Year'] || student['Year'] || '--',
+              'Section': record['Section'] || record.section || p['Section'] || student['Section'] || '--',
               'Attendance Status': status,
-              'Timestamp': record[CONFIG.COLUMNS.TIMESTAMP] || record.timestamp || record.attendance_time || record.date || '--'
+              'Timestamp': this._getRecordTimestamp(record) || '--'
             });
           } else {
-            var student = studentMap.get(roll) || {};
+            const student = studentMap.get(roll) || {};
             finalAttendance.push({
               'Roll Number': roll,
-              'Student Name': student['Student Name'] || student.student_name || '--',
-              'Department ID': student['Department'] || student.department || '--',
-              'Year': student['Year'] || student.year || '--',
-              'Section': student['Section'] || student.section || '--',
+              'Student Name': p['Student Name'] || student['Student Name'] || student.student_name || '--',
+              'Department ID': p['Department ID'] || student['Department'] || student.department || '--',
+              'Year': p['Year'] || student['Year'] || student.year || '--',
+              'Section': p['Section'] || student['Section'] || student.section || '--',
               'Attendance Status': 'ABSENT',
               'Timestamp': '--'
             });
           }
         });
+
+        const totalRegistered = eventParticipants.length;
+        const absentCount = Math.max(0, totalRegistered - presentCount);
+        const attendancePercentage = totalRegistered > 0 ? Math.round((presentCount / totalRegistered) * 100) : 0;
+
+        return Utils.buildResponse(true, 'Day attendance retrieved', {
+          dayNumber: dayNumber,
+          dateLabel: targetDateStr,
+          attendance: finalAttendance,
+          summary: {
+            totalRegistered: totalRegistered,
+            totalMarked: dayRecords.length,
+            presentCount: presentCount,
+            absentCount: absentCount,
+            attendancePercentage: attendancePercentage
+          }
+        });
       } else {
-        // Open Event or no participants registered
-        dayRecords.forEach(record => {
-          var status = String(record[CONFIG.COLUMNS.ATTENDANCE_STATUS] || record.status || 'PRESENT').toUpperCase();
+        // Open Event or No-Registration Event
+        Object.keys(dayRecordsMap).forEach(roll => {
+          const record = dayRecordsMap[roll];
+          const status = this._getRecordStatus(record);
           if (status === 'PRESENT') presentCount++;
-          
+
           finalAttendance.push({
-            'Roll Number': record[CONFIG.COLUMNS.ATTENDANCE_ROLL] || record.roll_number || record.rollNumber || '--',
+            'Roll Number': roll,
             'Student Name': record['Student Name'] || record.student_name || record.name || '--',
             'Department ID': record['Department ID'] || record.department_id || record.department || '--',
             'Year': record['Year'] || record.year || '--',
             'Section': record['Section'] || record.section || '--',
             'Attendance Status': status,
-            'Timestamp': record[CONFIG.COLUMNS.TIMESTAMP] || record.timestamp || record.attendance_time || record.date || '--'
+            'Timestamp': this._getRecordTimestamp(record) || '--'
           });
         });
-        totalRegistered = finalAttendance.length;
+
+        const totalRegistered = finalAttendance.length;
+        const absentCount = 0;
+        const attendancePercentage = totalRegistered > 0 ? Math.round((presentCount / totalRegistered) * 100) : 0;
+
+        return Utils.buildResponse(true, 'Day attendance retrieved', {
+          dayNumber: dayNumber,
+          dateLabel: targetDateStr,
+          attendance: finalAttendance,
+          summary: {
+            totalRegistered: totalRegistered,
+            totalMarked: dayRecords.length,
+            presentCount: presentCount,
+            absentCount: absentCount,
+            attendancePercentage: attendancePercentage
+          }
+        });
       }
-
-      var absentCount = totalRegistered - presentCount;
-      var attendancePercentage = totalRegistered > 0 ? Math.round((presentCount / totalRegistered) * 100) : 0;
-
-      return Utils.buildResponse(true, 'Day attendance retrieved', {
-        dayNumber: dayNumber,
-        dateLabel: targetDateStr,
-        attendance: finalAttendance,
-        summary: {
-          totalRegistered: totalRegistered,
-          totalMarked: dayRecords.length,
-          presentCount: presentCount,
-          absentCount: absentCount,
-          attendancePercentage: attendancePercentage
-        }
-      });
     });
   }
 
