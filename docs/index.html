@@ -1796,1418 +1796,1427 @@ body {
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-/**
- * BVC Coordinator Terminal – JavaScript Controller (v2.0)
- * Fully responsive, camera-aware, history-rich, enterprise-grade attendance scanner.
- *
- * Architecture: IIFE module with private state and clean public API.
- * Preserves all existing GAS API calls unchanged.
- */
-'use strict';
+  /**
+   * BVC Coordinator Terminal – JavaScript Controller (v2.0)
+   * Fully responsive, camera-aware, history-rich, enterprise-grade attendance scanner.
+   *
+   * Architecture: IIFE module with private state and clean public API.
+   * Preserves all existing GAS API calls unchanged.
+   */
+  'use strict';
 
-const CoordinatorUI = (() => {
+  const CoordinatorUI = (() => {
 
-  // Override google.script.run for external hosting capability
-  if (typeof google === 'undefined' || !google.script || !google.script.run) {
-    const createRunner = (successCb, failureCb) => {
-      return new Proxy({}, {
-        get: (target, prop) => {
-          return (...args) => {
-            const apiUrl = window.BACKEND_API_URL || localStorage.getItem('BACKEND_API_URL') || '';
-            if (!apiUrl) {
-              const err = new Error("BACKEND_API_URL is not set. Please configure window.BACKEND_API_URL or localStorage.");
-              console.error(err);
-              if (failureCb) failureCb(err);
-              return;
-            }
+    // Override google.script.run for external hosting capability
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      const createRunner = (successCb, failureCb) => {
+        return new Proxy({}, {
+          get: (target, prop) => {
+            return (...args) => {
+              const apiUrl = window.BACKEND_API_URL || localStorage.getItem('BACKEND_API_URL') || '';
+              if (!apiUrl) {
+                const err = new Error("BACKEND_API_URL is not set. Please configure window.BACKEND_API_URL or localStorage.");
+                console.error(err);
+                if (failureCb) failureCb(err);
+                return;
+              }
 
-            fetch(apiUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({ action: prop, arguments: args })
-            })
-            .then(res => res.json())
-            .then(data => {
-              if (successCb) successCb(data);
-            })
-            .catch(err => {
-              console.error(`API Call failed: ${prop}`, err);
-              if (failureCb) failureCb(err);
-            });
-          };
-        }
-      });
-    };
-
-    window.google = {
-      script: {
-        run: {
-          withSuccessHandler: (successCb) => {
-            return {
-              withFailureHandler: (failureCb) => createRunner(successCb, failureCb),
-              ...createRunner(successCb, null)
-            };
-          },
-          withFailureHandler: (failureCb) => {
-            return {
-              withSuccessHandler: (successCb) => createRunner(successCb, failureCb),
-              ...createRunner(null, failureCb)
+              fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: prop, arguments: args })
+              })
+                .then(res => res.json())
+                .then(data => {
+                  if (successCb) successCb(data);
+                })
+                .catch(err => {
+                  console.error(`API Call failed: ${prop}`, err);
+                  if (failureCb) failureCb(err);
+                });
             };
           }
+        });
+      };
+
+      window.google = {
+        script: {
+          run: {
+            withSuccessHandler: (successCb) => {
+              return {
+                withFailureHandler: (failureCb) => createRunner(successCb, failureCb),
+                ...createRunner(successCb, null)
+              };
+            },
+            withFailureHandler: (failureCb) => {
+              return {
+                withSuccessHandler: (successCb) => createRunner(successCb, failureCb),
+                ...createRunner(null, failureCb)
+              };
+            }
+          }
         }
+      };
+    }
+
+    // ==========================================================================
+    //  PRIVATE STATE
+    // ==========================================================================
+    const state = {
+      sessionToken: null,
+      eventId: null,
+      isProcessing: false,
+      lastInputType: 'Barcode',
+      activeEventAttendanceType: 'Fixed',
+      statistics: { present: 0, remaining: 0, total: 0 },
+      duplicatesCount: 0,
+      // Full scan history from server; client-side search/filter applied on this
+      allScans: [],
+      // Cameras
+      availableCameras: [],          // { id, label }
+      activeCameraIndex: 0,          // index into availableCameras
+      cameraRunning: false,
+      facingMode: 'environment',     // 'environment' | 'user'
+      // Duplicate prevention cooldown
+      recentRolls: {},               // { roll: timestamp }
+      DUPLICATE_COOLDOWN_MS: 5000,
+      // Search/filter state
+      searchQuery: '',
+      deptFilter: '',
+      // Background upload queue
+      uploadQueue: [],
+      isSyncing: false,
+    };
+
+    let dom = {};
+    let html5QrCode = null;
+
+    // ==========================================================================
+    //  INIT
+    // ==========================================================================
+    const init = () => {
+      cacheDOM();
+      bindEvents();
+      extractSessionToken();
+      monitorConnection();
+      initCamera();
+      loadBackendTerminalData();
+      CameraDebugger.init();
+    };
+
+    const cacheDOM = () => {
+      dom = {
+        // Form & Input
+        form: document.getElementById('attendance-input-form'),
+        input: document.getElementById('barcode-roll-input'),
+        submitBtn: document.getElementById('btn-submit-attendance'),
+        scannerStatus: document.getElementById('scanner-status'),
+
+        // Event info
+        eventTitleDisplay: document.getElementById('event-title-display'),
+        terminalEventName: document.getElementById('terminal-event-name'),
+        eventDate: document.getElementById('terminal-event-date'),
+        coordName: document.getElementById('terminal-coordinator-name'),
+        eventStatusBadge: document.getElementById('event-status-badge'),
+        lastScanTime: document.getElementById('last-scan-time'),
+        cameraStatusText: document.getElementById('camera-status-text'),
+
+        // Stats
+        statsPresent: document.getElementById('stat-present-count'),
+        statsRemaining: document.getElementById('stat-remaining-count'),
+        statsTotal: document.getElementById('stat-total-count'),
+        statsDuplicate: document.getElementById('stat-duplicate-count'),
+        statsPct: document.getElementById('stat-percent-count'),
+        statsProgress: document.getElementById('stat-progress-bar'),
+
+        // Student preview
+        previewPlaceholder: document.getElementById('student-preview-placeholder'),
+        previewContent: document.getElementById('student-preview-content'),
+        previewStrip: document.getElementById('preview-status-strip'),
+        previewName: document.getElementById('preview-student-name'),
+        previewRoll: document.getElementById('preview-student-roll'),
+        previewDept: document.getElementById('preview-student-dept'),
+        previewYear: document.getElementById('preview-student-year'),
+        previewAvatar: document.getElementById('preview-avatar-badge'),
+
+        // Camera
+        viewportPlaceholder: document.getElementById('viewport-placeholder'),
+        cameraDeviceSelect: document.getElementById('camera-device-select'),
+        btnFlipCamera: document.getElementById('btn-flip-camera'),
+        btnToggleCamera: document.getElementById('btn-toggle-camera'),
+        cameraToggleIcon: document.getElementById('camera-toggle-icon'),
+
+        // History
+        historyFeed: document.getElementById('recent-scans-container'),
+        historySkeleton: document.getElementById('history-skeleton'),
+        historyEmptyState: document.getElementById('history-empty-state'),
+        historyCountBadge: document.getElementById('history-count-badge'),
+        searchInput: document.getElementById('history-search-input'),
+        deptFilter: document.getElementById('history-dept-filter'),
+
+        // Header buttons
+        refreshBtn: document.getElementById('btn-terminal-refresh'),
+        syncBtn: document.getElementById('btn-terminal-sync'),
+        logoutBtn: document.getElementById('btn-terminal-logout'),
+        connectionStatus: document.getElementById('connection-status'),
+        connDot: document.getElementById('conn-dot'),
+        connLabel: document.getElementById('conn-label'),
+
+        // Toast
+        toastStack: document.getElementById('coord-toast-stack'),
+
+        // Spot modal
+        spotModalElement: document.getElementById('spotRegistrationModal'),
+        spotForm: document.getElementById('spot-registration-form'),
+        spotRollInput: document.getElementById('spot-roll-input'),
+        spotNameInput: document.getElementById('spot-name-input'),
+        spotCollegeInput: document.getElementById('spot-college-input'),
+        spotDeptSelect: document.getElementById('spot-dept-select'),
+        spotYearSelect: document.getElementById('spot-year-select'),
+        spotOpenView: document.getElementById('spot-open-event-view'),
+        spotFixedView: document.getElementById('spot-fixed-event-view'),
+        spotOpenRollDisp: document.getElementById('spot-open-roll-display'),
+        spotFixedRollDisp: document.getElementById('spot-fixed-roll-display'),
+        spotDeptOtherCont: document.getElementById('spot-dept-other-container'),
+        spotDeptOtherInp: document.getElementById('spot-dept-other-input'),
+        btnConfirmSpotOpen: document.getElementById('btn-confirm-spot-open'),
+      };
+
+      // Bootstrap modal init
+      if (dom.spotModalElement && typeof bootstrap !== 'undefined') {
+        dom.spotModal = new bootstrap.Modal(dom.spotModalElement);
       }
     };
-  }
 
-  // ==========================================================================
-  //  PRIVATE STATE
-  // ==========================================================================
-  const state = {
-    sessionToken: null,
-    isProcessing: false,
-    lastInputType: 'Barcode',
-    activeEventAttendanceType: 'Fixed',
-    statistics: { present: 0, remaining: 0, total: 0 },
-    duplicatesCount: 0,
-    // Full scan history from server; client-side search/filter applied on this
-    allScans: [],
-    // Cameras
-    availableCameras: [],          // { id, label }
-    activeCameraIndex: 0,          // index into availableCameras
-    cameraRunning: false,
-    facingMode: 'environment',     // 'environment' | 'user'
-    // Duplicate prevention cooldown
-    recentRolls: {},               // { roll: timestamp }
-    DUPLICATE_COOLDOWN_MS: 5000,
-    // Search/filter state
-    searchQuery: '',
-    deptFilter: '',
-    // Background upload queue
-    uploadQueue: [],
-    isSyncing: false,
-  };
+    // ==========================================================================
+    //  EVENT BINDING
+    // ==========================================================================
+    const bindEvents = () => {
+      // Barcode input - track mode
+      if (dom.input) {
+        dom.input.addEventListener('input', (e) => {
+          setSubmitEnabled(dom.input.value.trim().length > 0);
+          state.lastInputType = (dom.input.value.length > 3 && !e.inputType) ? 'Barcode' : 'Manual';
+        });
+      }
 
-  let dom = {};
-  let html5QrCode = null;
-
-  // ==========================================================================
-  //  INIT
-  // ==========================================================================
-  const init = () => {
-    cacheDOM();
-    bindEvents();
-    extractSessionToken();
-    monitorConnection();
-    initCamera();
-    loadBackendTerminalData();
-    CameraDebugger.init();
-  };
-
-  const cacheDOM = () => {
-    dom = {
-      // Form & Input
-      form:              document.getElementById('attendance-input-form'),
-      input:             document.getElementById('barcode-roll-input'),
-      submitBtn:         document.getElementById('btn-submit-attendance'),
-      scannerStatus:     document.getElementById('scanner-status'),
-
-      // Event info
-      eventTitleDisplay: document.getElementById('event-title-display'),
-      terminalEventName: document.getElementById('terminal-event-name'),
-      eventDate:         document.getElementById('terminal-event-date'),
-      coordName:         document.getElementById('terminal-coordinator-name'),
-      eventStatusBadge:  document.getElementById('event-status-badge'),
-      lastScanTime:      document.getElementById('last-scan-time'),
-      cameraStatusText:  document.getElementById('camera-status-text'),
-
-      // Stats
-      statsPresent:      document.getElementById('stat-present-count'),
-      statsRemaining:    document.getElementById('stat-remaining-count'),
-      statsTotal:        document.getElementById('stat-total-count'),
-      statsDuplicate:    document.getElementById('stat-duplicate-count'),
-      statsPct:          document.getElementById('stat-percent-count'),
-      statsProgress:     document.getElementById('stat-progress-bar'),
-
-      // Student preview
-      previewPlaceholder: document.getElementById('student-preview-placeholder'),
-      previewContent:    document.getElementById('student-preview-content'),
-      previewStrip:      document.getElementById('preview-status-strip'),
-      previewName:       document.getElementById('preview-student-name'),
-      previewRoll:       document.getElementById('preview-student-roll'),
-      previewDept:       document.getElementById('preview-student-dept'),
-      previewYear:       document.getElementById('preview-student-year'),
-      previewAvatar:     document.getElementById('preview-avatar-badge'),
-
-      // Camera
-      viewportPlaceholder: document.getElementById('viewport-placeholder'),
-      cameraDeviceSelect:  document.getElementById('camera-device-select'),
-      btnFlipCamera:       document.getElementById('btn-flip-camera'),
-      btnToggleCamera:     document.getElementById('btn-toggle-camera'),
-      cameraToggleIcon:    document.getElementById('camera-toggle-icon'),
-
-      // History
-      historyFeed:       document.getElementById('recent-scans-container'),
-      historySkeleton:   document.getElementById('history-skeleton'),
-      historyEmptyState: document.getElementById('history-empty-state'),
-      historyCountBadge: document.getElementById('history-count-badge'),
-      searchInput:       document.getElementById('history-search-input'),
-      deptFilter:        document.getElementById('history-dept-filter'),
+      // Form submit
+      if (dom.form) {
+        dom.form.addEventListener('submit', (e) => { e.preventDefault(); submitAttendance(); });
+      }
 
       // Header buttons
-      refreshBtn:        document.getElementById('btn-terminal-refresh'),
-      syncBtn:           document.getElementById('btn-terminal-sync'),
-      logoutBtn:         document.getElementById('btn-terminal-logout'),
-      connectionStatus:  document.getElementById('connection-status'),
-      connDot:           document.getElementById('conn-dot'),
-      connLabel:         document.getElementById('conn-label'),
+      if (dom.refreshBtn) dom.refreshBtn.addEventListener('click', () => { resetUI(); loadBackendTerminalData(); });
+      if (dom.syncBtn) dom.syncBtn.addEventListener('click', () => loadBackendTerminalData(true));
+      if (dom.logoutBtn) dom.logoutBtn.addEventListener('click', () => executeLogout());
 
-      // Toast
-      toastStack:        document.getElementById('coord-toast-stack'),
-
-      // Spot modal
-      spotModalElement:  document.getElementById('spotRegistrationModal'),
-      spotForm:          document.getElementById('spot-registration-form'),
-      spotRollInput:     document.getElementById('spot-roll-input'),
-      spotNameInput:     document.getElementById('spot-name-input'),
-      spotCollegeInput:  document.getElementById('spot-college-input'),
-      spotDeptSelect:    document.getElementById('spot-dept-select'),
-      spotYearSelect:    document.getElementById('spot-year-select'),
-      spotOpenView:      document.getElementById('spot-open-event-view'),
-      spotFixedView:     document.getElementById('spot-fixed-event-view'),
-      spotOpenRollDisp:  document.getElementById('spot-open-roll-display'),
-      spotFixedRollDisp: document.getElementById('spot-fixed-roll-display'),
-      spotDeptOtherCont: document.getElementById('spot-dept-other-container'),
-      spotDeptOtherInp:  document.getElementById('spot-dept-other-input'),
-      btnConfirmSpotOpen:document.getElementById('btn-confirm-spot-open'),
-    };
-
-    // Bootstrap modal init
-    if (dom.spotModalElement && typeof bootstrap !== 'undefined') {
-      dom.spotModal = new bootstrap.Modal(dom.spotModalElement);
-    }
-  };
-
-  // ==========================================================================
-  //  EVENT BINDING
-  // ==========================================================================
-  const bindEvents = () => {
-    // Barcode input - track mode
-    if (dom.input) {
-      dom.input.addEventListener('input', (e) => {
-        setSubmitEnabled(dom.input.value.trim().length > 0);
-        state.lastInputType = (dom.input.value.length > 3 && !e.inputType) ? 'Barcode' : 'Manual';
-      });
-    }
-
-    // Form submit
-    if (dom.form) {
-      dom.form.addEventListener('submit', (e) => { e.preventDefault(); submitAttendance(); });
-    }
-
-    // Header buttons
-    if (dom.refreshBtn) dom.refreshBtn.addEventListener('click', () => { resetUI(); loadBackendTerminalData(); });
-    if (dom.syncBtn)    dom.syncBtn.addEventListener('click',    () => loadBackendTerminalData(true));
-    if (dom.logoutBtn)  dom.logoutBtn.addEventListener('click',  () => executeLogout());
-
-    // Camera buttons
-    if (dom.btnToggleCamera) dom.btnToggleCamera.addEventListener('click', toggleCamera);
-    if (dom.btnFlipCamera)   dom.btnFlipCamera.addEventListener('click',   flipCamera);
-    if (dom.cameraDeviceSelect) {
-      dom.cameraDeviceSelect.addEventListener('change', () => {
-        const idx = dom.cameraDeviceSelect.selectedIndex;
-        state.activeCameraIndex = idx;
-        if (state.cameraRunning) {
-          stopCamera().then(() => startCameraWithCurrentDevice());
-        }
-      });
-    }
-
-    // Search & filter
-    if (dom.searchInput) {
-      dom.searchInput.addEventListener('input', () => {
-        state.searchQuery = dom.searchInput.value.trim().toLowerCase();
-        renderHistory();
-      });
-    }
-    if (dom.deptFilter) {
-      dom.deptFilter.addEventListener('change', () => {
-        state.deptFilter = dom.deptFilter.value;
-        renderHistory();
-      });
-    }
-
-    // Sidebar / Top Nav Tab Switching
-    const tabScanner = document.getElementById('tab-btn-scanner');
-    const tabAttendance = document.getElementById('tab-btn-attendance');
-    const panelScanner = document.getElementById('scanner-view-panel');
-    const panelAttendance = document.getElementById('attendance-view-panel');
-
-    if (tabScanner && tabAttendance) {
-      tabScanner.addEventListener('click', () => {
-        tabScanner.classList.add('active', 'text-white');
-        tabScanner.classList.remove('text-white-50');
-        tabAttendance.classList.remove('active', 'text-white');
-        tabAttendance.classList.add('text-white-50');
-
-        panelScanner && panelScanner.classList.remove('d-none');
-        panelAttendance && panelAttendance.classList.add('d-none');
-      });
-
-      tabAttendance.addEventListener('click', () => {
-        tabAttendance.classList.add('active', 'text-white');
-        tabAttendance.classList.remove('text-white-50');
-        tabScanner.classList.remove('active', 'text-white');
-        tabScanner.classList.add('text-white-50');
-
-        panelScanner && panelScanner.classList.add('d-none');
-        panelAttendance && panelAttendance.classList.remove('d-none');
-        renderAttendanceTwoColumns();
-      });
-    }
-
-    // Verification modal confirm button
-    const btnVerifConfirm = document.getElementById('btn-confirm-attendance-verif');
-    if (btnVerifConfirm) {
-      btnVerifConfirm.addEventListener('click', confirmVerificationAttendance);
-    }
-
-    // Spot Student Type select change
-    const spotTypeSelect = document.getElementById('spot-student-type-select');
-    if (spotTypeSelect) {
-      spotTypeSelect.addEventListener('change', (e) => {
-        const isBvc = e.target.value === 'BVC';
-        const collegeCont = document.getElementById('spot-college-container');
-        const collegeInput = document.getElementById('spot-college-input');
-
-        if (isBvc) {
-          if (collegeCont) collegeCont.classList.add('d-none');
-          if (collegeInput) collegeInput.value = 'Bonam Venkata Chalamayya Engineering College';
-        } else {
-          if (collegeCont) collegeCont.classList.remove('d-none');
-          if (collegeInput) collegeInput.value = '';
-        }
-      });
-    }
-
-    // Spot modal submit
-    if (dom.spotForm)          dom.spotForm.addEventListener('submit', (e) => { e.preventDefault(); submitSpotFixed(); });
-    if (dom.btnConfirmSpotOpen) dom.btnConfirmSpotOpen.addEventListener('click', submitSpotOpen);
-
-    // Re-focus input when spot modal closes
-    if (dom.spotModalElement) {
-      dom.spotModalElement.addEventListener('hidden.bs.modal', () => { focusInput(); });
-    }
-
-    // Auto-focus lock on desktop: body clicks redirect to input
-    document.body.addEventListener('click', (e) => {
-      const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
-      if (modalOpen) return;
-      const ignore = [dom.logoutBtn, dom.refreshBtn, dom.syncBtn, dom.btnFlipCamera,
-                      dom.btnToggleCamera, dom.cameraDeviceSelect, dom.searchInput, dom.deptFilter];
-      if (!ignore.includes(e.target) && dom.form && !dom.form.contains(e.target)) {
-        focusInput();
+      // Camera buttons
+      if (dom.btnToggleCamera) dom.btnToggleCamera.addEventListener('click', toggleCamera);
+      if (dom.btnFlipCamera) dom.btnFlipCamera.addEventListener('click', flipCamera);
+      if (dom.cameraDeviceSelect) {
+        dom.cameraDeviceSelect.addEventListener('change', () => {
+          const idx = dom.cameraDeviceSelect.selectedIndex;
+          state.activeCameraIndex = idx;
+          if (state.cameraRunning) {
+            stopCamera().then(() => startCameraWithCurrentDevice());
+          }
+        });
       }
-    });
 
-    // Re-focus after blur (with guard)
-    if (dom.input) {
-      dom.input.addEventListener('blur', () => {
-        setTimeout(() => {
-          const active = document.activeElement;
-          const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
-          if (!modalOpen && active !== dom.logoutBtn && active !== dom.refreshBtn &&
+      // Search & filter
+      if (dom.searchInput) {
+        dom.searchInput.addEventListener('input', () => {
+          state.searchQuery = dom.searchInput.value.trim().toLowerCase();
+          renderHistory();
+        });
+      }
+      if (dom.deptFilter) {
+        dom.deptFilter.addEventListener('change', () => {
+          state.deptFilter = dom.deptFilter.value;
+          renderHistory();
+        });
+      }
+
+      // Sidebar / Top Nav Tab Switching
+      const tabScanner = document.getElementById('tab-btn-scanner');
+      const tabAttendance = document.getElementById('tab-btn-attendance');
+      const panelScanner = document.getElementById('scanner-view-panel');
+      const panelAttendance = document.getElementById('attendance-view-panel');
+
+      if (tabScanner && tabAttendance) {
+        tabScanner.addEventListener('click', () => {
+          tabScanner.classList.add('active', 'text-white');
+          tabScanner.classList.remove('text-white-50');
+          tabAttendance.classList.remove('active', 'text-white');
+          tabAttendance.classList.add('text-white-50');
+
+          panelScanner && panelScanner.classList.remove('d-none');
+          panelAttendance && panelAttendance.classList.add('d-none');
+        });
+
+        tabAttendance.addEventListener('click', () => {
+          tabAttendance.classList.add('active', 'text-white');
+          tabAttendance.classList.remove('text-white-50');
+          tabScanner.classList.remove('active', 'text-white');
+          tabScanner.classList.add('text-white-50');
+
+          panelScanner && panelScanner.classList.add('d-none');
+          panelAttendance && panelAttendance.classList.remove('d-none');
+          renderAttendanceTwoColumns();
+        });
+      }
+
+      // Verification modal confirm button
+      const btnVerifConfirm = document.getElementById('btn-confirm-attendance-verif');
+      if (btnVerifConfirm) {
+        btnVerifConfirm.addEventListener('click', confirmVerificationAttendance);
+      }
+
+      // Spot Student Type select change
+      const spotTypeSelect = document.getElementById('spot-student-type-select');
+      if (spotTypeSelect) {
+        spotTypeSelect.addEventListener('change', (e) => {
+          const isBvc = e.target.value === 'BVC';
+          const collegeCont = document.getElementById('spot-college-container');
+          const collegeInput = document.getElementById('spot-college-input');
+
+          if (isBvc) {
+            if (collegeCont) collegeCont.classList.add('d-none');
+            if (collegeInput) collegeInput.value = 'Bonam Venkata Chalamayya Engineering College';
+          } else {
+            if (collegeCont) collegeCont.classList.remove('d-none');
+            if (collegeInput) collegeInput.value = '';
+          }
+        });
+      }
+
+      // Spot modal submit
+      if (dom.spotForm) dom.spotForm.addEventListener('submit', (e) => { e.preventDefault(); submitSpotFixed(); });
+      if (dom.btnConfirmSpotOpen) dom.btnConfirmSpotOpen.addEventListener('click', submitSpotOpen);
+
+      // Re-focus input when spot modal closes
+      if (dom.spotModalElement) {
+        dom.spotModalElement.addEventListener('hidden.bs.modal', () => { focusInput(); });
+      }
+
+      // Auto-focus lock on desktop: body clicks redirect to input
+      document.body.addEventListener('click', (e) => {
+        const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
+        if (modalOpen) return;
+        const ignore = [dom.logoutBtn, dom.refreshBtn, dom.syncBtn, dom.btnFlipCamera,
+        dom.btnToggleCamera, dom.cameraDeviceSelect, dom.searchInput, dom.deptFilter];
+        if (!ignore.includes(e.target) && dom.form && !dom.form.contains(e.target)) {
+          focusInput();
+        }
+      });
+
+      // Re-focus after blur (with guard)
+      if (dom.input) {
+        dom.input.addEventListener('blur', () => {
+          setTimeout(() => {
+            const active = document.activeElement;
+            const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
+            if (!modalOpen && active !== dom.logoutBtn && active !== dom.refreshBtn &&
               active !== dom.syncBtn && active !== dom.searchInput && active !== dom.deptFilter &&
               active !== dom.cameraDeviceSelect) {
-            focusInput();
-          }
-        }, 120);
-      });
-    }
-  };
-
-  // ==========================================================================
-  //  SESSION TOKEN
-  // ==========================================================================
-  const extractSessionToken = () => {
-    try {
-      console.log('=== FRONTEND SESSION INVESTIGATION ===');
-      
-      const rawTemplateToken = (typeof window.SESSION_TOKEN_FROM_BACKEND !== 'undefined') ? window.SESSION_TOKEN_FROM_BACKEND : null;
-      
-      // Detect unevaluated GAS template syntax (served as static file on Netlify)
-      // e.g. "<?= token ?>" means GAS template was NOT processed — treat as null
-      const isUnevaluatedTemplate = rawTemplateToken && (
-        String(rawTemplateToken).indexOf('<?') !== -1 ||
-        String(rawTemplateToken).indexOf('?>') !== -1
-      );
-      const templateToken = isUnevaluatedTemplate ? null : rawTemplateToken;
-
-      if (isUnevaluatedTemplate) {
-        console.warn('⚠️ GAS template tag detected as literal string (static hosting) — skipping template token, falling back to URL params.');
-      }
-      console.log('Template token (raw):', rawTemplateToken, '| Valid:', !!templateToken);
-      
-      // 1. Primary: token injected by backend template context (only valid inside GAS)
-      if (templateToken) {
-        localStorage.setItem('sessionToken', templateToken);
-        state.sessionToken = templateToken;
-        console.log('Session token loaded from GAS template parameter:', templateToken);
-      } else {
-        // 2. Secondary: token passed in URL by login redirect (?token=...)
-        const params = new URLSearchParams(window.location.search);
-        const urlToken = params.get('token');
-        console.log('Token retrieved from URL parameter:', urlToken);
-        if (urlToken) {
-          localStorage.setItem('sessionToken', urlToken);
-          state.sessionToken = urlToken;
-          console.log('✅ Session token loaded from URL parameter:', urlToken);
-        } else {
-          // 3. Fallback: token stored in localStorage (e.g. page refresh)
-          state.sessionToken = localStorage.getItem('sessionToken') || null;
-          console.log('Session token loaded from fallback localStorage:', state.sessionToken);
-        }
-      }
-
-      const storedToken = localStorage.getItem('sessionToken');
-      console.log('Token stored in localStorage:', storedToken);
-      console.log('Final resolved token to be used:', state.sessionToken);
-      console.log('=======================================');
-    } catch (e) {
-      console.error('Session token extraction error:', e);
-    }
-  };
-
-
-  // ==========================================================================
-  //  NETWORK MONITOR
-  // ==========================================================================
-  const monitorConnection = () => {
-    const update = () => {
-      const online = navigator.onLine;
-      if (dom.connectionStatus) dom.connectionStatus.classList.toggle('offline', !online);
-      if (dom.connLabel) dom.connLabel.textContent = online ? 'Online' : 'Offline';
-    };
-    window.addEventListener('online',  update);
-    window.addEventListener('offline', update);
-    update();
-  };
-
-  // ==========================================================================
-  //  CAMERA MANAGEMENT
-  // ==========================================================================
-  let preflightDeviceId = null;
-
-  const initCamera = async () => {
-    console.log("=== CAMERA INIT START ===");
-    if (typeof Html5Qrcode === 'undefined') {
-      setCameraStatus('Unavailable');
-      return;
-    }
-
-    try {
-      console.log("Requesting camera permission preflight...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment"
-        }
-      });
-      
-      console.log("Preflight stream obtained successfully.");
-      const tracks = stream.getVideoTracks();
-      tracks.forEach((track, idx) => {
-        console.log(`Track ${idx}:`, track.label, "ReadyState:", track.readyState);
-      });
-
-      if (tracks.length > 0) {
-        const settings = tracks[0].getSettings();
-        preflightDeviceId = settings.deviceId;
-        console.log("Saved preflight deviceId:", preflightDeviceId);
-      }
-
-      // Stop temporary tracks immediately
-      tracks.forEach(track => {
-        track.stop();
-        console.log("Stopped preflight track:", track.label);
-      });
-
-      // Query available cameras
-      try {
-        console.log("Querying getCameras() after permission grant...");
-        const cameras = await Html5Qrcode.getCameras();
-        console.log("getCameras() returned:", cameras);
-        
-        if (cameras && cameras.length > 0) {
-          state.availableCameras = cameras;
-          setCameraStatus('Ready – tap to start');
-
-          // Show device selector when multiple cameras exist
-          if (cameras.length > 1 && dom.cameraDeviceSelect) {
-            dom.cameraDeviceSelect.innerHTML = cameras.map((c, i) =>
-              `<option value="${i}">${c.label || `Camera ${i + 1}`}</option>`
-            ).join('');
-            dom.cameraDeviceSelect.classList.remove('d-none');
-            // Default to rear/environment camera
-            const envIdx = cameras.findIndex(c => /back|rear|environment/i.test(c.label));
-            state.activeCameraIndex = envIdx >= 0 ? envIdx : 0;
-            dom.cameraDeviceSelect.selectedIndex = state.activeCameraIndex;
-          }
-        } else {
-          console.warn("getCameras() returned empty array. Will use preflightDeviceId.");
-          setCameraStatus('Ready – tap to start');
-        }
-      } catch (err) {
-        console.warn("getCameras() failed, falling back to preflightDeviceId. Error:", err);
-        setCameraStatus('Ready – tap to start');
-      }
-    } catch (err) {
-      console.error("Camera permission preflight FAILED:", err);
-      setCameraStatus('Permission denied');
-      showToast('error', 'Camera permission denied: ' + err.message);
-    }
-    console.log("=== CAMERA INIT END ===");
-  };
-
-  const startCameraWithCurrentDevice = () => {
-    if (typeof Html5Qrcode === 'undefined') {
-      showToast('error', 'QR scanner library not loaded. Check internet connection.');
-      return;
-    }
-    if (state.cameraRunning) return; // Already running
-
-    const container = document.getElementById('interactive-camera-scanner');
-    if (container) container.innerHTML = '';
-    html5QrCode = null;
-
-    try {
-      html5QrCode = new Html5Qrcode('interactive-camera-scanner', {
-        verbose: false
-      });
-    } catch (e) {
-      console.error('Html5Qrcode instantiation failed:', e);
-      setCameraStatus('Init failed');
-      showToast('error', 'Failed to initialize camera scanner.');
-      return;
-    }
-
-    // Build camera constraint
-    let cameraConstraint;
-    let selectedCamera = null;
-    if (state.availableCameras.length > 0 && state.availableCameras[state.activeCameraIndex]) {
-      selectedCamera = state.availableCameras[state.activeCameraIndex];
-      cameraConstraint = selectedCamera.id;
-    } else if (preflightDeviceId) {
-      console.log("Using preflightDeviceId directly for constraint:", preflightDeviceId);
-      cameraConstraint = preflightDeviceId;
-    } else {
-      // Fallback: facingMode only
-      cameraConstraint = { facingMode: state.facingMode };
-    }
-
-    console.log('=== START CAMERA CONTROLS ===');
-    console.log('cameraConstraint:', cameraConstraint);
-    console.log('activeCameraIndex:', state.activeCameraIndex);
-    console.log('selected camera label:', selectedCamera ? selectedCamera.label : 'N/A');
-    console.log('selected camera id:', selectedCamera ? selectedCamera.id : 'N/A');
-    console.log('=============================');
-
-    const config = {
-      fps: 10,
-      qrbox: (w, h) => {
-        const size = Math.min(w, h) * 0.7;
-        return { width: Math.round(size), height: Math.round(size * 0.6) };
-      },
-      disableFlip: false,
-      rememberLastUsedCamera: false,
-    };
-
-    setCameraStatus('Starting...');
-
-    html5QrCode.start(
-      cameraConstraint,
-      config,
-      (decodedText) => {
-        const now = Date.now();
-        const lastScan = state.recentRolls[decodedText] || 0;
-        if (now - lastScan < state.DUPLICATE_COOLDOWN_MS) return;
-        state.recentRolls[decodedText] = now;
-
-        if (state.isProcessing) return;
-        if (navigator.vibrate) navigator.vibrate([80]);
-
-        if (dom.input) {
-          dom.input.value = decodedText.trim().toUpperCase();
-          state.lastInputType = 'Barcode';
-          setSubmitEnabled(true);
-          setScannerStatus('Ready to submit', 'status-info');
-        }
-      },
-      () => { /* QR frame error – ignore */ }
-    ).then(() => {
-      state.cameraRunning = true;
-      setCameraStatus('Active');
-      if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.add('hidden');
-      if (dom.cameraToggleIcon)   dom.cameraToggleIcon.className = 'bi bi-camera-video-fill';
-      console.log('Camera started successfully.');
-    }).catch(err => {
-      state.cameraRunning = false;
-      html5QrCode = null;
-      console.error('Camera start failed:', err);
-      const msg = err && err.message ? err.message : String(err);
-      if (/permission|denied|NotAllowed/i.test(msg)) {
-        setCameraStatus('Permission denied');
-        showToast('error', 'Camera permission denied or permissions policy violation.');
-      } else if (/NotFound|no camera/i.test(msg)) {
-        setCameraStatus('No camera found');
-        showToast('warning', 'No camera detected on this device.');
-      } else {
-        setCameraStatus('Failed – use manual input');
-        showToast('error', 'Camera failed to start: ' + msg);
-      }
-    });
-  };
-
-  const stopCamera = () => {
-    return new Promise((resolve) => {
-      if (html5QrCode && state.cameraRunning) {
-        html5QrCode.stop().then(() => {
-          state.cameraRunning = false;
-          html5QrCode = null; // Destroy instance fully so next start is clean
-          if (dom.cameraToggleIcon)    dom.cameraToggleIcon.className = 'bi bi-camera-video-off-fill';
-          if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.remove('hidden');
-          setCameraStatus('Stopped');
-          resolve();
-        }).catch(err => {
-          console.error('Camera stop error:', err);
-          state.cameraRunning = false;
-          html5QrCode = null;
-          resolve();
+              focusInput();
+            }
+          }, 120);
         });
-      } else {
-        state.cameraRunning = false;
-        html5QrCode = null;
-        resolve();
       }
-    });
-  };
+    };
 
-  const toggleCamera = () => {
-    console.log("ACTIVE CAMERA BUILD v2 - " + new Date().toISOString());
-    console.log("preflightDeviceId =", preflightDeviceId);
-    console.log("available cameras =", state.availableCameras.length);
-    if (state.cameraRunning) {
-      stopCamera();
-    } else {
-      // If cameras not yet enumerated, try to enumerate first then start
-      if (state.availableCameras.length === 0 && typeof Html5Qrcode !== 'undefined') {
-        Html5Qrcode.getCameras().then(cameras => {
+    // ==========================================================================
+    //  SESSION TOKEN
+    // ==========================================================================
+    const extractSessionToken = () => {
+      try {
+        console.log('=== FRONTEND SESSION INVESTIGATION ===');
+
+        const rawTemplateToken = (typeof window.SESSION_TOKEN_FROM_BACKEND !== 'undefined') ? window.SESSION_TOKEN_FROM_BACKEND : null;
+
+        // Detect unevaluated GAS template syntax (served as static file on Netlify)
+        // e.g. "<?= token ?>" means GAS template was NOT processed — treat as null
+        const isUnevaluatedTemplate = rawTemplateToken && (
+          String(rawTemplateToken).indexOf('<?') !== -1 ||
+          String(rawTemplateToken).indexOf('?>') !== -1
+        );
+        const templateToken = isUnevaluatedTemplate ? null : rawTemplateToken;
+
+        if (isUnevaluatedTemplate) {
+          console.warn('⚠️ GAS template tag detected as literal string (static hosting) — skipping template token, falling back to URL params.');
+        }
+        console.log('Template token (raw):', rawTemplateToken, '| Valid:', !!templateToken);
+
+        // 1. Primary: token injected by backend template context (only valid inside GAS)
+        if (templateToken) {
+          localStorage.setItem('sessionToken', templateToken);
+          state.sessionToken = templateToken;
+          console.log('Session token loaded from GAS template parameter:', templateToken);
+        } else {
+          // 2. Secondary: token passed in URL by login redirect (?token=...)
+          const params = new URLSearchParams(window.location.search);
+          const urlToken = params.get('token');
+          console.log('Token retrieved from URL parameter:', urlToken);
+          if (urlToken) {
+            localStorage.setItem('sessionToken', urlToken);
+            state.sessionToken = urlToken;
+            console.log('✅ Session token loaded from URL parameter:', urlToken);
+          } else {
+            // 3. Fallback: token stored in localStorage (e.g. page refresh)
+            state.sessionToken = localStorage.getItem('sessionToken') || null;
+            console.log('Session token loaded from fallback localStorage:', state.sessionToken);
+          }
+        }
+
+        const storedToken = localStorage.getItem('sessionToken');
+        console.log('Token stored in localStorage:', storedToken);
+        console.log('Final resolved token to be used:', state.sessionToken);
+        console.log('=======================================');
+      } catch (e) {
+        console.error('Session token extraction error:', e);
+      }
+    };
+
+
+    // ==========================================================================
+    //  NETWORK MONITOR
+    // ==========================================================================
+    const monitorConnection = () => {
+      const update = () => {
+        const online = navigator.onLine;
+        if (dom.connectionStatus) dom.connectionStatus.classList.toggle('offline', !online);
+        if (dom.connLabel) dom.connLabel.textContent = online ? 'Online' : 'Offline';
+      };
+      window.addEventListener('online', update);
+      window.addEventListener('offline', update);
+      update();
+    };
+
+    // ==========================================================================
+    //  CAMERA MANAGEMENT
+    // ==========================================================================
+    let preflightDeviceId = null;
+
+    const initCamera = async () => {
+      console.log("=== CAMERA INIT START ===");
+      if (typeof Html5Qrcode === 'undefined') {
+        setCameraStatus('Unavailable');
+        return;
+      }
+
+      try {
+        console.log("Requesting camera permission preflight...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment"
+          }
+        });
+
+        console.log("Preflight stream obtained successfully.");
+        const tracks = stream.getVideoTracks();
+        tracks.forEach((track, idx) => {
+          console.log(`Track ${idx}:`, track.label, "ReadyState:", track.readyState);
+        });
+
+        if (tracks.length > 0) {
+          const settings = tracks[0].getSettings();
+          preflightDeviceId = settings.deviceId;
+          console.log("Saved preflight deviceId:", preflightDeviceId);
+        }
+
+        // Stop temporary tracks immediately
+        tracks.forEach(track => {
+          track.stop();
+          console.log("Stopped preflight track:", track.label);
+        });
+
+        // Query available cameras
+        try {
+          console.log("Querying getCameras() after permission grant...");
+          const cameras = await Html5Qrcode.getCameras();
+          console.log("getCameras() returned:", cameras);
+
           if (cameras && cameras.length > 0) {
             state.availableCameras = cameras;
+            setCameraStatus('Ready – tap to start');
+
+            // Show device selector when multiple cameras exist
             if (cameras.length > 1 && dom.cameraDeviceSelect) {
               dom.cameraDeviceSelect.innerHTML = cameras.map((c, i) =>
                 `<option value="${i}">${c.label || `Camera ${i + 1}`}</option>`
               ).join('');
               dom.cameraDeviceSelect.classList.remove('d-none');
-              
-              // Smart camera default choice: prefer rear environment camera if it exists, otherwise use first camera
+              // Default to rear/environment camera
               const envIdx = cameras.findIndex(c => /back|rear|environment/i.test(c.label));
               state.activeCameraIndex = envIdx >= 0 ? envIdx : 0;
               dom.cameraDeviceSelect.selectedIndex = state.activeCameraIndex;
             }
+          } else {
+            console.warn("getCameras() returned empty array. Will use preflightDeviceId.");
+            setCameraStatus('Ready – tap to start');
           }
-          startCameraWithCurrentDevice();
-        }).catch(() => startCameraWithCurrentDevice());
-      } else {
-        startCameraWithCurrentDevice();
+        } catch (err) {
+          console.warn("getCameras() failed, falling back to preflightDeviceId. Error:", err);
+          setCameraStatus('Ready – tap to start');
+        }
+      } catch (err) {
+        console.error("Camera permission preflight FAILED:", err);
+        setCameraStatus('Permission denied');
+        showToast('error', 'Camera permission denied: ' + err.message);
       }
-    }
-  };
+      console.log("=== CAMERA INIT END ===");
+    };
 
-  const flipCamera = () => {
-    const cameras = state.availableCameras;
-    if (cameras.length > 1) {
-      state.activeCameraIndex = (state.activeCameraIndex + 1) % cameras.length;
-      if (dom.cameraDeviceSelect) dom.cameraDeviceSelect.selectedIndex = state.activeCameraIndex;
-    } else {
-      state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
-    }
-    if (state.cameraRunning) {
-      stopCamera().then(() => startCameraWithCurrentDevice());
-    } else {
-      showToast('info', 'Camera mode changed. Press the camera button to start.');
-    }
-  };
+    const startCameraWithCurrentDevice = () => {
+      if (typeof Html5Qrcode === 'undefined') {
+        showToast('error', 'QR scanner library not loaded. Check internet connection.');
+        return;
+      }
+      if (state.cameraRunning) return; // Already running
 
-  const setCameraStatus = (text) => {
-    if (dom.cameraStatusText) dom.cameraStatusText.textContent = text;
-  };
+      const container = document.getElementById('interactive-camera-scanner');
+      if (container) container.innerHTML = '';
+      html5QrCode = null;
 
-  const setScannerStatus = (text, className = '') => {
-    if (dom.scannerStatus) {
-      dom.scannerStatus.textContent = text;
-      dom.scannerStatus.className = 'coord-status-text ' + className;
-    }
-  };
+      try {
+        html5QrCode = new Html5Qrcode('interactive-camera-scanner', {
+          verbose: false
+        });
+      } catch (e) {
+        console.error('Html5Qrcode instantiation failed:', e);
+        setCameraStatus('Init failed');
+        showToast('error', 'Failed to initialize camera scanner.');
+        return;
+      }
 
-  // ==========================================================================
-  //  BACKEND HYDRATION
-  // ==========================================================================
-  const loadBackendTerminalData = (showSyncToast = false) => {
-    setScannerStatus('Syncing...', 'status-info');
-    if (dom.input) dom.input.disabled = false;
+      // Build camera constraint
+      let cameraConstraint;
+      let selectedCamera = null;
+      if (state.availableCameras.length > 0 && state.availableCameras[state.activeCameraIndex]) {
+        selectedCamera = state.availableCameras[state.activeCameraIndex];
+        cameraConstraint = selectedCamera.id;
+      } else if (preflightDeviceId) {
+        console.log("Using preflightDeviceId directly for constraint:", preflightDeviceId);
+        cameraConstraint = preflightDeviceId;
+      } else {
+        // Fallback: facingMode only
+        cameraConstraint = { facingMode: state.facingMode };
+      }
 
-    console.log('=== FRONTEND API CALL INVESTIGATION ===');
-    console.log('state.sessionToken:', state.sessionToken);
-    console.log('localStorage sessionToken:', localStorage.getItem('sessionToken'));
-    console.log('Is state.sessionToken valid?:', !!state.sessionToken);
-    console.log('=======================================');
+      console.log('=== START CAMERA CONTROLS ===');
+      console.log('cameraConstraint:', cameraConstraint);
+      console.log('activeCameraIndex:', state.activeCameraIndex);
+      console.log('selected camera label:', selectedCamera ? selectedCamera.label : 'N/A');
+      console.log('selected camera id:', selectedCamera ? selectedCamera.id : 'N/A');
+      console.log('=============================');
 
-    google.script.run
-      .withSuccessHandler((res) => {
-        console.log("========== SUCCESS CALLBACK ==========");
-        console.log("Complete Response:", res);
-        console.log("Success:", res?.success);
-        console.log("Message:", res?.message);
+      const config = {
+        fps: 10,
+        qrbox: (w, h) => {
+          const size = Math.min(w, h) * 0.7;
+          return { width: Math.round(size), height: Math.round(size * 0.6) };
+        },
+        disableFlip: false,
+        rememberLastUsedCamera: false,
+      };
 
-        if (res) {
+      setCameraStatus('Starting...');
+
+      html5QrCode.start(
+        cameraConstraint,
+        config,
+        (decodedText) => {
+          const now = Date.now();
+          const lastScan = state.recentRolls[decodedText] || 0;
+          if (now - lastScan < state.DUPLICATE_COOLDOWN_MS) return;
+          state.recentRolls[decodedText] = now;
+
+          if (state.isProcessing) return;
+          if (navigator.vibrate) navigator.vibrate([80]);
+
+          if (dom.input) {
+            dom.input.value = decodedText.trim().toUpperCase();
+            state.lastInputType = 'Barcode';
+            setSubmitEnabled(true);
+            setScannerStatus('Ready to submit', 'status-info');
+          }
+        },
+        () => { /* QR frame error – ignore */ }
+      ).then(() => {
+        state.cameraRunning = true;
+        setCameraStatus('Active');
+        if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.add('hidden');
+        if (dom.cameraToggleIcon) dom.cameraToggleIcon.className = 'bi bi-camera-video-fill';
+        console.log('Camera started successfully.');
+      }).catch(err => {
+        state.cameraRunning = false;
+        html5QrCode = null;
+        console.error('Camera start failed:', err);
+        const msg = err && err.message ? err.message : String(err);
+        if (/permission|denied|NotAllowed/i.test(msg)) {
+          setCameraStatus('Permission denied');
+          showToast('error', 'Camera permission denied or permissions policy violation.');
+        } else if (/NotFound|no camera/i.test(msg)) {
+          setCameraStatus('No camera found');
+          showToast('warning', 'No camera detected on this device.');
+        } else {
+          setCameraStatus('Failed – use manual input');
+          showToast('error', 'Camera failed to start: ' + msg);
+        }
+      });
+    };
+
+    const stopCamera = () => {
+      return new Promise((resolve) => {
+        if (html5QrCode && state.cameraRunning) {
+          html5QrCode.stop().then(() => {
+            state.cameraRunning = false;
+            html5QrCode = null; // Destroy instance fully so next start is clean
+            if (dom.cameraToggleIcon) dom.cameraToggleIcon.className = 'bi bi-camera-video-off-fill';
+            if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.remove('hidden');
+            setCameraStatus('Stopped');
+            resolve();
+          }).catch(err => {
+            console.error('Camera stop error:', err);
+            state.cameraRunning = false;
+            html5QrCode = null;
+            resolve();
+          });
+        } else {
+          state.cameraRunning = false;
+          html5QrCode = null;
+          resolve();
+        }
+      });
+    };
+
+    const toggleCamera = () => {
+      console.log("ACTIVE CAMERA BUILD v2 - " + new Date().toISOString());
+      console.log("preflightDeviceId =", preflightDeviceId);
+      console.log("available cameras =", state.availableCameras.length);
+      if (state.cameraRunning) {
+        stopCamera();
+      } else {
+        // If cameras not yet enumerated, try to enumerate first then start
+        if (state.availableCameras.length === 0 && typeof Html5Qrcode !== 'undefined') {
+          Html5Qrcode.getCameras().then(cameras => {
+            if (cameras && cameras.length > 0) {
+              state.availableCameras = cameras;
+              if (cameras.length > 1 && dom.cameraDeviceSelect) {
+                dom.cameraDeviceSelect.innerHTML = cameras.map((c, i) =>
+                  `<option value="${i}">${c.label || `Camera ${i + 1}`}</option>`
+                ).join('');
+                dom.cameraDeviceSelect.classList.remove('d-none');
+
+                // Smart camera default choice: prefer rear environment camera if it exists, otherwise use first camera
+                const envIdx = cameras.findIndex(c => /back|rear|environment/i.test(c.label));
+                state.activeCameraIndex = envIdx >= 0 ? envIdx : 0;
+                dom.cameraDeviceSelect.selectedIndex = state.activeCameraIndex;
+              }
+            }
+            startCameraWithCurrentDevice();
+          }).catch(() => startCameraWithCurrentDevice());
+        } else {
+          startCameraWithCurrentDevice();
+        }
+      }
+    };
+
+    const flipCamera = () => {
+      const cameras = state.availableCameras;
+      if (cameras.length > 1) {
+        state.activeCameraIndex = (state.activeCameraIndex + 1) % cameras.length;
+        if (dom.cameraDeviceSelect) dom.cameraDeviceSelect.selectedIndex = state.activeCameraIndex;
+      } else {
+        state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+      }
+      if (state.cameraRunning) {
+        stopCamera().then(() => startCameraWithCurrentDevice());
+      } else {
+        showToast('info', 'Camera mode changed. Press the camera button to start.');
+      }
+    };
+
+    const setCameraStatus = (text) => {
+      if (dom.cameraStatusText) dom.cameraStatusText.textContent = text;
+    };
+
+    const setScannerStatus = (text, className = '') => {
+      if (dom.scannerStatus) {
+        dom.scannerStatus.textContent = text;
+        dom.scannerStatus.className = 'coord-status-text ' + className;
+      }
+    };
+
+    // ==========================================================================
+    //  BACKEND HYDRATION
+    // ==========================================================================
+    const loadBackendTerminalData = (showSyncToast = false) => {
+      setScannerStatus('Syncing...', 'status-info');
+      if (dom.input) dom.input.disabled = false;
+
+      console.log('=== FRONTEND API CALL INVESTIGATION ===');
+      console.log('state.sessionToken:', state.sessionToken);
+      console.log('localStorage sessionToken:', localStorage.getItem('sessionToken'));
+      console.log('Is state.sessionToken valid?:', !!state.sessionToken);
+      console.log('=======================================');
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          console.log("========== SUCCESS CALLBACK ==========");
+          console.log("Complete Response:", res);
+          console.log("Success:", res?.success);
+          console.log("Message:", res?.message);
+
+          if (res) {
             console.log("User:", res.user);
             console.log("Event:", res.event);
             console.log("Statistics:", res.statistics);
             console.log("Recent Scans:", res.recentScans);
-        }
-        console.log("======================================");
+          }
+          console.log("======================================");
 
-        if (dom.input) dom.input.disabled = false;
-        if (res && res.success) {
-          try {
+          if (dom.input) dom.input.disabled = false;
+          if (res && res.success) {
+            try {
               console.log("Calling hydrateUI()");
               hydrateUI(res);
               console.log("hydrateUI() completed successfully");
-          } catch (e) {
+            } catch (e) {
               console.error("HYDRATE UI FAILED");
               console.error(e);
               console.error(e.stack);
+            }
+            setScannerStatus('Ready', '');
+            focusInput();
+            if (showSyncToast) showToast('success', 'Synced with server successfully.');
+          } else {
+            if (res && res.message && (res.message.indexOf('No active event assignments') !== -1 || res.message.indexOf('No active event') !== -1)) {
+              setScannerStatus('No Event Assigned', 'status-warn');
+              showToast('warning', 'No event assigned. Please contact the administrator.');
+              if (dom.eventTitleDisplay) dom.eventTitleDisplay.textContent = 'No Event Assigned';
+              if (dom.terminalEventName) dom.terminalEventName.textContent = 'No Event Assigned';
+              if (dom.eventDate) dom.eventDate.innerHTML = `<i class="bi bi-calendar3"></i> N/A`;
+              hideSkeleton();
+              return;
+            }
+            // On Netlify (BACKEND_API_URL set), show error + retry instead of redirecting to login
+            const errMsg = res && res.message ? res.message : 'Session verification failed.';
+            setScannerStatus('Error – tap Refresh to retry', 'status-error');
+            showToast('error', errMsg);
+            console.error('[Coordinator Terminal] Backend returned error:', errMsg);
+            // Only redirect if we're running inside Google Apps Script iframe (not Netlify standalone)
+            if (!(window.BACKEND_API_URL)) {
+              handleRedirect();
+            }
           }
-          setScannerStatus('Ready', '');
+        })
+        .withFailureHandler((err) => {
+          if (dom.input) dom.input.disabled = false;
+          setScannerStatus('Offline – manual entry active', 'status-warn');
+          updateConnectionStatus(false);
+          showToast('error', 'Server unreachable. Manual entry available.');
           focusInput();
-          if (showSyncToast) showToast('success', 'Synced with server successfully.');
-        } else {
-          if (res && res.message && (res.message.indexOf('No active event assignments') !== -1 || res.message.indexOf('No active event') !== -1)) {
-            setScannerStatus('No Event Assigned', 'status-warn');
-            showToast('warning', 'No event assigned. Please contact the administrator.');
-            if (dom.eventTitleDisplay) dom.eventTitleDisplay.textContent = 'No Event Assigned';
-            if (dom.terminalEventName) dom.terminalEventName.textContent = 'No Event Assigned';
-            if (dom.eventDate) dom.eventDate.innerHTML = `<i class="bi bi-calendar3"></i> N/A`;
-            hideSkeleton();
-            return;
-          }
-          // On Netlify (BACKEND_API_URL set), show error + retry instead of redirecting to login
-          const errMsg = res && res.message ? res.message : 'Session verification failed.';
-          setScannerStatus('Error – tap Refresh to retry', 'status-error');
-          showToast('error', errMsg);
-          console.error('[Coordinator Terminal] Backend returned error:', errMsg);
-          // Only redirect if we're running inside Google Apps Script iframe (not Netlify standalone)
-          if (!(window.BACKEND_API_URL)) {
-            handleRedirect();
-          }
-        }
-      })
-      .withFailureHandler((err) => {
-        if (dom.input) dom.input.disabled = false;
-        setScannerStatus('Offline – manual entry active', 'status-warn');
-        updateConnectionStatus(false);
-        showToast('error', 'Server unreachable. Manual entry available.');
-        focusInput();
-      })
-      .getCoordinatorTerminalData(state.sessionToken);
-  };
+        })
+        .getCoordinatorTerminalData(state.sessionToken);
+    };
 
-  const hydrateUI = (data) => {
-    console.log("========== HYDRATE UI ==========");
-    console.log(data);
-    if (!data) {
+    const hydrateUI = (data) => {
+      console.log("========== HYDRATE UI ==========");
+      console.log(data);
+      if (!data) {
         console.error("hydrateUI received NULL data");
         return;
-    }
-    console.log("Event:", data.event);
-    console.log("User:", data.user);
-    console.log("Statistics:", data.statistics);
-    console.log("Recent Scans:", data.recentScans);
-    console.log("================================");
+      }
+      console.log("Event:", data.event);
+      console.log("User:", data.user);
+      console.log("Statistics:", data.statistics);
+      console.log("Recent Scans:", data.recentScans);
+      console.log("================================");
 
-    // Dom element validation checks (Step 6)
-    if (!dom.eventTitleDisplay) console.error("eventTitleDisplay not found");
-    if (!dom.terminalEventName) console.error("terminalEventName not found");
-    if (!dom.eventDate) console.error("eventDate not found");
-    if (!dom.coordName) console.error("coordName not found");
-    if (!dom.statsPresent) console.error("statsPresent not found");
-    if (!dom.statsRemaining) console.error("statsRemaining not found");
-    if (!dom.statsTotal) console.error("statsTotal not found");
-    if (!dom.historyFeed) console.error("historyFeed not found");
+      // Dom element validation checks (Step 6)
+      if (!dom.eventTitleDisplay) console.error("eventTitleDisplay not found");
+      if (!dom.terminalEventName) console.error("terminalEventName not found");
+      if (!dom.eventDate) console.error("eventDate not found");
+      if (!dom.coordName) console.error("coordName not found");
+      if (!dom.statsPresent) console.error("statsPresent not found");
+      if (!dom.statsRemaining) console.error("statsRemaining not found");
+      if (!dom.statsTotal) console.error("statsTotal not found");
+      if (!dom.historyFeed) console.error("historyFeed not found");
 
-    // Event details
-    const ev = data.event || {};
-    const eventName = ev['Event Name'] || ev.eventName || 'Event Active';
-    if (dom.eventTitleDisplay)  dom.eventTitleDisplay.textContent = eventName;
-    if (dom.terminalEventName)  dom.terminalEventName.textContent = eventName;
-    if (dom.eventDate)          dom.eventDate.innerHTML = `<i class="bi bi-calendar3"></i> ${ev['Start Date'] || ev.startDate || 'Live'}`;
-    console.log("Updated event title");
+      // Event details
+      const ev = data.event || {};
 
-    // Coordinator name
-    const u = data.user || {};
-    const coordName = u['First Name'] || u['Student Name'] || u['Name'] || u.name || 'Coordinator';
-    if (dom.coordName) dom.coordName.innerHTML = `<i class="bi bi-person-badge"></i> ${coordName}`;
-    console.log("Updated coordinator name");
+      state.eventId =
+        ev['Event ID'] ||
+        ev.event_id ||
+        ev.eventId ||
+        null;
 
-    // Attendance type
-    state.activeEventAttendanceType = ev['Attendance Type'] || ev.attendanceType || 'Fixed';
+      console.log('[COORDINATOR-UI] Active Event ID:', state.eventId);
 
-    // Stats
-    if (data.statistics) {
-      state.statistics = {
-        present:   data.statistics.present   || 0,
-        remaining: data.statistics.remaining || 0,
-        total:     data.statistics.total     || 0,
-      };
-      renderStats();
-      console.log("Updated statistics");
-    }
+      const eventName = ev['Event Name'] || ev.eventName || 'Event Active';
+      if (dom.eventTitleDisplay) dom.eventTitleDisplay.textContent = eventName;
+      if (dom.terminalEventName) dom.terminalEventName.textContent = eventName;
+      if (dom.eventDate) dom.eventDate.innerHTML = `<i class="bi bi-calendar3"></i> ${ev['Start Date'] || ev.startDate || 'Live'}`;
+      console.log("Updated event title");
 
-    // Full scan history
-    if (data.recentScans && Array.isArray(data.recentScans)) {
-      state.allScans = data.recentScans;
-      populateDeptFilter();
-      hideSkeleton();
-      renderHistory();
-      console.log("Rendered history");
-    } else {
-      hideSkeleton();
-    }
-    console.log("Hydration completed");
-  };
+      // Coordinator name
+      const u = data.user || {};
+      const coordName = u['First Name'] || u['Student Name'] || u['Name'] || u.name || 'Coordinator';
+      if (dom.coordName) dom.coordName.innerHTML = `<i class="bi bi-person-badge"></i> ${coordName}`;
+      console.log("Updated coordinator name");
 
-  // ==========================================================================
-  //  BACKGROUND UPLOAD QUEUE & OPTIMISTIC UI
-  // ==========================================================================
-  const updateHistoryItemStatus = (roll, type, statusText) => {
-    const scan = state.allScans.find(s => s.roll === roll);
-    if (scan) {
-      if (type === 'duplicate') {
-        scan.isDuplicate = true;
-      } else if (type === 'error') {
-        scan.isError = true;
-        scan.name = `Failed: ${statusText}`;
+      // Attendance type
+      state.activeEventAttendanceType = ev['Attendance Type'] || ev.attendanceType || 'Fixed';
+
+      // Stats
+      if (data.statistics) {
+        state.statistics = {
+          present: data.statistics.present || 0,
+          remaining: data.statistics.remaining || 0,
+          total: data.statistics.total || 0,
+        };
+        renderStats();
+        console.log("Updated statistics");
+      }
+
+      // Full scan history
+      if (data.recentScans && Array.isArray(data.recentScans)) {
+        state.allScans = data.recentScans;
+        populateDeptFilter();
+        hideSkeleton();
+        renderHistory();
+        console.log("Rendered history");
       } else {
-        scan.isDuplicate = false;
-        scan.isError = false;
-        scan.statusState = 'saved';
+        hideSkeleton();
       }
-      scan.statusText = statusText;
-      if (type === 'success') {
-        scan.statusState = 'saved';
+      console.log("Hydration completed");
+    };
+
+    // ==========================================================================
+    //  BACKGROUND UPLOAD QUEUE & OPTIMISTIC UI
+    // ==========================================================================
+    const updateHistoryItemStatus = (roll, type, statusText) => {
+      const scan = state.allScans.find(s => s.roll === roll);
+      if (scan) {
+        if (type === 'duplicate') {
+          scan.isDuplicate = true;
+        } else if (type === 'error') {
+          scan.isError = true;
+          scan.name = `Failed: ${statusText}`;
+        } else {
+          scan.isDuplicate = false;
+          scan.isError = false;
+          scan.statusState = 'saved';
+        }
+        scan.statusText = statusText;
+        if (type === 'success') {
+          scan.statusState = 'saved';
+        }
+        renderHistory();
       }
-      renderHistory();
-    }
-  };
+    };
 
-  const processUploadQueue = () => {
-    if (state.isSyncing || !state.uploadQueue || state.uploadQueue.length === 0) {
-      if (state.uploadQueue && state.uploadQueue.length === 0 && dom.connLabel) {
-        dom.connLabel.textContent = navigator.onLine ? 'Online' : 'Offline';
+    const processUploadQueue = () => {
+      if (state.isSyncing || !state.uploadQueue || state.uploadQueue.length === 0) {
+        if (state.uploadQueue && state.uploadQueue.length === 0 && dom.connLabel) {
+          dom.connLabel.textContent = navigator.onLine ? 'Online' : 'Offline';
+        }
+        return;
       }
-      return;
-    }
-    
-    state.isSyncing = true;
-    const item = state.uploadQueue[0];
-    const isOpenEvent = state.activeEventAttendanceType && String(state.activeEventAttendanceType).trim().toUpperCase() === 'OPEN';
-    
-    if (dom.connLabel) {
-      dom.connLabel.textContent = `Syncing (${state.uploadQueue.length} pending)...`;
-    }
 
-    const onSuccess = (res) => {
-      state.isSyncing = false;
-      
-      if (res && res.success) {
-        state.uploadQueue.shift();
-        
-        const sInfo = res.data && res.data.student;
-        if (sInfo) {
-          const displayDept = sInfo.branch && sInfo.branch !== sInfo.dept ? `${sInfo.dept} (${sInfo.branch})` : sInfo.dept;
-          showStudentPreview({
-            name: sInfo.name,
-            roll: item.roll,
-            dept: displayDept,
-            year: sInfo.year
-          }, 'success');
+      state.isSyncing = true;
+      const item = state.uploadQueue[0];
+      const isOpenEvent = state.activeEventAttendanceType && String(state.activeEventAttendanceType).trim().toUpperCase() === 'OPEN';
 
-          // Update feed item in memory
-          const scan = state.allScans.find(s => s.roll === item.roll);
-          if (scan) {
-            scan.name = sInfo.name;
-            scan.dept = displayDept;
+      if (dom.connLabel) {
+        dom.connLabel.textContent = `Syncing (${state.uploadQueue.length} pending)...`;
+      }
+
+      const onSuccess = (res) => {
+        state.isSyncing = false;
+
+        if (res && res.success) {
+          state.uploadQueue.shift();
+
+          const sInfo = res.data && res.data.student;
+          if (sInfo) {
+            const displayDept = sInfo.branch && sInfo.branch !== sInfo.dept ? `${sInfo.dept} (${sInfo.branch})` : sInfo.dept;
+            showStudentPreview({
+              name: sInfo.name,
+              roll: item.roll,
+              dept: displayDept,
+              year: sInfo.year
+            }, 'success');
+
+            // Update feed item in memory
+            const scan = state.allScans.find(s => s.roll === item.roll);
+            if (scan) {
+              scan.name = sInfo.name;
+              scan.dept = displayDept;
+            }
           }
-        }
-        
-        updateHistoryItemStatus(item.roll, 'success', '✔ Saved');
-        
-        if (res.data && res.data.statistics) {
-          state.statistics = {
-            present:   res.data.statistics.present   || 0,
-            remaining: res.data.statistics.remaining || 0,
-            total:     res.data.statistics.total     || 0,
-          };
-          renderStats();
-        }
-        
-        processUploadQueue();
-      } else {
-        const isDuplicate = res && res.message && /already/i.test(res.message);
-        state.uploadQueue.shift();
-        
-        if (isDuplicate) {
-          updateHistoryItemStatus(item.roll, 'duplicate', 'Already Scanned');
-          showToast('warning', res.message);
-          state.statistics.present = Math.max(0, state.statistics.present - 1);
-          state.statistics.remaining++;
-          renderStats();
-          playTone('error');
+
+          updateHistoryItemStatus(item.roll, 'success', '✔ Saved');
+
+          if (res.data && res.data.statistics) {
+            state.statistics = {
+              present: res.data.statistics.present || 0,
+              remaining: res.data.statistics.remaining || 0,
+              total: res.data.statistics.total || 0,
+            };
+            renderStats();
+          }
+
           processUploadQueue();
         } else {
-          // Revert optimistic stats
-          updateHistoryItemStatus(item.roll, 'error', res && res.message ? res.message : 'Failed');
-          state.statistics.present = Math.max(0, state.statistics.present - 1);
-          state.statistics.remaining++;
-          renderStats();
-          playTone('error');
-          setScannerStatus('Not registered – opening form', 'status-warn');
-          openSpotModal(item.roll);
-          processUploadQueue();
+          const isDuplicate = res && res.message && /already/i.test(res.message);
+          state.uploadQueue.shift();
+
+          if (isDuplicate) {
+            updateHistoryItemStatus(item.roll, 'duplicate', 'Already Scanned');
+            showToast('warning', res.message);
+            state.statistics.present = Math.max(0, state.statistics.present - 1);
+            state.statistics.remaining++;
+            renderStats();
+            playTone('error');
+            processUploadQueue();
+          } else {
+            // Revert optimistic stats
+            updateHistoryItemStatus(item.roll, 'error', res && res.message ? res.message : 'Failed');
+            state.statistics.present = Math.max(0, state.statistics.present - 1);
+            state.statistics.remaining++;
+            renderStats();
+            playTone('error');
+            setScannerStatus('Not registered – opening form', 'status-warn');
+            openSpotModal(item.roll);
+            processUploadQueue();
+          }
         }
+      };
+
+      const onFailure = (err) => {
+        state.isSyncing = false;
+        if (dom.connLabel) dom.connLabel.textContent = `Offline (Sync pending: ${state.uploadQueue.length})`;
+        setTimeout(processUploadQueue, 5000);
+      };
+
+      // ⚡ UNIVERSAL FAST PATH: Direct appendRow, no heavy lock/validation delay
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onFailure)
+        .markCoordinatorAttendanceFast(state.sessionToken, item.roll);
+    };
+
+    // ==========================================================================
+    //  ATTENDANCE VERIFICATION & SUBMISSION (NO DIRECT DB PUSH WITHOUT VERIFICATION)
+    // ==========================================================================
+    const pendingScanState = {
+      roll: '',
+      name: '',
+      dept: '',
+      year: '',
+      college: '',
+      isRegistered: false
+    };
+
+    let isProcessingRoll = false;
+
+    const submitAttendance = (scannedRoll = null) => {
+      const rawVal = scannedRoll || (dom.input ? dom.input.value : '');
+      if (!rawVal || !rawVal.trim()) return;
+
+      const rawInput = rawVal.trim().toUpperCase();
+
+      // Rapid double scan protection
+      if (isProcessingRoll) {
+        console.log('[COORDINATOR-UI] Rapid processing lock active. Ignoring duplicate attempt for:', rawInput);
+        return;
       }
-    };
+      isProcessingRoll = true;
 
-    const onFailure = (err) => {
-      state.isSyncing = false;
-      if (dom.connLabel) dom.connLabel.textContent = `Offline (Sync pending: ${state.uploadQueue.length})`;
-      setTimeout(processUploadQueue, 5000);
-    };
+      setSubmitEnabled(false, '<span class="spinner-border spinner-border-sm"></span>');
+      setScannerStatus('Checking participant...', 'status-info');
 
-    // ⚡ UNIVERSAL FAST PATH: Direct appendRow, no heavy lock/validation delay
-    google.script.run
-      .withSuccessHandler(onSuccess)
-      .withFailureHandler(onFailure)
-      .markCoordinatorAttendanceFast(state.sessionToken, item.roll);
-  };
+      // Call Central Orchestrator
+      google.script.run
+        .withSuccessHandler((res) => {
+          isProcessingRoll = false;
+          setSubmitEnabled(true);
+          if (!res) {
+            showToast('error', 'No response received from server.');
+            setScannerStatus('Error', 'status-error');
+            return;
+          }
 
-  // ==========================================================================
-  //  ATTENDANCE VERIFICATION & SUBMISSION (NO DIRECT DB PUSH WITHOUT VERIFICATION)
-  // ==========================================================================
-  const pendingScanState = {
-    roll: '',
-    name: '',
-    dept: '',
-    year: '',
-    college: '',
-    isRegistered: false
-  };
+          const stateType = res.state || (res.data ? res.data.state : null);
+          const stateData = res.data || res;
 
-  let isProcessingRoll = false;
+          // Save roll to pending state
+          pendingScanState.roll = rawInput;
+          pendingScanState.studentData = stateData.studentData || {};
+          pendingScanState.event = stateData.event || {};
+          pendingScanState.stateType = stateType;
 
-  const submitAttendance = (scannedRoll = null) => {
-    const rawVal = scannedRoll || (dom.input ? dom.input.value : '');
-    if (!rawVal || !rawVal.trim()) return;
+          if (stateData.studentData) {
+            pendingScanState.name = stateData.studentData.studentName || 'Student';
+            pendingScanState.dept = stateData.studentData.branch || 'General';
+            pendingScanState.year = stateData.studentData.year || '1';
+            pendingScanState.college = stateData.studentData.college || 'BVC Engineering College';
+          }
 
-    const rawInput = rawVal.trim().toUpperCase();
+          // Handle States:
+          if (stateType === 'ALREADY_MARKED') {
+            playTone('warning');
+            setScannerStatus('Already Marked', 'status-warn');
+            showToast('warning', `Participation was already recorded for ${rawInput}.`);
+            clearInput();
+            focusInput();
+            return;
+          }
 
-    // Rapid double scan protection
-    if (isProcessingRoll) {
-      console.log('[COORDINATOR-UI] Rapid processing lock active. Ignoring duplicate attempt for:', rawInput);
-      return;
-    }
-    isProcessingRoll = true;
+          if (stateType === 'NOT_REGISTERED_SPOT_DISABLED') {
+            playTone('error');
+            setScannerStatus('Spot Reg Disabled', 'status-error');
+            showToast('error', res.message || 'Participant is not registered for this event and spot registration is not available.');
+            clearInput();
+            focusInput();
+            return;
+          }
 
-    setSubmitEnabled(false, '<span class="spinner-border spinner-border-sm"></span>');
-    setScannerStatus('Checking participant...', 'status-info');
+          if (stateType === 'SPOT_REGISTRATION_REQUIRED') {
+            playTone('info');
+            setScannerStatus('Spot Registration Available', 'status-warn');
+            const spotRoll = (stateData && stateData.studentData && stateData.studentData.rollNumber) ? stateData.studentData.rollNumber : rawInput;
+            openSpotModal(spotRoll);
+            clearInput();
+            focusInput();
+            return;
+          }
 
-    // Call Central Orchestrator
-    google.script.run
-      .withSuccessHandler((res) => {
-        isProcessingRoll = false;
-        setSubmitEnabled(true);
-        if (!res) {
-          showToast('error', 'No response received from server.');
-          setScannerStatus('Error', 'status-error');
-          return;
-        }
+          if (stateType === 'MISSING_REQUIRED_FIELDS') {
+            playTone('info');
+            setScannerStatus('Fields Required', 'status-info');
+            openVerificationModal(stateData.studentData || pendingScanState, stateData.missingFields || []);
+            clearInput();
+            focusInput();
+            return;
+          }
 
-        const stateType = res.state || (res.data ? res.data.state : null);
-        const stateData = res.data || res;
+          if (stateType === 'READY_TO_MARK' || res.success) {
+            playTone('success');
+            setScannerStatus('Ready to confirm', 'status-success');
+            openVerificationModal(stateData.studentData || pendingScanState, []);
+            clearInput();
+            focusInput();
+            return;
+          }
 
-        // Save roll to pending state
-        pendingScanState.roll = rawInput;
-        pendingScanState.studentData = stateData.studentData || {};
-        pendingScanState.event = stateData.event || {};
-        pendingScanState.stateType = stateType;
-
-        if (stateData.studentData) {
-          pendingScanState.name = stateData.studentData.studentName || 'Student';
-          pendingScanState.dept = stateData.studentData.branch || 'General';
-          pendingScanState.year = stateData.studentData.year || '1';
-          pendingScanState.college = stateData.studentData.college || 'BVC Engineering College';
-        }
-
-        // Handle States:
-        if (stateType === 'ALREADY_MARKED') {
-          playTone('warning');
-          setScannerStatus('Already Marked', 'status-warn');
-          showToast('warning', `Participation was already recorded for ${rawInput}.`);
-          showAlreadyMarkedModal(stateData);
-          clearInput();
-          focusInput();
-          return;
-        }
-
-        if (stateType === 'NOT_REGISTERED_SPOT_DISABLED') {
           playTone('error');
-          setScannerStatus('Spot Reg Disabled', 'status-error');
-          showToast('error', res.message || 'Participant is not registered for this event and spot registration is not available.');
-          showSpotDisabledModal(stateData);
+          showToast('error', res.message || 'Failed to process participant.');
+          setScannerStatus('Processing Failed', 'status-error');
           clearInput();
           focusInput();
-          return;
-        }
-
-        if (stateType === 'SPOT_REGISTRATION_REQUIRED') {
-          playTone('info');
-          setScannerStatus('Spot Registration Available', 'status-warn');
-          showSpotPromptModal(stateData);
-          clearInput();
+        })
+        .withFailureHandler((err) => {
+          isProcessingRoll = false;
+          setSubmitEnabled(true);
+          setScannerStatus('Server Error', 'status-error');
+          showToast('error', 'Server communication error: ' + (err?.message || 'Unreachable'));
           focusInput();
-          return;
-        }
+        })
+        .processParticipant(state.sessionToken, rawInput, state.eventId);
 
-        if (stateType === 'MISSING_REQUIRED_FIELDS') {
-          playTone('info');
-          setScannerStatus('Fields Required', 'status-info');
-          openVerificationModal(stateData.studentData || pendingScanState, stateData.missingFields || []);
-          clearInput();
-          focusInput();
-          return;
-        }
-
-        if (stateType === 'READY_TO_MARK' || res.success) {
-          playTone('success');
-          setScannerStatus('Ready to confirm', 'status-success');
-          openVerificationModal(stateData.studentData || pendingScanState, []);
-          clearInput();
-          focusInput();
-          return;
-        }
-
-        playTone('error');
-        showToast('error', res.message || 'Failed to process participant.');
-        setScannerStatus('Processing Failed', 'status-error');
-        clearInput();
-        focusInput();
-      })
-      .withFailureHandler((err) => {
-        isProcessingRoll = false;
-        setSubmitEnabled(true);
-        setScannerStatus('Server Error', 'status-error');
-        showToast('error', 'Server communication error: ' + (err?.message || 'Unreachable'));
-        focusInput();
-      })
-      .processParticipant(state.sessionToken, rawInput, state.eventId);
-
-    clearInput();
-    focusInput();
-  };
-
-
-  const openVerificationModal = (studentData) => {
-    const nameEl = document.getElementById('verif-name');
-    const rollEl = document.getElementById('verif-roll');
-    const deptEl = document.getElementById('verif-dept');
-    const yearEl = document.getElementById('verif-year');
-    const collegeEl = document.getElementById('verif-college');
-
-    if (nameEl) nameEl.textContent = studentData.name;
-    if (rollEl) rollEl.textContent = studentData.roll;
-    if (deptEl) deptEl.textContent = studentData.dept;
-    if (yearEl) yearEl.textContent = studentData.year + ' Year';
-    if (collegeEl) collegeEl.textContent = studentData.college;
-
-    // Check missing fields against Event Admin requirements
-    const missingCont = document.getElementById('verif-missing-fields-container');
-    const missingInputs = document.getElementById('verif-missing-fields-inputs');
-    if (missingInputs) missingInputs.innerHTML = '';
-
-    const reqFields = state.activeEventRequiredFields || [];
-    const missingList = [];
-
-    const fieldMap = {
-      'College / Institution Name': { key: 'college', label: 'College Name', type: 'text' },
-      'Department / Branch': { key: 'dept', label: 'Department / Branch', type: 'text' },
-      'Academic Year': { key: 'year', label: 'Academic Year', type: 'text' },
-      'Section': { key: 'section', label: 'Section', type: 'text' },
-      'Email Address': { key: 'email_address', label: 'Email Address', type: 'email' },
-      'Mobile / Phone Number': { key: 'phone_number', label: 'Phone Number', type: 'tel' },
-      'Gender': { key: 'gender', label: 'Gender', type: 'text' },
-      'City / Town': { key: 'city', label: 'City', type: 'text' },
-      'State': { key: 'state', label: 'State', type: 'text' },
-      'Emergency Contact Number': { key: 'emergency_contact', label: 'Emergency Contact', type: 'tel' },
-      'Accommodation Needed': { key: 'accommodation_needed', label: 'Accommodation Needed', type: 'select', options: ['No', 'Yes'] },
-      'Food Preference': { key: 'food_preference', label: 'Food Preference', type: 'select', options: ['Veg', 'Non-Veg'] },
-      'ID Proof Number': { key: 'id_proof_number', label: 'ID Proof Number', type: 'text' }
+      clearInput();
+      focusInput();
     };
 
-    reqFields.forEach(fName => {
-      const config = fieldMap[fName];
-      if (config) {
-        const val = studentData[config.key] || studentData.student?.[config.key];
-        if (!val || String(val).trim() === '' || val === '--') {
-          missingList.push({ fName, config });
-        }
-      }
-    });
 
-    if (missingList.length > 0 && missingCont && missingInputs) {
-      missingCont.classList.remove('d-none');
-      missingList.forEach(item => {
-        const col = document.createElement('div');
-        col.className = 'col-12';
-        if (item.config.type === 'select') {
-          const opts = item.config.options.map(o => `<option value="${o}">${o}</option>`).join('');
-          col.innerHTML = `
+    const openVerificationModal = (studentData) => {
+      const nameEl = document.getElementById('verif-name');
+      const rollEl = document.getElementById('verif-roll');
+      const deptEl = document.getElementById('verif-dept');
+      const yearEl = document.getElementById('verif-year');
+      const collegeEl = document.getElementById('verif-college');
+
+      if (nameEl) nameEl.textContent = studentData.name;
+      if (rollEl) rollEl.textContent = studentData.roll;
+      if (deptEl) deptEl.textContent = studentData.dept;
+      if (yearEl) yearEl.textContent = studentData.year + ' Year';
+      if (collegeEl) collegeEl.textContent = studentData.college;
+
+      // Check missing fields against Event Admin requirements
+      const missingCont = document.getElementById('verif-missing-fields-container');
+      const missingInputs = document.getElementById('verif-missing-fields-inputs');
+      if (missingInputs) missingInputs.innerHTML = '';
+
+      const reqFields = state.activeEventRequiredFields || [];
+      const missingList = [];
+
+      const fieldMap = {
+        'College / Institution Name': { key: 'college', label: 'College Name', type: 'text' },
+        'Department / Branch': { key: 'dept', label: 'Department / Branch', type: 'text' },
+        'Academic Year': { key: 'year', label: 'Academic Year', type: 'text' },
+        'Section': { key: 'section', label: 'Section', type: 'text' },
+        'Email Address': { key: 'email_address', label: 'Email Address', type: 'email' },
+        'Mobile / Phone Number': { key: 'phone_number', label: 'Phone Number', type: 'tel' },
+        'Gender': { key: 'gender', label: 'Gender', type: 'text' },
+        'City / Town': { key: 'city', label: 'City', type: 'text' },
+        'State': { key: 'state', label: 'State', type: 'text' },
+        'Emergency Contact Number': { key: 'emergency_contact', label: 'Emergency Contact', type: 'tel' },
+        'Accommodation Needed': { key: 'accommodation_needed', label: 'Accommodation Needed', type: 'select', options: ['No', 'Yes'] },
+        'Food Preference': { key: 'food_preference', label: 'Food Preference', type: 'select', options: ['Veg', 'Non-Veg'] },
+        'ID Proof Number': { key: 'id_proof_number', label: 'ID Proof Number', type: 'text' }
+      };
+
+      reqFields.forEach(fName => {
+        const config = fieldMap[fName];
+        if (config) {
+          const val = studentData[config.key] || studentData.student?.[config.key];
+          if (!val || String(val).trim() === '' || val === '--') {
+            missingList.push({ fName, config });
+          }
+        }
+      });
+
+      if (missingList.length > 0 && missingCont && missingInputs) {
+        missingCont.classList.remove('d-none');
+        missingList.forEach(item => {
+          const col = document.createElement('div');
+          col.className = 'col-12';
+          if (item.config.type === 'select') {
+            const opts = item.config.options.map(o => `<option value="${o}">${o}</option>`).join('');
+            col.innerHTML = `
             <label class="form-label small fw-bold text-secondary mb-1">${item.config.label} *</label>
             <select class="form-select form-select-sm missing-field-input" data-field="${item.config.key}" required style="border-radius:8px;">
               ${opts}
             </select>
           `;
-        } else {
-          col.innerHTML = `
+          } else {
+            col.innerHTML = `
             <label class="form-label small fw-bold text-secondary mb-1">${item.config.label} *</label>
             <input type="${item.config.type}" class="form-control form-control-sm missing-field-input" data-field="${item.config.key}" placeholder="Enter ${item.config.label}" required style="border-radius:8px;">
           `;
-        }
-        missingInputs.appendChild(col);
-      });
-    } else if (missingCont) {
-      missingCont.classList.add('d-none');
-    }
-
-    const modalEl = document.getElementById('scanVerificationModal');
-    if (modalEl && typeof bootstrap !== 'undefined') {
-      const verifModal = new bootstrap.Modal(modalEl);
-      verifModal.show();
-    }
-  };
-
-  const confirmVerificationAttendance = () => {
-    if (!pendingScanState.roll) return;
-
-    // Collect missing inputs if any
-    const missingInputs = document.querySelectorAll('.missing-field-input');
-    let isValid = true;
-    const additionalData = {};
-
-    missingInputs.forEach(inp => {
-      const fieldKey = inp.getAttribute('data-field') || inp.getAttribute('name');
-      const val = inp.value.trim();
-      if (inp.required && !val) {
-        isValid = false;
-        inp.classList.add('is-invalid');
-      } else {
-        inp.classList.remove('is-invalid');
-        if (fieldKey) additionalData[fieldKey] = val;
+          }
+          missingInputs.appendChild(col);
+        });
+      } else if (missingCont) {
+        missingCont.classList.add('d-none');
       }
-    });
 
-    if (!isValid) {
-      showToast('warning', 'Please fill in all missing required fields.');
-      return;
-    }
+      const modalEl = document.getElementById('scanVerificationModal');
+      if (modalEl && typeof bootstrap !== 'undefined') {
+        const verifModal = new bootstrap.Modal(modalEl);
+        verifModal.show();
+      }
+    };
 
-    const btnConfirm = document.getElementById('btn-confirm-attendance');
-    if (btnConfirm) {
-      btnConfirm.disabled = true;
-      btnConfirm.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Marking...';
-    }
+    const confirmVerificationAttendance = () => {
+      if (!pendingScanState.roll) return;
 
-    setScannerStatus('Marking participation...', 'status-info');
+      // Collect missing inputs if any
+      const missingInputs = document.querySelectorAll('.missing-field-input');
+      let isValid = true;
+      const additionalData = {};
 
-    google.script.run
-      .withSuccessHandler((res) => {
-        if (btnConfirm) {
-          btnConfirm.disabled = false;
-          btnConfirm.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> MARK PARTICIPATED';
-        }
-
-        if (res && res.success) {
-          playTone('success');
-          showToast('success', res.message || 'Participation marked successfully.');
-          setScannerStatus('Participation Recorded', 'status-success');
-
-          const modalEl = document.getElementById('scanVerificationModal');
-          if (modalEl && typeof bootstrap !== 'undefined') {
-            const verifModal = bootstrap.Modal.getInstance(modalEl);
-            if (verifModal) verifModal.hide();
-          }
-
-          if (res.data && res.data.statistics) {
-            state.statistics = res.data.statistics;
-            renderStats();
-          }
-          loadBackendTerminalData();
+      missingInputs.forEach(inp => {
+        const fieldKey = inp.getAttribute('data-field') || inp.getAttribute('name');
+        const val = inp.value.trim();
+        if (inp.required && !val) {
+          isValid = false;
+          inp.classList.add('is-invalid');
         } else {
-          playTone('error');
-          showToast('error', res?.message || 'Failed to mark participation.');
-          setScannerStatus('Mark Failed', 'status-error');
+          inp.classList.remove('is-invalid');
+          if (fieldKey) additionalData[fieldKey] = val;
         }
-      })
-      .withFailureHandler((err) => {
-        if (btnConfirm) {
-          btnConfirm.disabled = false;
-          btnConfirm.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> MARK PARTICIPATED';
-        }
-        playTone('error');
-        showToast('error', 'Error calling backend: ' + (err?.message || 'Unreachable'));
-        setScannerStatus('Server Error', 'status-error');
-      })
-      .confirmMarkParticipation(state.sessionToken, pendingScanState.roll, state.eventId, additionalData);
-  };
+      });
 
+      if (!isValid) {
+        showToast('warning', 'Please fill in all missing required fields.');
+        return;
+      }
 
-  // ==========================================================================
-  //  SPOT REGISTRATION
-  // ==========================================================================
-  const openSpotModal = (rollNumber) => {
-    if (!dom.spotModal) return;
-    if (dom.spotRollInput) dom.spotRollInput.value = rollNumber;
+      const btnConfirm = document.getElementById('btn-confirm-attendance');
+      if (btnConfirm) {
+        btnConfirm.disabled = true;
+        btnConfirm.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Marking...';
+      }
 
-    if (state.activeEventAttendanceType && String(state.activeEventAttendanceType).trim().toUpperCase() === 'OPEN') {
-      dom.spotOpenView && dom.spotOpenView.classList.remove('d-none');
-      dom.spotFixedView && dom.spotFixedView.classList.add('d-none');
-      if (dom.spotOpenRollDisp) dom.spotOpenRollDisp.textContent = rollNumber;
-    } else {
-      dom.spotOpenView && dom.spotOpenView.classList.add('d-none');
-      dom.spotFixedView && dom.spotFixedView.classList.remove('d-none');
-      if (dom.spotFixedRollDisp) dom.spotFixedRollDisp.textContent = rollNumber;
-      // Reset form
-      ['spotNameInput', 'spotCollegeInput'].forEach(k => { if (dom[k]) dom[k].value = ''; });
-      if (dom.spotDeptSelect)    dom.spotDeptSelect.value = 'CSE';
-      if (dom.spotYearSelect)    dom.spotYearSelect.value = '1';
-      if (dom.spotDeptOtherCont) dom.spotDeptOtherCont.classList.add('d-none');
-      if (dom.spotDeptOtherInp)  { dom.spotDeptOtherInp.value = ''; dom.spotDeptOtherInp.required = false; }
-    }
+      setScannerStatus('Marking participation...', 'status-info');
 
-    dom.spotModal.show();
-    setTimeout(() => { if (dom.spotNameInput) dom.spotNameInput.focus(); }, 450);
-  };
-
-  const autoRegisterAndMarkOpenEvent = (roll) => {
-    setScannerStatus('Auto-registering...', 'status-info');
-
-    google.script.run
-      .withSuccessHandler((res) => {
-        if (res && res.success) {
-          playTone('success');
-          setScannerStatus('✔ Attendance marked!', 'status-success');
-          // Update the existing scan row — do NOT re-prepend (was already added optimistically)
-          updateHistoryItemStatus(roll, 'success', '✔ Saved');
-          if (res.data && res.data.statistics) {
-            state.statistics = {
-              present:   res.data.statistics.present   || 0,
-              remaining: res.data.statistics.remaining || 0,
-              total:     res.data.statistics.total     || 0
-            };
-            renderStats();
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btnConfirm) {
+            btnConfirm.disabled = false;
+            btnConfirm.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> MARK PARTICIPATED';
           }
-          updateLastScanTime();
-          showToast('success', `Student ${roll} auto-added to attendance.`);
-          setTimeout(() => { setScannerStatus('Ready', ''); focusInput(); }, 900);
-        } else {
-          // True failure even after spot-register attempt — revert optimistic stats
+
+          if (res && res.success) {
+            playTone('success');
+            showToast('success', res.message || 'Participation marked successfully.');
+            setScannerStatus('Participation Recorded', 'status-success');
+
+            const modalEl = document.getElementById('scanVerificationModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+              const verifModal = bootstrap.Modal.getInstance(modalEl);
+              if (verifModal) verifModal.hide();
+            }
+
+            if (res.data && res.data.statistics) {
+              state.statistics = res.data.statistics;
+              renderStats();
+            }
+            loadBackendTerminalData();
+          } else {
+            playTone('error');
+            showToast('error', res?.message || 'Failed to mark participation.');
+            setScannerStatus('Mark Failed', 'status-error');
+          }
+        })
+        .withFailureHandler((err) => {
+          if (btnConfirm) {
+            btnConfirm.disabled = false;
+            btnConfirm.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> MARK PARTICIPATED';
+          }
           playTone('error');
-          updateHistoryItemStatus(roll, 'error', res && res.message ? res.message : 'Failed');
+          showToast('error', 'Error calling backend: ' + (err?.message || 'Unreachable'));
+          setScannerStatus('Server Error', 'status-error');
+        })
+        .confirmMarkParticipation(state.sessionToken, pendingScanState.roll, state.eventId, additionalData);
+    };
+
+
+    // ==========================================================================
+    //  SPOT REGISTRATION
+    // ==========================================================================
+    const openSpotModal = (rollNumber) => {
+      if (!dom.spotModal) return;
+      if (dom.spotRollInput) dom.spotRollInput.value = rollNumber;
+
+      if (state.activeEventAttendanceType && String(state.activeEventAttendanceType).trim().toUpperCase() === 'OPEN') {
+        dom.spotOpenView && dom.spotOpenView.classList.remove('d-none');
+        dom.spotFixedView && dom.spotFixedView.classList.add('d-none');
+        if (dom.spotOpenRollDisp) dom.spotOpenRollDisp.textContent = rollNumber;
+      } else {
+        dom.spotOpenView && dom.spotOpenView.classList.add('d-none');
+        dom.spotFixedView && dom.spotFixedView.classList.remove('d-none');
+        if (dom.spotFixedRollDisp) dom.spotFixedRollDisp.textContent = rollNumber;
+        // Reset form
+        ['spotNameInput', 'spotCollegeInput'].forEach(k => { if (dom[k]) dom[k].value = ''; });
+        if (dom.spotDeptSelect) dom.spotDeptSelect.value = 'CSE';
+        if (dom.spotYearSelect) dom.spotYearSelect.value = '1';
+        if (dom.spotDeptOtherCont) dom.spotDeptOtherCont.classList.add('d-none');
+        if (dom.spotDeptOtherInp) { dom.spotDeptOtherInp.value = ''; dom.spotDeptOtherInp.required = false; }
+      }
+
+      dom.spotModal.show();
+      setTimeout(() => { if (dom.spotNameInput) dom.spotNameInput.focus(); }, 450);
+    };
+
+    const autoRegisterAndMarkOpenEvent = (roll) => {
+      setScannerStatus('Auto-registering...', 'status-info');
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (res && res.success) {
+            playTone('success');
+            setScannerStatus('✔ Attendance marked!', 'status-success');
+            // Update the existing scan row — do NOT re-prepend (was already added optimistically)
+            updateHistoryItemStatus(roll, 'success', '✔ Saved');
+            if (res.data && res.data.statistics) {
+              state.statistics = {
+                present: res.data.statistics.present || 0,
+                remaining: res.data.statistics.remaining || 0,
+                total: res.data.statistics.total || 0
+              };
+              renderStats();
+            }
+            updateLastScanTime();
+            showToast('success', `Student ${roll} auto-added to attendance.`);
+            setTimeout(() => { setScannerStatus('Ready', ''); focusInput(); }, 900);
+          } else {
+            // True failure even after spot-register attempt — revert optimistic stats
+            playTone('error');
+            updateHistoryItemStatus(roll, 'error', res && res.message ? res.message : 'Failed');
+            state.statistics.present = Math.max(0, state.statistics.present - 1);
+            state.statistics.remaining++;
+            renderStats();
+            showToast('error', res && res.message ? res.message : 'Auto spot registration failed.');
+            setScannerStatus('Failed – try again', 'status-error');
+            setTimeout(() => { setScannerStatus('Ready', ''); focusInput(); }, 1200);
+          }
+        })
+        .withFailureHandler((err) => {
+          playTone('error');
+          updateHistoryItemStatus(roll, 'error', 'Connection error');
           state.statistics.present = Math.max(0, state.statistics.present - 1);
           state.statistics.remaining++;
           renderStats();
-          showToast('error', res && res.message ? res.message : 'Auto spot registration failed.');
+          showToast('error', 'Connection failed during auto spot registration.');
           setScannerStatus('Failed – try again', 'status-error');
           setTimeout(() => { setScannerStatus('Ready', ''); focusInput(); }, 1200);
-        }
-      })
-      .withFailureHandler((err) => {
-        playTone('error');
-        updateHistoryItemStatus(roll, 'error', 'Connection error');
-        state.statistics.present = Math.max(0, state.statistics.present - 1);
-        state.statistics.remaining++;
-        renderStats();
-        showToast('error', 'Connection failed during auto spot registration.');
-        setScannerStatus('Failed – try again', 'status-error');
-        setTimeout(() => { setScannerStatus('Ready', ''); focusInput(); }, 1200);
-      })
-      .registerSpotStudentAndMark(state.sessionToken, roll, 'Spot Guest Student', 'Spot Group', '1', 'A', 'BVC Engineering College');
-  };
+        })
+        .registerSpotStudentAndMark(state.sessionToken, roll, 'Spot Guest Student', 'Spot Group', '1', 'A', 'BVC Engineering College');
+    };
 
-  const submitSpotOpen = () => {
-    const roll = dom.spotRollInput && dom.spotRollInput.value.trim().toUpperCase();
-    if (!roll) return;
+    const submitSpotOpen = () => {
+      const roll = dom.spotRollInput && dom.spotRollInput.value.trim().toUpperCase();
+      if (!roll) return;
 
-    const btn = dom.btnConfirmSpotOpen;
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Adding...'; }
+      const btn = dom.btnConfirmSpotOpen;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Adding...'; }
 
-    google.script.run
-      .withSuccessHandler((res) => {
-        if (btn) { btn.disabled = false; btn.innerHTML = 'Add to Attendance'; }
-        if (res && res.success) {
-          dom.spotModal && dom.spotModal.hide();
-          playTone('success');
-          if (res.data && res.data.statistics) { state.statistics = { present: res.data.statistics.present || 0, remaining: res.data.statistics.remaining || 0, total: res.data.statistics.total || 0 }; renderStats(); }
-          showStudentPreview({ name: 'Spot Guest Student', roll, dept: 'Open Event', year: 'N/A' }, 'success');
-          prependScanLocally('Spot Guest Student', roll, 'Open', false);
-          updateLastScanTime();
-          showToast('success', `Student ${roll} added to attendance.`);
-        } else {
-          showToast('error', res && res.message ? res.message : 'Spot registration failed.');
-        }
-        focusInput();
-      })
-      .withFailureHandler(() => {
-        if (btn) { btn.disabled = false; btn.innerHTML = 'Add to Attendance'; }
-        showToast('error', 'Connection failed during spot registration.');
-        focusInput();
-      })
-      .registerSpotStudentAndMark(state.sessionToken, roll, 'Spot Guest Student', 'Spot Group', '1', 'A', 'BVC Engineering College');
-  };
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btn) { btn.disabled = false; btn.innerHTML = 'Add to Attendance'; }
+          if (res && res.success) {
+            dom.spotModal && dom.spotModal.hide();
+            playTone('success');
+            if (res.data && res.data.statistics) { state.statistics = { present: res.data.statistics.present || 0, remaining: res.data.statistics.remaining || 0, total: res.data.statistics.total || 0 }; renderStats(); }
+            showStudentPreview({ name: 'Spot Guest Student', roll, dept: 'Open Event', year: 'N/A' }, 'success');
+            prependScanLocally('Spot Guest Student', roll, 'Open', false);
+            updateLastScanTime();
+            showToast('success', `Student ${roll} added to attendance.`);
+          } else {
+            showToast('error', res && res.message ? res.message : 'Spot registration failed.');
+          }
+          focusInput();
+        })
+        .withFailureHandler(() => {
+          if (btn) { btn.disabled = false; btn.innerHTML = 'Add to Attendance'; }
+          showToast('error', 'Connection failed during spot registration.');
+          focusInput();
+        })
+        .registerSpotStudentAndMark(state.sessionToken, roll, 'Spot Guest Student', 'Spot Group', '1', 'A', 'BVC Engineering College');
+    };
 
-  const submitSpotFixed = () => {
-    const roll    = dom.spotRollInput   && dom.spotRollInput.value.trim().toUpperCase();
-    const name    = dom.spotNameInput   && dom.spotNameInput.value.trim();
-    const college = dom.spotCollegeInput && dom.spotCollegeInput.value.trim();
-    let   dept    = dom.spotDeptSelect  && dom.spotDeptSelect.value;
-    const year    = dom.spotYearSelect  && dom.spotYearSelect.value;
+    const submitSpotFixed = () => {
+      const roll = dom.spotRollInput && dom.spotRollInput.value.trim().toUpperCase();
+      const name = dom.spotNameInput && dom.spotNameInput.value.trim();
+      const college = dom.spotCollegeInput && dom.spotCollegeInput.value.trim();
+      let dept = dom.spotDeptSelect && dom.spotDeptSelect.value;
+      const year = dom.spotYearSelect && dom.spotYearSelect.value;
 
-    if (dept === 'OTHERS' && dom.spotDeptOtherInp) {
-      dept = dom.spotDeptOtherInp.value.trim().toUpperCase() || 'OTHERS';
-    }
-
-    if (!roll || !name || !college) { showToast('warning', 'Please fill all required fields.'); return; }
-
-    const btn = document.getElementById('btn-confirm-spot-reg');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...'; }
-
-    google.script.run
-      .withSuccessHandler((res) => {
-        if (btn) { btn.disabled = false; btn.innerHTML = 'Register &amp; Mark'; }
-        if (res && res.success) {
-          dom.spotModal && dom.spotModal.hide();
-          playTone('success');
-          if (res.data && res.data.statistics) { state.statistics = { present: res.data.statistics.present || 0, remaining: res.data.statistics.remaining || 0, total: res.data.statistics.total || 0 }; renderStats(); }
-          showStudentPreview({ name, roll, dept, year }, 'success');
-          prependScanLocally(name, roll, dept, false);
-          updateLastScanTime();
-          showToast('success', `Student ${roll} registered and marked present.`);
-        } else {
-          showToast('error', res && res.message ? res.message : 'Spot registration failed.');
-        }
-        focusInput();
-      })
-      .withFailureHandler(() => {
-        if (btn) { btn.disabled = false; btn.innerHTML = 'Register &amp; Mark'; }
-        showToast('error', 'Connection failed during spot registration.');
-        focusInput();
-      })
-      .registerSpotStudentAndMark(state.sessionToken, roll, name, dept, year, 'A', college);
-  };
-
-  // ==========================================================================
-  //  QUERY STUDENT (fallback for when server doesn't return student object)
-  // ==========================================================================
-  const queryStudentProfile = (rollNumber) => {
-    google.script.run
-      .withSuccessHandler((res) => {
-        if (res && res.success && res.data) {
-          const s = res.data.student || res.data;
-          const sDept = s['Department ID'] || s.dept || '';
-          const sBranch = s['Branch'] || s.branch || '';
-          const displayDept = sBranch && sBranch !== sDept ? `${sDept} (${sBranch})` : sDept;
-          showStudentPreview({ name: s['Student Name'] || s.name, roll: rollNumber, dept: displayDept, year: s['Year'] || s.year || '' }, 'success');
-        }
-      })
-      .getCoordinatorStudent(state.sessionToken, rollNumber);
-  };
-
-  // ==========================================================================
-  //  HISTORY RENDERING
-  // ==========================================================================
-  const populateDeptFilter = () => {
-    if (!dom.deptFilter) return;
-    const depts = [...new Set(state.allScans.map(s => s.dept || '').filter(Boolean))].sort();
-    const currentVal = dom.deptFilter.value;
-    dom.deptFilter.innerHTML = '<option value="">All Depts</option>' +
-      depts.map(d => `<option value="${d}">${d}</option>`).join('');
-    dom.deptFilter.value = currentVal;
-  };
-
-  const getFilteredScans = () => {
-    return state.allScans.filter(scan => {
-      const matchSearch = !state.searchQuery ||
-        (scan.roll || '').toLowerCase().includes(state.searchQuery) ||
-        (scan.name || '').toLowerCase().includes(state.searchQuery);
-      const matchDept = !state.deptFilter || scan.dept === state.deptFilter;
-      return matchSearch && matchDept;
-    });
-  };
-
-  const renderHistory = () => {
-    if (!dom.historyFeed) return;
-
-    const filtered = getFilteredScans();
-
-    if (dom.historyCountBadge) {
-      dom.historyCountBadge.textContent = filtered.length;
-    }
-
-    if (filtered.length === 0) {
-      dom.historyFeed.classList.add('d-none');
-      dom.historyEmptyState && dom.historyEmptyState.classList.remove('d-none');
-      return;
-    }
-
-    dom.historyEmptyState && dom.historyEmptyState.classList.add('d-none');
-    dom.historyFeed.classList.remove('d-none');
-
-    // Render using DocumentFragment for performance
-    const frag = document.createDocumentFragment();
-    filtered.forEach(scan => {
-      const div = document.createElement('div');
-      div.className = 'coord-feed-row';
-      div.setAttribute('role', 'listitem');
-      
-      let avatarClass = 'feed-av-success';
-      let avatarIcon = 'bi-check';
-      let statusIcon = 'bi-check-circle-fill ok';
-      let subtitle = scan.name || 'Unknown Student';
-      
-      if (scan.isDuplicate) {
-        avatarClass = 'feed-av-duplicate';
-        avatarIcon = 'bi-x';
-        statusIcon = 'bi-x-circle-fill dup';
-      } else if (scan.isError) {
-        avatarClass = 'feed-av-error';
-        avatarIcon = 'bi-exclamation-triangle';
-        statusIcon = 'bi-exclamation-circle-fill err';
-      } else if (scan.statusState === 'syncing') {
-        avatarClass = 'feed-av-syncing';
-        avatarIcon = 'bi-arrow-clockwise';
-        statusIcon = 'bi-arrow-clockwise syncing';
-        subtitle = 'Syncing with server...';
+      if (dept === 'OTHERS' && dom.spotDeptOtherInp) {
+        dept = dom.spotDeptOtherInp.value.trim().toUpperCase() || 'OTHERS';
       }
-      
-      div.innerHTML = `
+
+      if (!roll || !name || !college) { showToast('warning', 'Please fill all required fields.'); return; }
+
+      const btn = document.getElementById('btn-confirm-spot-reg');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...'; }
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btn) { btn.disabled = false; btn.innerHTML = 'Register &amp; Mark'; }
+          if (res && res.success) {
+            dom.spotModal && dom.spotModal.hide();
+            playTone('success');
+            if (res.data && res.data.statistics) { state.statistics = { present: res.data.statistics.present || 0, remaining: res.data.statistics.remaining || 0, total: res.data.statistics.total || 0 }; renderStats(); }
+            showStudentPreview({ name, roll, dept, year }, 'success');
+            prependScanLocally(name, roll, dept, false);
+            updateLastScanTime();
+            showToast('success', `Student ${roll} registered and marked present.`);
+          } else {
+            showToast('error', res && res.message ? res.message : 'Spot registration failed.');
+          }
+          focusInput();
+        })
+        .withFailureHandler(() => {
+          if (btn) { btn.disabled = false; btn.innerHTML = 'Register &amp; Mark'; }
+          showToast('error', 'Connection failed during spot registration.');
+          focusInput();
+        })
+        .registerSpotStudentAndMark(state.sessionToken, roll, name, dept, year, 'A', college);
+    };
+
+    // ==========================================================================
+    //  QUERY STUDENT (fallback for when server doesn't return student object)
+    // ==========================================================================
+    const queryStudentProfile = (rollNumber) => {
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (res && res.success && res.data) {
+            const s = res.data.student || res.data;
+            const sDept = s['Department ID'] || s.dept || '';
+            const sBranch = s['Branch'] || s.branch || '';
+            const displayDept = sBranch && sBranch !== sDept ? `${sDept} (${sBranch})` : sDept;
+            showStudentPreview({ name: s['Student Name'] || s.name, roll: rollNumber, dept: displayDept, year: s['Year'] || s.year || '' }, 'success');
+          }
+        })
+        .getCoordinatorStudent(state.sessionToken, rollNumber);
+    };
+
+    // ==========================================================================
+    //  HISTORY RENDERING
+    // ==========================================================================
+    const populateDeptFilter = () => {
+      if (!dom.deptFilter) return;
+      const depts = [...new Set(state.allScans.map(s => s.dept || '').filter(Boolean))].sort();
+      const currentVal = dom.deptFilter.value;
+      dom.deptFilter.innerHTML = '<option value="">All Depts</option>' +
+        depts.map(d => `<option value="${d}">${d}</option>`).join('');
+      dom.deptFilter.value = currentVal;
+    };
+
+    const getFilteredScans = () => {
+      return state.allScans.filter(scan => {
+        const matchSearch = !state.searchQuery ||
+          (scan.roll || '').toLowerCase().includes(state.searchQuery) ||
+          (scan.name || '').toLowerCase().includes(state.searchQuery);
+        const matchDept = !state.deptFilter || scan.dept === state.deptFilter;
+        return matchSearch && matchDept;
+      });
+    };
+
+    const renderHistory = () => {
+      if (!dom.historyFeed) return;
+
+      const filtered = getFilteredScans();
+
+      if (dom.historyCountBadge) {
+        dom.historyCountBadge.textContent = filtered.length;
+      }
+
+      if (filtered.length === 0) {
+        dom.historyFeed.classList.add('d-none');
+        dom.historyEmptyState && dom.historyEmptyState.classList.remove('d-none');
+        return;
+      }
+
+      dom.historyEmptyState && dom.historyEmptyState.classList.add('d-none');
+      dom.historyFeed.classList.remove('d-none');
+
+      // Render using DocumentFragment for performance
+      const frag = document.createDocumentFragment();
+      filtered.forEach(scan => {
+        const div = document.createElement('div');
+        div.className = 'coord-feed-row';
+        div.setAttribute('role', 'listitem');
+
+        let avatarClass = 'feed-av-success';
+        let avatarIcon = 'bi-check';
+        let statusIcon = 'bi-check-circle-fill ok';
+        let subtitle = scan.name || 'Unknown Student';
+
+        if (scan.isDuplicate) {
+          avatarClass = 'feed-av-duplicate';
+          avatarIcon = 'bi-x';
+          statusIcon = 'bi-x-circle-fill dup';
+        } else if (scan.isError) {
+          avatarClass = 'feed-av-error';
+          avatarIcon = 'bi-exclamation-triangle';
+          statusIcon = 'bi-exclamation-circle-fill err';
+        } else if (scan.statusState === 'syncing') {
+          avatarClass = 'feed-av-syncing';
+          avatarIcon = 'bi-arrow-clockwise';
+          statusIcon = 'bi-arrow-clockwise syncing';
+          subtitle = 'Syncing with server...';
+        }
+
+        div.innerHTML = `
         <div class="coord-feed-avatar ${avatarClass}">
           <i class="bi ${avatarIcon}"></i>
         </div>
@@ -3221,637 +3230,637 @@ const CoordinatorUI = (() => {
           <i class="bi coord-feed-status-icon ${statusIcon}"></i>
         </div>
       `;
-      frag.appendChild(div);
-    });
+        frag.appendChild(div);
+      });
 
-    dom.historyFeed.innerHTML = '';
-    dom.historyFeed.appendChild(frag);
-  };
-
-  const prependScanLocally = (name, roll, dept, isDuplicate, statusState = 'saved') => {
-    const now = new Date();
-    const timeStr = now.toTimeString().split(' ')[0]; // HH:MM:SS
-    state.allScans.unshift({ name, roll, dept, time: timeStr, isDuplicate, statusState });
-    populateDeptFilter();
-    renderHistory();
-    // Briefly highlight top row
-    if (dom.historyFeed && dom.historyFeed.firstChild) {
-      dom.historyFeed.firstChild.classList.add('new-scan');
-    }
-  };
-
-  const hideSkeleton = () => {
-    if (dom.historySkeleton) dom.historySkeleton.classList.add('d-none');
-  };
-
-  // ==========================================================================
-  //  STATS RENDERING
-  // ==========================================================================
-  const renderStats = () => {
-    if (dom.statsPresent)   dom.statsPresent.textContent   = state.statistics.present;
-    if (dom.statsRemaining) dom.statsRemaining.textContent = state.statistics.remaining;
-    if (dom.statsTotal)     dom.statsTotal.textContent     = state.statistics.total;
-    if (dom.statsDuplicate) dom.statsDuplicate.textContent = state.duplicatesCount;
-
-    const pct = state.statistics.total > 0
-      ? Math.round((state.statistics.present / state.statistics.total) * 100)
-      : 0;
-    if (dom.statsPct)      dom.statsPct.textContent = `${pct}%`;
-    if (dom.statsProgress) dom.statsProgress.style.width = `${pct}%`;
-  };
-
-  // ==========================================================================
-  //  STUDENT PREVIEW
-  // ==========================================================================
-  const showStudentPreview = (student, mode = 'success') => {
-    if (!dom.previewContent || !dom.previewPlaceholder) return;
-    const isSuccess = mode === 'success';
-
-    if (dom.previewName)   dom.previewName.textContent   = student.name || '';
-    if (dom.previewRoll)   dom.previewRoll.textContent   = student.roll || '';
-    if (dom.previewDept)   dom.previewDept.textContent   = student.dept || '';
-    if (dom.previewYear)   dom.previewYear.textContent   = student.year ? `Year ${student.year}` : '';
-
-    if (dom.previewStrip) {
-      dom.previewStrip.className = `coord-preview-strip ${isSuccess ? '' : 'strip-duplicate'}`;
-      dom.previewStrip.innerHTML = isSuccess
-        ? '<i class="bi bi-check-circle-fill me-1"></i> Attendance Marked'
-        : '<i class="bi bi-exclamation-triangle-fill me-1"></i> Duplicate / Not Registered';
-    }
-    if (dom.previewAvatar) {
-      dom.previewAvatar.className = `coord-preview-avatar ${isSuccess ? '' : 'av-duplicate'}`;
-      dom.previewAvatar.innerHTML = `<i class="bi ${isSuccess ? 'bi-check' : 'bi-x'}"></i>`;
-    }
-
-    dom.previewPlaceholder.classList.add('d-none');
-    dom.previewContent.classList.remove('d-none');
-  };
-
-  // ==========================================================================
-  //  UI HELPERS
-  // ==========================================================================
-
-  const setSubmitEnabled = (enabled, htmlOverride = null) => {
-    if (!dom.submitBtn) return;
-    dom.submitBtn.disabled = !enabled;
-    if (htmlOverride) {
-      dom.submitBtn.innerHTML = htmlOverride;
-    } else {
-      dom.submitBtn.innerHTML = '<i class="bi bi-arrow-right-circle-fill"></i>';
-    }
-  };
-
-  const focusInput = () => {
-    const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
-    if (dom.input && !modalOpen) dom.input.focus();
-  };
-
-  const clearInput = () => {
-    if (dom.input) dom.input.value = '';
-  };
-
-  const resetUI = () => {
-    clearInput();
-    state.allScans = [];
-    state.statistics = { present: 0, remaining: 0, total: 0 };
-    state.duplicatesCount = 0;
-    renderStats();
-    hideSkeleton();
-    if (dom.historyFeed) dom.historyFeed.innerHTML = '';
-    if (dom.historySkeleton) dom.historySkeleton.classList.remove('d-none');
-    if (dom.previewContent) dom.previewContent.classList.add('d-none');
-    if (dom.previewPlaceholder) dom.previewPlaceholder.classList.remove('d-none');
-    setScannerStatus('Ready', '');
-    focusInput();
-  };
-
-  const updateLastScanTime = () => {
-    if (dom.lastScanTime) {
-      const now = new Date();
-      dom.lastScanTime.textContent = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-    }
-  };
-
-  const updateConnectionStatus = (online) => {
-    if (dom.connectionStatus) dom.connectionStatus.classList.toggle('offline', !online);
-    if (dom.connLabel) dom.connLabel.textContent = online ? 'Online' : 'Offline';
-  };
-
-  // ==========================================================================
-  //  TOASTS
-  // ==========================================================================
-  const showToast = (type, message) => {
-    if (!dom.toastStack) return;
-
-    const iconMap = {
-      success: 'bi-check-circle-fill',
-      error:   'bi-exclamation-triangle-fill',
-      warning: 'bi-exclamation-circle-fill',
-      info:    'bi-info-circle-fill',
+      dom.historyFeed.innerHTML = '';
+      dom.historyFeed.appendChild(frag);
     };
 
-    const toast = document.createElement('div');
-    toast.className = `coord-toast coord-toast-${type}`;
-    toast.setAttribute('role', 'alert');
-    toast.innerHTML = `
+    const prependScanLocally = (name, roll, dept, isDuplicate, statusState = 'saved') => {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0]; // HH:MM:SS
+      state.allScans.unshift({ name, roll, dept, time: timeStr, isDuplicate, statusState });
+      populateDeptFilter();
+      renderHistory();
+      // Briefly highlight top row
+      if (dom.historyFeed && dom.historyFeed.firstChild) {
+        dom.historyFeed.firstChild.classList.add('new-scan');
+      }
+    };
+
+    const hideSkeleton = () => {
+      if (dom.historySkeleton) dom.historySkeleton.classList.add('d-none');
+    };
+
+    // ==========================================================================
+    //  STATS RENDERING
+    // ==========================================================================
+    const renderStats = () => {
+      if (dom.statsPresent) dom.statsPresent.textContent = state.statistics.present;
+      if (dom.statsRemaining) dom.statsRemaining.textContent = state.statistics.remaining;
+      if (dom.statsTotal) dom.statsTotal.textContent = state.statistics.total;
+      if (dom.statsDuplicate) dom.statsDuplicate.textContent = state.duplicatesCount;
+
+      const pct = state.statistics.total > 0
+        ? Math.round((state.statistics.present / state.statistics.total) * 100)
+        : 0;
+      if (dom.statsPct) dom.statsPct.textContent = `${pct}%`;
+      if (dom.statsProgress) dom.statsProgress.style.width = `${pct}%`;
+    };
+
+    // ==========================================================================
+    //  STUDENT PREVIEW
+    // ==========================================================================
+    const showStudentPreview = (student, mode = 'success') => {
+      if (!dom.previewContent || !dom.previewPlaceholder) return;
+      const isSuccess = mode === 'success';
+
+      if (dom.previewName) dom.previewName.textContent = student.name || '';
+      if (dom.previewRoll) dom.previewRoll.textContent = student.roll || '';
+      if (dom.previewDept) dom.previewDept.textContent = student.dept || '';
+      if (dom.previewYear) dom.previewYear.textContent = student.year ? `Year ${student.year}` : '';
+
+      if (dom.previewStrip) {
+        dom.previewStrip.className = `coord-preview-strip ${isSuccess ? '' : 'strip-duplicate'}`;
+        dom.previewStrip.innerHTML = isSuccess
+          ? '<i class="bi bi-check-circle-fill me-1"></i> Attendance Marked'
+          : '<i class="bi bi-exclamation-triangle-fill me-1"></i> Duplicate / Not Registered';
+      }
+      if (dom.previewAvatar) {
+        dom.previewAvatar.className = `coord-preview-avatar ${isSuccess ? '' : 'av-duplicate'}`;
+        dom.previewAvatar.innerHTML = `<i class="bi ${isSuccess ? 'bi-check' : 'bi-x'}"></i>`;
+      }
+
+      dom.previewPlaceholder.classList.add('d-none');
+      dom.previewContent.classList.remove('d-none');
+    };
+
+    // ==========================================================================
+    //  UI HELPERS
+    // ==========================================================================
+
+    const setSubmitEnabled = (enabled, htmlOverride = null) => {
+      if (!dom.submitBtn) return;
+      dom.submitBtn.disabled = !enabled;
+      if (htmlOverride) {
+        dom.submitBtn.innerHTML = htmlOverride;
+      } else {
+        dom.submitBtn.innerHTML = '<i class="bi bi-arrow-right-circle-fill"></i>';
+      }
+    };
+
+    const focusInput = () => {
+      const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
+      if (dom.input && !modalOpen) dom.input.focus();
+    };
+
+    const clearInput = () => {
+      if (dom.input) dom.input.value = '';
+    };
+
+    const resetUI = () => {
+      clearInput();
+      state.allScans = [];
+      state.statistics = { present: 0, remaining: 0, total: 0 };
+      state.duplicatesCount = 0;
+      renderStats();
+      hideSkeleton();
+      if (dom.historyFeed) dom.historyFeed.innerHTML = '';
+      if (dom.historySkeleton) dom.historySkeleton.classList.remove('d-none');
+      if (dom.previewContent) dom.previewContent.classList.add('d-none');
+      if (dom.previewPlaceholder) dom.previewPlaceholder.classList.remove('d-none');
+      setScannerStatus('Ready', '');
+      focusInput();
+    };
+
+    const updateLastScanTime = () => {
+      if (dom.lastScanTime) {
+        const now = new Date();
+        dom.lastScanTime.textContent = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      }
+    };
+
+    const updateConnectionStatus = (online) => {
+      if (dom.connectionStatus) dom.connectionStatus.classList.toggle('offline', !online);
+      if (dom.connLabel) dom.connLabel.textContent = online ? 'Online' : 'Offline';
+    };
+
+    // ==========================================================================
+    //  TOASTS
+    // ==========================================================================
+    const showToast = (type, message) => {
+      if (!dom.toastStack) return;
+
+      const iconMap = {
+        success: 'bi-check-circle-fill',
+        error: 'bi-exclamation-triangle-fill',
+        warning: 'bi-exclamation-circle-fill',
+        info: 'bi-info-circle-fill',
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `coord-toast coord-toast-${type}`;
+      toast.setAttribute('role', 'alert');
+      toast.innerHTML = `
       <i class="bi ${iconMap[type] || iconMap.info}"></i>
       <span>${escapeHtml(message)}</span>
     `;
-    dom.toastStack.appendChild(toast);
+      dom.toastStack.appendChild(toast);
 
-    setTimeout(() => {
-      toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(8px)';
-      setTimeout(() => toast.remove(), 320);
-    }, 2800);
-  };
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+        setTimeout(() => toast.remove(), 320);
+      }, 2800);
+    };
 
-  // ==========================================================================
-  //  AUDIO FEEDBACK (Web Audio API)
-  // ==========================================================================
-  const playTone = (type) => {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+    // ==========================================================================
+    //  AUDIO FEEDBACK (Web Audio API)
+    // ==========================================================================
+    const playTone = (type) => {
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
 
-      if (type === 'success') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(987, ctx.currentTime);
-        gain.gain.setValueAtTime(0.08, ctx.currentTime);
-        osc.start();
-        gain.gain.setValueAtTime(0, ctx.currentTime + 0.07);
-        gain.gain.setValueAtTime(0.08, ctx.currentTime + 0.10);
-        osc.frequency.setValueAtTime(1175, ctx.currentTime + 0.10);
-        osc.stop(ctx.currentTime + 0.18);
-      } else {
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(160, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.28);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        osc.start();
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-        osc.stop(ctx.currentTime + 0.30);
+        if (type === 'success') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(987, ctx.currentTime);
+          gain.gain.setValueAtTime(0.08, ctx.currentTime);
+          osc.start();
+          gain.gain.setValueAtTime(0, ctx.currentTime + 0.07);
+          gain.gain.setValueAtTime(0.08, ctx.currentTime + 0.10);
+          osc.frequency.setValueAtTime(1175, ctx.currentTime + 0.10);
+          osc.stop(ctx.currentTime + 0.18);
+        } else {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(160, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.28);
+          gain.gain.setValueAtTime(0.1, ctx.currentTime);
+          osc.start();
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+          osc.stop(ctx.currentTime + 0.30);
+        }
+      } catch (e) {/* ignore audio errors */ }
+    };
+
+    // ==========================================================================
+    //  LOGOUT / REDIRECT
+    // ==========================================================================
+    const executeLogout = () => {
+      stopCamera();
+      setScannerStatus('Logging out...', '');
+
+      google.script.run
+        .withSuccessHandler(() => { showToast('info', 'Logged out safely.'); handleRedirect(); })
+        .withFailureHandler(() => handleRedirect())
+        .logoutCoordinator(state.sessionToken);
+    };
+
+    const handleRedirect = () => {
+      try {
+        google.script.run.withSuccessHandler((url) => {
+          window.location.href = url + '?page=Login';
+        }).getScriptUrl();
+      } catch (_) {
+        window.location.href = window.location.pathname + '?page=Login';
       }
-    } catch (e) {/* ignore audio errors */ }
-  };
+    };
 
-  // ==========================================================================
-  //  LOGOUT / REDIRECT
-  // ==========================================================================
-  const executeLogout = () => {
-    stopCamera();
-    setScannerStatus('Logging out...', '');
+    // ==========================================================================
+    //  UTILITIES
+    // ==========================================================================
+    const escapeHtml = (str) => {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
 
-    google.script.run
-      .withSuccessHandler(() => { showToast('info', 'Logged out safely.'); handleRedirect(); })
-      .withFailureHandler(() => handleRedirect())
-      .logoutCoordinator(state.sessionToken);
-  };
+    const formatTime = (rawTime) => {
+      if (!rawTime) return '--:--';
+      // If already HH:MM:SS or HH:MM, just return as-is
+      if (/^\d{1,2}:\d{2}/.test(String(rawTime))) return String(rawTime).substring(0, 5);
+      // Try parsing as ISO or spreadsheet date
+      try { const d = new Date(rawTime); if (!isNaN(d)) return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }); } catch (_) { }
+      return String(rawTime).substring(0, 8);
+    };
 
-  const handleRedirect = () => {
-    try {
-      google.script.run.withSuccessHandler((url) => {
-        window.location.href = url + '?page=Login';
-      }).getScriptUrl();
-    } catch (_) {
-      window.location.href = window.location.pathname + '?page=Login';
-    }
-  };
+    // ==========================================================================
+    //  CAMERA TEST & DIAGNOSTICS SUITE (DEBUG PANEL)
+    // ==========================================================================
+    const CameraDebugger = (() => {
+      const logs = [];
 
-  // ==========================================================================
-  //  UTILITIES
-  // ==========================================================================
-  const escapeHtml = (str) => {
-    if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  };
+      const addLog = (type, functionName, message, duration = 0, error = null) => {
+        const logEntry = {
+          timestamp: new Date().toLocaleTimeString(),
+          type: type.toUpperCase(),
+          functionName: functionName,
+          message: message,
+          duration: duration,
+          error: error ? { name: error.name, message: error.message, stack: error.stack } : null
+        };
+        logs.push(logEntry);
 
-  const formatTime = (rawTime) => {
-    if (!rawTime) return '--:--';
-    // If already HH:MM:SS or HH:MM, just return as-is
-    if (/^\d{1,2}:\d{2}/.test(String(rawTime))) return String(rawTime).substring(0, 5);
-    // Try parsing as ISO or spreadsheet date
-    try { const d = new Date(rawTime); if (!isNaN(d)) return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }); } catch (_) {}
-    return String(rawTime).substring(0, 8);
-  };
-
-  // ==========================================================================
-  //  CAMERA TEST & DIAGNOSTICS SUITE (DEBUG PANEL)
-  // ==========================================================================
-  const CameraDebugger = (() => {
-    const logs = [];
-
-    const addLog = (type, functionName, message, duration = 0, error = null) => {
-      const logEntry = {
-        timestamp: new Date().toLocaleTimeString(),
-        type: type.toUpperCase(),
-        functionName: functionName,
-        message: message,
-        duration: duration,
-        error: error ? { name: error.name, message: error.message, stack: error.stack } : null
-      };
-      logs.push(logEntry);
-      
-      // Update Live UI Timeline
-      const timeline = document.getElementById('dbg-timeline');
-      if (timeline) {
-        const color = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : (type === 'warn' ? 'text-warning' : 'text-dark'));
-        const entryHtml = `<div class="mb-1 border-bottom pb-1" style="font-size: 0.65rem;">
+        // Update Live UI Timeline
+        const timeline = document.getElementById('dbg-timeline');
+        if (timeline) {
+          const color = type === 'error' ? 'text-danger' : (type === 'success' ? 'text-success' : (type === 'warn' ? 'text-warning' : 'text-dark'));
+          const entryHtml = `<div class="mb-1 border-bottom pb-1" style="font-size: 0.65rem;">
           <span class="text-secondary">[${logEntry.timestamp}]</span> 
           <span class="fw-bold ${color}">${logEntry.type}</span> 
           <span class="text-secondary">${logEntry.functionName}():</span> ${logEntry.message}
           ${duration ? `<span class="badge bg-light text-dark">${duration}ms</span>` : ''}
         </div>`;
-        timeline.innerHTML = entryHtml + timeline.innerHTML;
-      }
-    };
-
-    const updateMetrics = async () => {
-      const getVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-      getVal('dbg-browser', navigator.userAgent.split(' ')[0] || 'Unknown');
-      getVal('dbg-platform', navigator.platform || 'Unknown');
-      getVal('dbg-secure', window.isSecureContext ? 'Secure' : 'Unsecure');
-      getVal('dbg-lib', typeof Html5Qrcode !== 'undefined' ? 'v2.3.8 (unpkg)' : 'Not Loaded');
-      getVal('dbg-cam-count', state.availableCameras.length);
-      getVal('dbg-active-idx', state.activeCameraIndex);
-      getVal('dbg-device-id', preflightDeviceId || 'None');
-      getVal('dbg-status', state.cameraRunning ? 'Running' : 'Stopped');
-
-      // Update Camera Permission state
-      if (navigator.permissions && typeof navigator.permissions.query === 'function') {
-        try {
-          const res = await navigator.permissions.query({ name: 'camera' });
-          getVal('dbg-permission', res.state);
-        } catch (_) {
-          getVal('dbg-permission', 'Preflight Required');
+          timeline.innerHTML = entryHtml + timeline.innerHTML;
         }
-      } else {
-        getVal('dbg-permission', 'Unsupported');
-      }
-    };
+      };
 
-    const recordError = (funcName, error) => {
-      addLog('error', funcName, error.message, 0, error);
-      const display = document.getElementById('dbg-error-display');
-      if (display) {
-        display.innerHTML = `<div class="text-danger fw-bold">[${funcName}] ${error.name}</div>
+      const updateMetrics = async () => {
+        const getVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        getVal('dbg-browser', navigator.userAgent.split(' ')[0] || 'Unknown');
+        getVal('dbg-platform', navigator.platform || 'Unknown');
+        getVal('dbg-secure', window.isSecureContext ? 'Secure' : 'Unsecure');
+        getVal('dbg-lib', typeof Html5Qrcode !== 'undefined' ? 'v2.3.8 (unpkg)' : 'Not Loaded');
+        getVal('dbg-cam-count', state.availableCameras.length);
+        getVal('dbg-active-idx', state.activeCameraIndex);
+        getVal('dbg-device-id', preflightDeviceId || 'None');
+        getVal('dbg-status', state.cameraRunning ? 'Running' : 'Stopped');
+
+        // Update Camera Permission state
+        if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+          try {
+            const res = await navigator.permissions.query({ name: 'camera' });
+            getVal('dbg-permission', res.state);
+          } catch (_) {
+            getVal('dbg-permission', 'Preflight Required');
+          }
+        } else {
+          getVal('dbg-permission', 'Unsupported');
+        }
+      };
+
+      const recordError = (funcName, error) => {
+        addLog('error', funcName, error.message, 0, error);
+        const display = document.getElementById('dbg-error-display');
+        if (display) {
+          display.innerHTML = `<div class="text-danger fw-bold">[${funcName}] ${error.name}</div>
         <div style="font-size:0.6rem;">${error.message}</div>
         <pre class="m-0 p-1 bg-dark text-white rounded mt-1" style="font-size:0.55rem; max-height: 50px;">${error.stack || 'No trace'}</pre>`;
-      }
-    };
-
-    // Diagnostic Tests
-    const testBrowserCompatibility = () => {
-      const startTime = Date.now();
-      try {
-        const support = {
-          mediaDevices: !!navigator.mediaDevices,
-          getUserMedia: navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function',
-          permissionsAPI: !!navigator.permissions,
-          secureContext: !!window.isSecureContext,
-          barcodeDetector: 'BarcodeDetector' in window,
-          html5Qrcode: typeof Html5Qrcode !== 'undefined'
-        };
-        const pass = support.mediaDevices && support.getUserMedia && support.secureContext && support.html5Qrcode;
-        addLog('success', 'testBrowserCompatibility', `Passed: ${pass} | Metrics: ${JSON.stringify(support)}`, Date.now() - startTime);
-        return pass;
-      } catch (err) {
-        recordError('testBrowserCompatibility', err);
-        return false;
-      }
-    };
-
-    const testCameraPermission = async () => {
-      const startTime = Date.now();
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        addLog('success', 'testCameraPermission', 'Preflight track permission GRANTED.', Date.now() - startTime);
-        stream.getTracks().forEach(track => {
-          track.stop();
-          addLog('info', 'testCameraPermission', `Stopped track: ${track.label}`);
-        });
-        await updateMetrics();
-        return true;
-      } catch (err) {
-        recordError('testCameraPermission', err);
-        return false;
-      }
-    };
-
-    const testCameraEnumeration = async () => {
-      const startTime = Date.now();
-      try {
-        const cameras = await Html5Qrcode.getCameras();
-        addLog('success', 'testCameraEnumeration', `Enumerated ${cameras.length} camera(s) successfully.`, Date.now() - startTime);
-        await updateMetrics();
-        return true;
-      } catch (err) {
-        recordError('testCameraEnumeration', err);
-        return false;
-      }
-    };
-
-    const testPreflightDevice = () => {
-      const startTime = Date.now();
-      try {
-        if (!preflightDeviceId) {
-          throw new Error("No preflightDeviceId has been captured yet. Perform permission test first.");
         }
-        addLog('success', 'testPreflightDevice', `Preflight Device ID: ${preflightDeviceId}`, Date.now() - startTime);
-        return true;
-      } catch (err) {
-        recordError('testPreflightDevice', err);
-        return false;
-      }
-    };
+      };
 
-    const testStartCamera = async () => {
-      const startTime = Date.now();
-      try {
-        if (state.cameraRunning) {
-          throw new Error("Camera is already active. Stop camera first.");
+      // Diagnostic Tests
+      const testBrowserCompatibility = () => {
+        const startTime = Date.now();
+        try {
+          const support = {
+            mediaDevices: !!navigator.mediaDevices,
+            getUserMedia: navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function',
+            permissionsAPI: !!navigator.permissions,
+            secureContext: !!window.isSecureContext,
+            barcodeDetector: 'BarcodeDetector' in window,
+            html5Qrcode: typeof Html5Qrcode !== 'undefined'
+          };
+          const pass = support.mediaDevices && support.getUserMedia && support.secureContext && support.html5Qrcode;
+          addLog('success', 'testBrowserCompatibility', `Passed: ${pass} | Metrics: ${JSON.stringify(support)}`, Date.now() - startTime);
+          return pass;
+        } catch (err) {
+          recordError('testBrowserCompatibility', err);
+          return false;
         }
-        
-        const container = document.getElementById('interactive-camera-scanner');
-        if (container) container.innerHTML = '';
-        const tempScanner = new Html5Qrcode('interactive-camera-scanner');
-        
-        let constraint = preflightDeviceId || { facingMode: 'environment' };
-        if (state.availableCameras.length > 0 && state.availableCameras[state.activeCameraIndex]) {
-          constraint = state.availableCameras[state.activeCameraIndex].id;
+      };
+
+      const testCameraPermission = async () => {
+        const startTime = Date.now();
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          addLog('success', 'testCameraPermission', 'Preflight track permission GRANTED.', Date.now() - startTime);
+          stream.getTracks().forEach(track => {
+            track.stop();
+            addLog('info', 'testCameraPermission', `Stopped track: ${track.label}`);
+          });
+          await updateMetrics();
+          return true;
+        } catch (err) {
+          recordError('testCameraPermission', err);
+          return false;
         }
+      };
 
-        await tempScanner.start(
-          constraint,
-          { fps: 10, qrbox: 250 },
-          () => {}, // Silence scan callback for test
-          () => {}
-        );
-
-        addLog('success', 'testStartCamera', 'Camera preview loaded successfully.', Date.now() - startTime);
-        
-        // Save back reference for stop test
-        html5QrCode = tempScanner;
-        state.cameraRunning = true;
-        await updateMetrics();
-        return true;
-      } catch (err) {
-        recordError('testStartCamera', err);
-        return false;
-      }
-    };
-
-    const testStopCamera = async () => {
-      const startTime = Date.now();
-      try {
-        if (!html5QrCode || !state.cameraRunning) {
-          throw new Error("No active scanner instance found to stop.");
+      const testCameraEnumeration = async () => {
+        const startTime = Date.now();
+        try {
+          const cameras = await Html5Qrcode.getCameras();
+          addLog('success', 'testCameraEnumeration', `Enumerated ${cameras.length} camera(s) successfully.`, Date.now() - startTime);
+          await updateMetrics();
+          return true;
+        } catch (err) {
+          recordError('testCameraEnumeration', err);
+          return false;
         }
-        await html5QrCode.stop();
-        state.cameraRunning = false;
-        html5QrCode = null;
-        
-        const container = document.getElementById('interactive-camera-scanner');
-        if (container) container.innerHTML = '';
+      };
 
-        addLog('success', 'testStopCamera', 'Scanner stopped and resource cleaned.', Date.now() - startTime);
-        await updateMetrics();
-        return true;
-      } catch (err) {
-        recordError('testStopCamera', err);
-        return false;
-      }
-    };
-
-    const stressTestCamera = async () => {
-      addLog('info', 'stressTestCamera', 'Initiating camera stress test (5 iterations)...');
-      let passes = 0;
-      let totalTime = 0;
-      
-      for (let i = 1; i <= 5; i++) {
-        addLog('info', 'stressTestCamera', `Iteration ${i}/5 starting...`);
-        const startResult = await testStartCamera();
-        if (startResult) {
-          passes++;
-          await new Promise(r => setTimeout(r, 500)); // Let preview render
-          await testStopCamera();
-        } else {
-          addLog('error', 'stressTestCamera', `Iteration ${i}/5 failed at start.`);
-        }
-      }
-      
-      addLog('success', 'stressTestCamera', `Stress test completed. Passes: ${passes}/5.`, totalTime);
-    };
-
-    const testScanner = async () => {
-      const startTime = Date.now();
-      try {
-        if (state.cameraRunning) await testStopCamera();
-        
-        const container = document.getElementById('interactive-camera-scanner');
-        if (container) container.innerHTML = '';
-        const diagScanner = new Html5Qrcode('interactive-camera-scanner');
-
-        let frameCount = 0;
-        let decodes = 0;
-        
-        let constraint = preflightDeviceId || { facingMode: 'environment' };
-        if (state.availableCameras.length > 0 && state.availableCameras[state.activeCameraIndex]) {
-          constraint = state.availableCameras[state.activeCameraIndex].id;
-        }
-
-        await diagScanner.start(
-          constraint,
-          { fps: 10, qrbox: 250 },
-          (text) => {
-            decodes++;
-            addLog('success', 'testScanner', `QR Decoded: ${text} (Total decodes this session: ${decodes})`);
-            showToast('info', `Scan Decoded: ${text}`);
-          },
-          () => {
-            frameCount++;
+      const testPreflightDevice = () => {
+        const startTime = Date.now();
+        try {
+          if (!preflightDeviceId) {
+            throw new Error("No preflightDeviceId has been captured yet. Perform permission test first.");
           }
-        );
-
-        addLog('success', 'testScanner', 'Scanner diagnostic feed active.', Date.now() - startTime);
-        html5QrCode = diagScanner;
-        state.cameraRunning = true;
-        await updateMetrics();
-        return true;
-      } catch (err) {
-        recordError('testScanner', err);
-        return false;
-      }
-    };
-
-    const testScannerContainer = () => {
-      const startTime = Date.now();
-      try {
-        const container = document.getElementById('interactive-camera-scanner');
-        if (!container) throw new Error("DOM container #interactive-camera-scanner not found.");
-        const bounds = container.getBoundingClientRect();
-        addLog('success', 'testScannerContainer', `Container ok. Size: ${bounds.width}px x ${bounds.height}px`, Date.now() - startTime);
-        return true;
-      } catch (err) {
-        recordError('testScannerContainer', err);
-        return false;
-      }
-    };
-
-    const performanceTest = async () => {
-      const startTime = Date.now();
-      addLog('info', 'performanceTest', 'Measuring camera hardware initialize latency...');
-      const success = await testCameraPermission();
-      if (success) {
-        addLog('success', 'performanceTest', 'Performance measurement complete.', Date.now() - startTime);
-      } else {
-        addLog('error', 'performanceTest', 'Performance measurement failed due to permission reject.');
-      }
-    };
-
-    const exportLogs = () => {
-      try {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
-        const dlAnchorElem = document.createElement('a');
-        dlAnchorElem.setAttribute("href",     dataStr);
-        dlAnchorElem.setAttribute("download", `bvc_camera_diagnostic_${Date.now()}.json`);
-        dlAnchorElem.click();
-        addLog('success', 'exportLogs', 'Logs exported successfully.');
-      } catch (err) {
-        recordError('exportLogs', err);
-      }
-    };
-
-    const resetTest = async () => {
-      try {
-        if (state.cameraRunning) {
-          await testStopCamera();
+          addLog('success', 'testPreflightDevice', `Preflight Device ID: ${preflightDeviceId}`, Date.now() - startTime);
+          return true;
+        } catch (err) {
+          recordError('testPreflightDevice', err);
+          return false;
         }
-        logs.length = 0;
-        const timeline = document.getElementById('dbg-timeline');
-        if (timeline) timeline.innerHTML = '';
-        const display = document.getElementById('dbg-error-display');
-        if (display) display.textContent = 'None recorded.';
-        addLog('info', 'resetTest', 'Diagnostic panel state has been fully reset.');
-        await updateMetrics();
-      } catch (err) {
-        recordError('resetTest', err);
+      };
+
+      const testStartCamera = async () => {
+        const startTime = Date.now();
+        try {
+          if (state.cameraRunning) {
+            throw new Error("Camera is already active. Stop camera first.");
+          }
+
+          const container = document.getElementById('interactive-camera-scanner');
+          if (container) container.innerHTML = '';
+          const tempScanner = new Html5Qrcode('interactive-camera-scanner');
+
+          let constraint = preflightDeviceId || { facingMode: 'environment' };
+          if (state.availableCameras.length > 0 && state.availableCameras[state.activeCameraIndex]) {
+            constraint = state.availableCameras[state.activeCameraIndex].id;
+          }
+
+          await tempScanner.start(
+            constraint,
+            { fps: 10, qrbox: 250 },
+            () => { }, // Silence scan callback for test
+            () => { }
+          );
+
+          addLog('success', 'testStartCamera', 'Camera preview loaded successfully.', Date.now() - startTime);
+
+          // Save back reference for stop test
+          html5QrCode = tempScanner;
+          state.cameraRunning = true;
+          await updateMetrics();
+          return true;
+        } catch (err) {
+          recordError('testStartCamera', err);
+          return false;
+        }
+      };
+
+      const testStopCamera = async () => {
+        const startTime = Date.now();
+        try {
+          if (!html5QrCode || !state.cameraRunning) {
+            throw new Error("No active scanner instance found to stop.");
+          }
+          await html5QrCode.stop();
+          state.cameraRunning = false;
+          html5QrCode = null;
+
+          const container = document.getElementById('interactive-camera-scanner');
+          if (container) container.innerHTML = '';
+
+          addLog('success', 'testStopCamera', 'Scanner stopped and resource cleaned.', Date.now() - startTime);
+          await updateMetrics();
+          return true;
+        } catch (err) {
+          recordError('testStopCamera', err);
+          return false;
+        }
+      };
+
+      const stressTestCamera = async () => {
+        addLog('info', 'stressTestCamera', 'Initiating camera stress test (5 iterations)...');
+        let passes = 0;
+        let totalTime = 0;
+
+        for (let i = 1; i <= 5; i++) {
+          addLog('info', 'stressTestCamera', `Iteration ${i}/5 starting...`);
+          const startResult = await testStartCamera();
+          if (startResult) {
+            passes++;
+            await new Promise(r => setTimeout(r, 500)); // Let preview render
+            await testStopCamera();
+          } else {
+            addLog('error', 'stressTestCamera', `Iteration ${i}/5 failed at start.`);
+          }
+        }
+
+        addLog('success', 'stressTestCamera', `Stress test completed. Passes: ${passes}/5.`, totalTime);
+      };
+
+      const testScanner = async () => {
+        const startTime = Date.now();
+        try {
+          if (state.cameraRunning) await testStopCamera();
+
+          const container = document.getElementById('interactive-camera-scanner');
+          if (container) container.innerHTML = '';
+          const diagScanner = new Html5Qrcode('interactive-camera-scanner');
+
+          let frameCount = 0;
+          let decodes = 0;
+
+          let constraint = preflightDeviceId || { facingMode: 'environment' };
+          if (state.availableCameras.length > 0 && state.availableCameras[state.activeCameraIndex]) {
+            constraint = state.availableCameras[state.activeCameraIndex].id;
+          }
+
+          await diagScanner.start(
+            constraint,
+            { fps: 10, qrbox: 250 },
+            (text) => {
+              decodes++;
+              addLog('success', 'testScanner', `QR Decoded: ${text} (Total decodes this session: ${decodes})`);
+              showToast('info', `Scan Decoded: ${text}`);
+            },
+            () => {
+              frameCount++;
+            }
+          );
+
+          addLog('success', 'testScanner', 'Scanner diagnostic feed active.', Date.now() - startTime);
+          html5QrCode = diagScanner;
+          state.cameraRunning = true;
+          await updateMetrics();
+          return true;
+        } catch (err) {
+          recordError('testScanner', err);
+          return false;
+        }
+      };
+
+      const testScannerContainer = () => {
+        const startTime = Date.now();
+        try {
+          const container = document.getElementById('interactive-camera-scanner');
+          if (!container) throw new Error("DOM container #interactive-camera-scanner not found.");
+          const bounds = container.getBoundingClientRect();
+          addLog('success', 'testScannerContainer', `Container ok. Size: ${bounds.width}px x ${bounds.height}px`, Date.now() - startTime);
+          return true;
+        } catch (err) {
+          recordError('testScannerContainer', err);
+          return false;
+        }
+      };
+
+      const performanceTest = async () => {
+        const startTime = Date.now();
+        addLog('info', 'performanceTest', 'Measuring camera hardware initialize latency...');
+        const success = await testCameraPermission();
+        if (success) {
+          addLog('success', 'performanceTest', 'Performance measurement complete.', Date.now() - startTime);
+        } else {
+          addLog('error', 'performanceTest', 'Performance measurement failed due to permission reject.');
+        }
+      };
+
+      const exportLogs = () => {
+        try {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
+          const dlAnchorElem = document.createElement('a');
+          dlAnchorElem.setAttribute("href", dataStr);
+          dlAnchorElem.setAttribute("download", `bvc_camera_diagnostic_${Date.now()}.json`);
+          dlAnchorElem.click();
+          addLog('success', 'exportLogs', 'Logs exported successfully.');
+        } catch (err) {
+          recordError('exportLogs', err);
+        }
+      };
+
+      const resetTest = async () => {
+        try {
+          if (state.cameraRunning) {
+            await testStopCamera();
+          }
+          logs.length = 0;
+          const timeline = document.getElementById('dbg-timeline');
+          if (timeline) timeline.innerHTML = '';
+          const display = document.getElementById('dbg-error-display');
+          if (display) display.textContent = 'None recorded.';
+          addLog('info', 'resetTest', 'Diagnostic panel state has been fully reset.');
+          await updateMetrics();
+        } catch (err) {
+          recordError('resetTest', err);
+        }
+      };
+
+      // Bind Developer UI Events
+      const initBindings = () => {
+        if (!window.DEBUG_MODE) {
+          const trig = document.getElementById('camera-debug-trigger-container');
+          if (trig) trig.style.display = 'none';
+          return;
+        }
+
+        const getEl = id => document.getElementById(id);
+        const onClick = (id, fn) => { const el = getEl(id); if (el) el.addEventListener('click', fn); };
+
+        onClick('btn-open-camera-debug', () => { getEl('camera-debug-panel').style.display = 'flex'; updateMetrics(); });
+        onClick('btn-close-camera-debug', () => { getEl('camera-debug-panel').style.display = 'none'; });
+
+        onClick('dbg-btn-test-1', testBrowserCompatibility);
+        onClick('dbg-btn-test-2', testCameraPermission);
+        onClick('dbg-btn-test-3', testCameraEnumeration);
+        onClick('dbg-btn-test-4', testPreflightDevice);
+        onClick('dbg-btn-test-5', testStartCamera);
+        onClick('dbg-btn-test-6', testStopCamera);
+        onClick('dbg-btn-test-7', stressTestCamera);
+        onClick('dbg-btn-test-8', testScanner);
+        onClick('dbg-btn-test-9', testScannerContainer);
+        onClick('dbg-btn-test-10', performanceTest);
+
+        onClick('dbg-btn-clear-error', () => { getEl('dbg-error-display').textContent = 'None recorded.'; });
+        onClick('dbg-btn-clear-timeline', () => { getEl('dbg-timeline').innerHTML = ''; });
+        onClick('dbg-btn-export-logs', exportLogs);
+        onClick('dbg-btn-reset-test', resetTest);
+
+        addLog('info', 'initBindings', 'Diagnostic Suite fully loaded. Ready for test iterations.');
+        updateMetrics();
+      };
+
+      return {
+        init: initBindings,
+        addLog,
+        updateMetrics
+      };
+    })();
+
+    // ==========================================================================
+    //  LIBRARY VERSION RUNTIME VALIDATION (Task 6 & 8)
+    // ==========================================================================
+    window.testLibraryVersion = () => {
+      console.log("=== testLibraryVersion() ===");
+      console.log("Library Version Selected:", window.QR_SCANNER_VERSION);
+      console.log("Html5Qrcode Exists:", typeof Html5Qrcode !== 'undefined');
+      if (typeof Html5Qrcode !== 'undefined') {
+        console.log("Available APIs:", Object.keys(Html5Qrcode));
       }
+      console.log("Constructor Exists:", typeof Html5Qrcode === 'function');
+      console.log("Scanner Exists:", typeof Html5QrcodeScanner !== 'undefined');
+      console.log("Ready State: OK");
+      console.log("============================");
+
+      // Task 8: Automatic Compatibility Report
+      console.log("=== COMPATIBILITY REPORT ===");
+      console.log("Browser:", navigator.userAgent.split(' ')[0]);
+      console.log("OS/Platform:", navigator.platform);
+      console.log("Library Version:", window.QR_SCANNER_VERSION);
+      console.log("CDN Provider:", window.CDN_PROVIDER);
+      console.log("Camera API Supported:", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+      console.log("Permission API Supported:", !!navigator.permissions);
+
+      const score = [
+        typeof Html5Qrcode !== 'undefined',
+        !!navigator.mediaDevices,
+        window.isSecureContext
+      ].filter(Boolean).length / 3 * 100;
+      console.log(`Compatibility Score: ${Math.round(score)}%`);
+      console.log("Recommended Version: 2.3.7 (Stable)");
+      console.log("============================");
     };
 
-    // Bind Developer UI Events
-    const initBindings = () => {
-      if (!window.DEBUG_MODE) {
-        const trig = document.getElementById('camera-debug-trigger-container');
-        if (trig) trig.style.display = 'none';
-        return;
-      }
+    // ==========================================================================
+    //  TWO-COLUMN ATTENDANCE MANAGEMENT (DAY RESTRICTED: TODAY ONLY)
+    // ==========================================================================
+    const renderAttendanceTwoColumns = () => {
+      const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      const subEl = document.getElementById('att-today-date-sub');
+      if (subEl) subEl.textContent = `Date: ${todayStr} (Today Only)`;
 
-      const getEl = id => document.getElementById(id);
-      const onClick = (id, fn) => { const el = getEl(id); if (el) el.addEventListener('click', fn); };
+      const searchVal = (document.getElementById('att-search-input')?.value || '').trim().toLowerCase();
+      const deptVal = document.getElementById('att-dept-filter')?.value || '';
 
-      onClick('btn-open-camera-debug', () => { getEl('camera-debug-panel').style.display = 'flex'; updateMetrics(); });
-      onClick('btn-close-camera-debug', () => { getEl('camera-debug-panel').style.display = 'none'; });
-      
-      onClick('dbg-btn-test-1', testBrowserCompatibility);
-      onClick('dbg-btn-test-2', testCameraPermission);
-      onClick('dbg-btn-test-3', testCameraEnumeration);
-      onClick('dbg-btn-test-4', testPreflightDevice);
-      onClick('dbg-btn-test-5', testStartCamera);
-      onClick('dbg-btn-test-6', testStopCamera);
-      onClick('dbg-btn-test-7', stressTestCamera);
-      onClick('dbg-btn-test-8', testScanner);
-      onClick('dbg-btn-test-9', testScannerContainer);
-      onClick('dbg-btn-test-10', performanceTest);
+      const absentContainer = document.getElementById('absent-list-container');
+      const presentContainer = document.getElementById('present-list-container');
+      const absentBadge = document.getElementById('absent-count-badge');
+      const presentBadge = document.getElementById('present-count-badge');
 
-      onClick('dbg-btn-clear-error', () => { getEl('dbg-error-display').textContent = 'None recorded.'; });
-      onClick('dbg-btn-clear-timeline', () => { getEl('dbg-timeline').innerHTML = ''; });
-      onClick('dbg-btn-export-logs', exportLogs);
-      onClick('dbg-btn-reset-test', resetTest);
-      
-      addLog('info', 'initBindings', 'Diagnostic Suite fully loaded. Ready for test iterations.');
-      updateMetrics();
-    };
+      // Filter scans strictly
+      const presentScans = state.allScans.filter(s => !s.isError);
+      const presentRolls = presentScans.map(s => s.roll);
 
-    return {
-      init: initBindings,
-      addLog,
-      updateMetrics
-    };
-  })();
+      // Filtered lists
+      let filteredPresent = presentScans.filter(s => {
+        const matchesSearch = !searchVal || (s.name || '').toLowerCase().includes(searchVal) || (s.roll || '').toLowerCase().includes(searchVal);
+        const matchesDept = !deptVal || s.dept === deptVal;
+        return matchesSearch && matchesDept;
+      });
 
-  // ==========================================================================
-  //  LIBRARY VERSION RUNTIME VALIDATION (Task 6 & 8)
-  // ==========================================================================
-  window.testLibraryVersion = () => {
-    console.log("=== testLibraryVersion() ===");
-    console.log("Library Version Selected:", window.QR_SCANNER_VERSION);
-    console.log("Html5Qrcode Exists:", typeof Html5Qrcode !== 'undefined');
-    if (typeof Html5Qrcode !== 'undefined') {
-      console.log("Available APIs:", Object.keys(Html5Qrcode));
-    }
-    console.log("Constructor Exists:", typeof Html5Qrcode === 'function');
-    console.log("Scanner Exists:", typeof Html5QrcodeScanner !== 'undefined');
-    console.log("Ready State: OK");
-    console.log("============================");
-
-    // Task 8: Automatic Compatibility Report
-    console.log("=== COMPATIBILITY REPORT ===");
-    console.log("Browser:", navigator.userAgent.split(' ')[0]);
-    console.log("OS/Platform:", navigator.platform);
-    console.log("Library Version:", window.QR_SCANNER_VERSION);
-    console.log("CDN Provider:", window.CDN_PROVIDER);
-    console.log("Camera API Supported:", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
-    console.log("Permission API Supported:", !!navigator.permissions);
-    
-    const score = [
-      typeof Html5Qrcode !== 'undefined',
-      !!navigator.mediaDevices,
-      window.isSecureContext
-    ].filter(Boolean).length / 3 * 100;
-    console.log(`Compatibility Score: ${Math.round(score)}%`);
-    console.log("Recommended Version: 2.3.7 (Stable)");
-    console.log("============================");
-  };
-
-  // ==========================================================================
-  //  TWO-COLUMN ATTENDANCE MANAGEMENT (DAY RESTRICTED: TODAY ONLY)
-  // ==========================================================================
-  const renderAttendanceTwoColumns = () => {
-    const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-    const subEl = document.getElementById('att-today-date-sub');
-    if (subEl) subEl.textContent = `Date: ${todayStr} (Today Only)`;
-
-    const searchVal = (document.getElementById('att-search-input')?.value || '').trim().toLowerCase();
-    const deptVal = document.getElementById('att-dept-filter')?.value || '';
-
-    const absentContainer = document.getElementById('absent-list-container');
-    const presentContainer = document.getElementById('present-list-container');
-    const absentBadge = document.getElementById('absent-count-badge');
-    const presentBadge = document.getElementById('present-count-badge');
-
-    // Filter scans strictly
-    const presentScans = state.allScans.filter(s => !s.isError);
-    const presentRolls = presentScans.map(s => s.roll);
-
-    // Filtered lists
-    let filteredPresent = presentScans.filter(s => {
-      const matchesSearch = !searchVal || (s.name || '').toLowerCase().includes(searchVal) || (s.roll || '').toLowerCase().includes(searchVal);
-      const matchesDept = !deptVal || s.dept === deptVal;
-      return matchesSearch && matchesDept;
-    });
-
-    if (presentContainer) {
-      if (filteredPresent.length === 0) {
-        presentContainer.innerHTML = `<div class="text-center text-muted py-4 small">No present students found</div>`;
-      } else {
-        presentContainer.innerHTML = filteredPresent.map(s => `
+      if (presentContainer) {
+        if (filteredPresent.length === 0) {
+          presentContainer.innerHTML = `<div class="text-center text-muted py-4 small">No present students found</div>`;
+        } else {
+          presentContainer.innerHTML = filteredPresent.map(s => `
           <div class="d-flex align-items-center justify-content-between p-2 mb-2 bg-light rounded shadow-sm">
             <div>
               <strong class="d-block text-dark small">${escapeHtml(s.name || 'Student')}</strong>
@@ -3862,63 +3871,63 @@ const CoordinatorUI = (() => {
             </button>
           </div>
         `).join('');
+        }
       }
-    }
-    if (presentBadge) presentBadge.textContent = filteredPresent.length;
+      if (presentBadge) presentBadge.textContent = filteredPresent.length;
 
-    // Absent placeholder / remaining
-    if (absentContainer) {
-      if (state.statistics.remaining === 0 && presentScans.length > 0) {
-        absentContainer.innerHTML = `<div class="text-center text-muted py-4 small">All students present today</div>`;
-      } else {
-        absentContainer.innerHTML = `
+      // Absent placeholder / remaining
+      if (absentContainer) {
+        if (state.statistics.remaining === 0 && presentScans.length > 0) {
+          absentContainer.innerHTML = `<div class="text-center text-muted py-4 small">All students present today</div>`;
+        } else {
+          absentContainer.innerHTML = `
           <div class="alert alert-info py-2 small mb-2">Showing remaining unregistered/absent candidates for today</div>
           <div class="text-center text-muted py-3 small">Use SCANNER tab to verify and check in absent students</div>
         `;
+        }
       }
-    }
-    if (absentBadge) absentBadge.textContent = state.statistics.remaining || 0;
-  };
+      if (absentBadge) absentBadge.textContent = state.statistics.remaining || 0;
+    };
 
-  const markStudentAbsent = (roll) => {
-    state.allScans = state.allScans.filter(s => s.roll !== roll);
-    state.statistics.present = Math.max(0, state.statistics.present - 1);
-    state.statistics.remaining++;
-    renderStats();
-    showToast('info', `Marked ${roll} as Absent.`);
-    renderAttendanceTwoColumns();
-    renderHistory();
-  };
+    const markStudentAbsent = (roll) => {
+      state.allScans = state.allScans.filter(s => s.roll !== roll);
+      state.statistics.present = Math.max(0, state.statistics.present - 1);
+      state.statistics.remaining++;
+      renderStats();
+      showToast('info', `Marked ${roll} as Absent.`);
+      renderAttendanceTwoColumns();
+      renderHistory();
+    };
 
-  const markStudentPresent = (roll) => {
-    state.allScans.unshift({ roll, name: 'Student', dept: 'Gen', timestamp: new Date().toLocaleTimeString(), isDuplicate: false, isError: false });
-    state.statistics.present++;
-    state.statistics.remaining = Math.max(0, state.statistics.remaining - 1);
-    renderStats();
-    showToast('success', `Marked ${roll} as Present.`);
-    renderAttendanceTwoColumns();
-    renderHistory();
-  };
+    const markStudentPresent = (roll) => {
+      state.allScans.unshift({ roll, name: 'Student', dept: 'Gen', timestamp: new Date().toLocaleTimeString(), isDuplicate: false, isError: false });
+      state.statistics.present++;
+      state.statistics.remaining = Math.max(0, state.statistics.remaining - 1);
+      renderStats();
+      showToast('success', `Marked ${roll} as Present.`);
+      renderAttendanceTwoColumns();
+      renderHistory();
+    };
 
-  // ==========================================================================
-  //  PUBLIC API
-  // ==========================================================================
-  return {
-    initializeCoordinatorUI: init,
-    showToast,
-    resetUI,
-    markStudentAbsent,
-    markStudentPresent,
-    renderAttendanceTwoColumns,
-  };
-})();
+    // ==========================================================================
+    //  PUBLIC API
+    // ==========================================================================
+    return {
+      initializeCoordinatorUI: init,
+      showToast,
+      resetUI,
+      markStudentAbsent,
+      markStudentPresent,
+      renderAttendanceTwoColumns,
+    };
+  })();
 
-// Boot on DOM ready
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  CoordinatorUI.initializeCoordinatorUI();
-} else {
-  document.addEventListener('DOMContentLoaded', () => CoordinatorUI.initializeCoordinatorUI());
-}
+  // Boot on DOM ready
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    CoordinatorUI.initializeCoordinatorUI();
+  } else {
+    document.addEventListener('DOMContentLoaded', () => CoordinatorUI.initializeCoordinatorUI());
+  }
 </script>
 </body>
 
