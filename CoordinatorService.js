@@ -10,7 +10,17 @@ const CoordinatorService = {
     let match = clean.match(/([A-Z]+)0*(\d+)/);
     return match ? (match[1] + match[2]) : clean;
   },
+  _isBvcOnlyEvent: function (event) {
+    if (!event) return true;
 
+    var eligibility = String(
+      event.student_eligibility ||
+      event['Student Eligibility'] ||
+      'BVC_ONLY'
+    ).trim().toUpperCase();
+
+    return eligibility !== 'ALL_COLLEGES';
+  },
   _tryWrap: function (methodName, failureMessage, fn) {
     if (typeof failureMessage === 'function') {
       fn = failureMessage;
@@ -34,6 +44,46 @@ const CoordinatorService = {
       if (clean === 'false') return false;
     }
     return Boolean(val);
+  },
+
+  _getEffectiveRegistrationFields: function (event) {
+    var fields = this.parseRegistrationFields(event);
+
+    if (!Array.isArray(fields)) {
+      return [];
+    }
+
+    // ALL_COLLEGES events can use all admin-configured fields.
+    if (!this._isBvcOnlyEvent(event)) {
+      return fields;
+    }
+
+    // BVC_ONLY events must never ask for college details.
+    return fields.filter(function (field) {
+      if (!field) return false;
+
+      var rawName =
+        field.name ||
+        field.label ||
+        field.fieldName ||
+        field.key ||
+        field.field_name ||
+        '';
+
+      var normalized = String(rawName)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+      return (
+        normalized !== 'college' &&
+        normalized !== 'college_name' &&
+        normalized !== 'college_details' &&
+        normalized !== 'institution' &&
+        normalized !== 'institution_name'
+      );
+    });
   },
 
   _normalizeFieldName: function (value) {
@@ -982,13 +1032,46 @@ const CoordinatorService = {
       Logger.log('[COORDINATOR-FLOW][03] Event loaded: NOT_FOUND event=' + normEventId);
       return Utils.buildResponse(false, 'Event not found or deleted.', { state: 'EVENT_NOT_AVAILABLE' });
     }
-    var eventStatus = String(event.event_status || event['Event Status'] || event.status || '').toUpperCase();
-    if (eventStatus === 'CANCELLED') {
-      Logger.log('[COORDINATOR-FLOW][03] Event loaded: CANCELLED event=' + normEventId);
-      return Utils.buildResponse(false, 'Event is no longer active for attendance.', { state: 'EVENT_NOT_AVAILABLE' });
-    }
-    Logger.log('[COORDINATOR-FLOW][03] Event loaded: ACTIVE event=' + normEventId);
+    var eventStatus = String(
+      event.event_status ||
+      event['Event Status'] ||
+      event.status ||
+      ''
+    ).trim().toUpperCase();
 
+    var blockedEventStatuses = [
+      'CANCELLED',
+      'COMPLETED',
+      'STOPPED',
+      'DRAFT',
+      'UPCOMING'
+    ];
+
+    if (blockedEventStatuses.indexOf(eventStatus) !== -1) {
+      Logger.log(
+        '[COORDINATOR-FLOW][03] Event unavailable status=' +
+        eventStatus +
+        ' event=' +
+        normEventId
+      );
+
+      return Utils.buildResponse(
+        false,
+        'Attendance cannot be marked because this event is ' + eventStatus.toLowerCase() + '.',
+        {
+          state: 'EVENT_NOT_AVAILABLE',
+          eventStatus: eventStatus,
+          event: event
+        }
+      );
+    }
+
+    Logger.log(
+      '[COORDINATOR-FLOW][03] Event loaded: ACTIVE event=' +
+      normEventId +
+      ' status=' +
+      eventStatus
+    );
     // 3. Check Duplicate Participation
     var alreadyAttended = AttendanceService.hasStudentAttended(normEventId, normRoll);
     if (alreadyAttended) {
@@ -1014,26 +1097,64 @@ const CoordinatorService = {
     }
 
     // 4. Student Lookup (BVC -> Other College -> Unknown)
-    var student = StudentService.getStudentByRollNumber(normRoll);
+    // 4. Student Lookup based on event eligibility
+    var isBvcOnly = this._isBvcOnlyEvent(event);
+
+    Logger.log(
+      '[COORDINATOR-FLOW][04A] Student eligibility=' +
+      (isBvcOnly ? 'BVC_ONLY' : 'ALL_COLLEGES')
+    );
+
+    var student =
+      StudentService.getStudentByRollNumber(normRoll);
+
     var otherStudent = null;
     var studentSource = 'UNKNOWN';
 
     if (student) {
-      var col = String(student.College || student.college_name || student.college || '').toLowerCase();
-      studentSource = (!col || col.includes('bvc') || col.includes('bonam')) ? 'BVC' : 'EXTERNAL';
-      Logger.log('[COORDINATOR-FLOW][05] BVC lookup result: FOUND source=' + studentSource);
+      // STUDENTS is the authoritative BVC student database.
+      studentSource = 'BVC';
+
+      Logger.log(
+        '[COORDINATOR-FLOW][05] BVC lookup result: FOUND'
+      );
+
     } else {
-      Logger.log('[COORDINATOR-FLOW][05] BVC lookup result: NOT_FOUND');
-      otherStudent = this._lookupOtherCollegeStudent(normRoll);
-      if (otherStudent) {
-        studentSource = 'EXTERNAL';
-        Logger.log('[COORDINATOR-FLOW][06] External lookup result: FOUND');
+
+      Logger.log(
+        '[COORDINATOR-FLOW][05] BVC lookup result: NOT_FOUND'
+      );
+
+      // External database must NEVER be searched for BVC-only events.
+      if (!isBvcOnly) {
+
+        otherStudent =
+          this._lookupOtherCollegeStudent(normRoll);
+
+        if (otherStudent) {
+          studentSource = 'EXTERNAL';
+
+          Logger.log(
+            '[COORDINATOR-FLOW][06] External lookup result: FOUND'
+          );
+
+        } else {
+          studentSource = 'UNKNOWN';
+
+          Logger.log(
+            '[COORDINATOR-FLOW][06] External lookup result: NOT_FOUND'
+          );
+        }
+
       } else {
+
         studentSource = 'UNKNOWN';
-        Logger.log('[COORDINATOR-FLOW][06] External lookup result: NOT_FOUND');
+
+        Logger.log(
+          '[COORDINATOR-FLOW][06] External lookup skipped: BVC_ONLY event'
+        );
       }
     }
-
     // Helper to resolve student field attributes safely
     var effectiveStudent = student || otherStudent;
 
@@ -1072,7 +1193,9 @@ const CoordinatorService = {
 
     Logger.log('[COORDINATOR-FLOW][04] Registration mode resolved: ' + (isRegRequired ? 'REGISTRATION_REQUIRED' : 'NO_REGISTRATION'));
 
-    var configuredFields = this.parseRegistrationFields(event);
+    var configuredFields =
+      this._getEffectiveRegistrationFields(event);
+
 
     // Dynamic & Standard Required Field Evaluator
     var checkMissingFields = function (configured, known) {
@@ -1361,12 +1484,43 @@ const CoordinatorService = {
     // ------------------------------------------------------------
 
     var event = EventService.getEventById(normEventId);
-
     if (!event) {
       return Utils.buildResponse(
         false,
         'Event not found.',
         { state: 'EVENT_NOT_AVAILABLE' }
+      );
+    }
+    var eventStatus = String(
+      event.event_status ||
+      event['Event Status'] ||
+      event.status ||
+      ''
+    ).trim().toUpperCase();
+
+    var blockedEventStatuses = [
+      'CANCELLED',
+      'COMPLETED',
+      'STOPPED',
+      'DRAFT',
+      'UPCOMING'
+    ];
+
+    if (blockedEventStatuses.indexOf(eventStatus) !== -1) {
+      Logger.log(
+        '[COORDINATOR-FLOW][03] Mark blocked event=' +
+        normEventId +
+        ' status=' +
+        eventStatus
+      );
+
+      return Utils.buildResponse(
+        false,
+        'Attendance cannot be marked because this event is ' + eventStatus.toLowerCase() + '.',
+        {
+          state: 'EVENT_NOT_AVAILABLE',
+          eventStatus: eventStatus
+        }
       );
     }
 
@@ -1557,25 +1711,25 @@ const CoordinatorService = {
 
     var existingOther = null;
 
-    if (!existingStudent) {
+    // Respect event student eligibility.
+    // BVC_ONLY events must never search OTHER_COLLEGE_STUDENTS.
+    var isBvcOnly = this._isBvcOnlyEvent(event);
+
+    if (!existingStudent && !isBvcOnly) {
       existingOther =
         this._lookupOtherCollegeStudent(normRoll);
     }
 
-    var existingSource = existingStudent
-      ? 'BVC'
-      : (existingOther ? 'EXTERNAL' : 'UNKNOWN');
+    var existingSource =
+      existingStudent
+        ? 'BVC'
+        : (existingOther ? 'EXTERNAL' : 'UNKNOWN');
 
     var sourceStudent =
       existingStudent ||
       existingOther ||
       {};
-
-    Logger.log(
-      '[COORDINATOR-FLOW][05] Spot student lookup source=' +
-      existingSource
-    );
-
+    // Safely read an existing value from the matched student record.
     var getExistingValue = function () {
       for (var i = 0; i < arguments.length; i++) {
         var value =
@@ -1592,11 +1746,12 @@ const CoordinatorService = {
       return '';
     }.bind(this);
 
-    var customFieldsInput =
-      spotData.customFields ||
-      spotData.custom_fields ||
-      spotData.customData ||
-      {};
+    Logger.log(
+      '[COORDINATOR-FLOW][05] Spot student lookup source=' +
+      existingSource +
+      ' eligibility=' +
+      (isBvcOnly ? 'BVC_ONLY' : 'ALL_COLLEGES')
+    );
 
     if (typeof customFieldsInput === 'string') {
       try {
@@ -1683,7 +1838,7 @@ const CoordinatorService = {
     // ------------------------------------------------------------
 
     var configuredFields =
-      this.parseRegistrationFields(event);
+      this._getEffectiveRegistrationFields(event);
 
     var missingSpotFields = [];
 
@@ -1800,7 +1955,6 @@ const CoordinatorService = {
     // ------------------------------------------------------------
     // 8. DETERMINE STUDENT TYPE SAFELY
     // ------------------------------------------------------------
-
     var rawType =
       spotData.studentType ||
       spotData.type ||
@@ -1816,14 +1970,21 @@ const CoordinatorService = {
     var collegeLower =
       collegeName.toLowerCase();
 
+    // Event eligibility is authoritative.
+    var isBvcOnly =
+      this._isBvcOnlyEvent(event);
+
     var isExplicitOther =
-      existingSource === 'EXTERNAL' ||
-      typeUpper.indexOf('OTHER') !== -1 ||
-      typeUpper.indexOf('EXTERNAL') !== -1 ||
+      !isBvcOnly &&
       (
-        collegeName !== '' &&
-        collegeLower.indexOf('bvc') === -1 &&
-        collegeLower.indexOf('bonam') === -1
+        existingSource === 'EXTERNAL' ||
+        typeUpper.indexOf('OTHER') !== -1 ||
+        typeUpper.indexOf('EXTERNAL') !== -1 ||
+        (
+          collegeName !== '' &&
+          collegeLower.indexOf('bvc') === -1 &&
+          collegeLower.indexOf('bonam') === -1
+        )
       );
 
     var isExplicitBvc =
@@ -1832,11 +1993,43 @@ const CoordinatorService = {
       collegeLower.indexOf('bvc') !== -1 ||
       collegeLower.indexOf('bonam') !== -1;
 
+    // BVC_ONLY events never ask the coordinator to classify
+    // a participant as BVC vs External.
+    // An unknown roll is treated as a new BVC student candidate.
     if (
+      isBvcOnly &&
+      existingSource === 'UNKNOWN'
+    ) {
+      isExplicitBvc = true;
+      isExplicitOther = false;
+
+      Logger.log(
+        '[COORDINATOR-FLOW][08] Unknown student treated as BVC candidate because event eligibility=BVC_ONLY'
+      );
+    }
+
+    // Only ALL_COLLEGES events require classification
+    // when the student cannot be identified.
+    if (
+      !isBvcOnly &&
       existingSource === 'UNKNOWN' &&
       !isExplicitOther &&
       !isExplicitBvc
     ) {
+      Logger.log(
+        '[COORDINATOR-FLOW][09] Final state=STUDENT_TYPE_REQUIRED'
+      );
+
+      return Utils.buildResponse(
+        false,
+        'Student classification (BVC or External College) is required.',
+        {
+          state: 'STUDENT_TYPE_REQUIRED',
+          rollNumber: normRoll,
+          studentData: knownSpotData
+        }
+      );
+    } {
       Logger.log(
         '[COORDINATOR-FLOW][09] Final state=STUDENT_TYPE_REQUIRED'
       );
@@ -2407,6 +2600,52 @@ const CoordinatorService = {
 
       var stillMissing = [];
 
+      // ----------------------------------------------------------
+      // Build one combined source of participant data.
+      //
+      // Priority:
+      //   existing workflow/master data
+      //        +
+      //   existing participant custom fields
+      //        +
+      //   newly supplied coordinator data
+      //
+      // New data is used to fill missing values, not to decide
+      // whether existing master data should be overwritten.
+      // ----------------------------------------------------------
+
+      var existingWorkflowData =
+        workflowData.studentData || {};
+
+      var existingCustomData =
+        workflowData.customFields ||
+        workflowData.custom_fields_data ||
+        {};
+
+      if (typeof existingCustomData === 'string') {
+        try {
+          existingCustomData =
+            JSON.parse(existingCustomData);
+        } catch (e) {
+          existingCustomData = {};
+        }
+      }
+
+      var suppliedCustomData =
+        additionalData.customFields ||
+        additionalData.custom_fields ||
+        additionalData.customData ||
+        {};
+
+      if (typeof suppliedCustomData === 'string') {
+        try {
+          suppliedCustomData =
+            JSON.parse(suppliedCustomData);
+        } catch (e) {
+          suppliedCustomData = {};
+        }
+      }
+
       missingFields.forEach(function (field) {
 
         if (!field) return;
@@ -2416,39 +2655,49 @@ const CoordinatorService = {
           field.label ||
           field.fieldName ||
           field.key ||
+          field.field_name ||
           '';
 
-        var supplied =
+        if (!fieldName) {
+          stillMissing.push(field);
+          return;
+        }
+
+        // 1. Check existing master/workflow student data.
+        var value =
           this._findValueByNormalizedKey(
-            additionalData,
+            existingWorkflowData,
             fieldName
           );
 
-        if (!this._hasValue(supplied)) {
-
-          var customInput =
-            additionalData.customFields ||
-            additionalData.custom_fields ||
-            additionalData.customData ||
-            {};
-
-          if (typeof customInput === 'string') {
-            try {
-              customInput =
-                JSON.parse(customInput);
-            } catch (e) {
-              customInput = {};
-            }
-          }
-
-          supplied =
+        // 2. Check existing participant custom fields.
+        if (!this._hasValue(value)) {
+          value =
             this._findValueByNormalizedKey(
-              customInput,
+              existingCustomData,
               fieldName
             );
         }
 
-        if (!this._hasValue(supplied)) {
+        // 3. Check newly supplied canonical/form data.
+        if (!this._hasValue(value)) {
+          value =
+            this._findValueByNormalizedKey(
+              additionalData,
+              fieldName
+            );
+        }
+
+        // 4. Check newly supplied custom fields.
+        if (!this._hasValue(value)) {
+          value =
+            this._findValueByNormalizedKey(
+              suppliedCustomData,
+              fieldName
+            );
+        }
+
+        if (!this._hasValue(value)) {
           stillMissing.push(field);
         }
 
@@ -2467,14 +2716,22 @@ const CoordinatorService = {
           {
             state: 'MISSING_REQUIRED_FIELDS',
             event: event,
-            studentData:
-              workflowData.studentData || {},
+            studentData: existingWorkflowData,
             configuredFields:
               workflowData.configuredFields || [],
             missingFields: stillMissing
           }
         );
       }
+
+      // Required fields are now satisfied.
+      // Promote workflow so attendance processing can continue.
+      workflowState = 'READY_TO_MARK';
+
+      Logger.log(
+        '[COORDINATOR-FLOW][07] Required fields satisfied; promoted state=READY_TO_MARK'
+      );
+
     } else if (workflowState !== 'READY_TO_MARK') {
 
       Logger.log(
@@ -2507,35 +2764,107 @@ const CoordinatorService = {
 
       var studentUpdates = {};
 
-      if (
+      // Helper: get an existing student value regardless of column naming style.
+      var getExistingStudentValue = function () {
+        for (var i = 0; i < arguments.length; i++) {
+          var key = arguments[i];
+
+          if (
+            existingStudent[key] !== undefined &&
+            existingStudent[key] !== null &&
+            String(existingStudent[key]).trim() !== ''
+          ) {
+            return existingStudent[key];
+          }
+        }
+
+        return '';
+      };
+
+      // ------------------------------------------------------------
+      // NAME
+      // Only save coordinator-supplied name when DB name is missing.
+      // ------------------------------------------------------------
+      var existingName = getExistingStudentValue(
+        'Student Name',
+        'student_name',
+        'name',
+        'Full Name',
+        'full_name'
+      );
+
+      var suppliedName =
         additionalData.studentName ||
-        additionalData.name
+        additionalData.name ||
+        '';
+
+      if (
+        !this._hasValue(existingName) &&
+        this._hasValue(suppliedName)
       ) {
         studentUpdates[
           CONFIG.COLUMNS &&
             CONFIG.COLUMNS.STUDENT_NAME
             ? CONFIG.COLUMNS.STUDENT_NAME
             : 'Student Name'
-        ] =
-          additionalData.studentName ||
-          additionalData.name;
+        ] = suppliedName;
       }
 
-      if (
+      // ------------------------------------------------------------
+      // PHONE
+      // Never overwrite an already-filled phone number.
+      // ------------------------------------------------------------
+      var existingPhone = getExistingStudentValue(
+        'Phone',
+        'phone',
+        'Phone Number',
+        'phone_number',
+        'Mobile',
+        'mobile',
+        'Mobile Number',
+        'mobile_number'
+      );
+
+      var suppliedPhone =
         additionalData.phone ||
         additionalData.phoneNumber ||
-        additionalData.mobile
+        additionalData.mobile ||
+        '';
+
+      if (
+        !this._hasValue(existingPhone) &&
+        this._hasValue(suppliedPhone)
       ) {
-        studentUpdates['Phone'] =
-          additionalData.phone ||
-          additionalData.phoneNumber ||
-          additionalData.mobile;
+        studentUpdates['Phone'] = suppliedPhone;
       }
 
-      if (additionalData.email) {
-        studentUpdates['Email'] =
-          additionalData.email;
+      // ------------------------------------------------------------
+      // EMAIL
+      // Never overwrite an already-filled email address.
+      // ------------------------------------------------------------
+      var existingEmail = getExistingStudentValue(
+        'Email',
+        'email',
+        'Email Address',
+        'email_address'
+      );
+
+      var suppliedEmail =
+        additionalData.email ||
+        additionalData.emailAddress ||
+        '';
+
+      if (
+        !this._hasValue(existingEmail) &&
+        this._hasValue(suppliedEmail)
+      ) {
+        studentUpdates['Email'] = suppliedEmail;
       }
+
+      Logger.log(
+        '[COORDINATOR-FLOW] Protected student updates fields=' +
+        Object.keys(studentUpdates).join(',')
+      );
 
       if (Object.keys(studentUpdates).length > 0) {
 
@@ -2686,9 +3015,14 @@ const CoordinatorService = {
     };
 
     var studentObj =
-      StudentService.getStudentByRollNumber(normRoll) ||
-      this._lookupOtherCollegeStudent(normRoll) ||
-      {};
+      StudentService.getStudentByRollNumber(normRoll);
+
+    if (!studentObj && !this._isBvcOnlyEvent(event)) {
+      studentObj =
+        this._lookupOtherCollegeStudent(normRoll);
+    }
+
+    studentObj = studentObj || {};
 
     var dispName =
       studentObj['Student Name'] ||
