@@ -14,7 +14,7 @@ const Utils = {
    * Pads a number with leading zeros.
    * Backward compatible: internal use only.
    */
-  _padNumber: function(number, width) {
+  _padNumber: function (number, width) {
     try {
       number = number + '';
       return number.length >= width ? number : new Array(width - number.length + 1).join('0') + number;
@@ -28,7 +28,7 @@ const Utils = {
   // DATE & TIME UTILITIES
   // ==========================================
 
-  getCurrentTimestamp: function() {
+  getCurrentTimestamp: function () {
     try {
       return new Date().getTime();
     } catch (e) {
@@ -37,7 +37,7 @@ const Utils = {
     }
   },
 
-  getCurrentDate: function() {
+  getCurrentDate: function () {
     try {
       return new Date();
     } catch (e) {
@@ -47,11 +47,11 @@ const Utils = {
   },
 
   // Backward compatible alias
-  getTime: function() {
+  getTime: function () {
     return this.getCurrentTimestamp();
   },
 
-  formatDate: function(dateValue) {
+  formatDate: function (dateValue) {
     try {
       if (!dateValue) return '';
       const d = new Date(dateValue);
@@ -63,7 +63,7 @@ const Utils = {
     }
   },
 
-  formatTimestamp: function(dateValue) {
+  formatTimestamp: function (dateValue) {
     // Uses existing CONFIG key to preserve behavior
     try {
       if (!dateValue) return '';
@@ -75,11 +75,11 @@ const Utils = {
   },
 
   // Backward compatible alias
-  formatDateTime: function(dateValue) {
+  formatDateTime: function (dateValue) {
     return this.formatTimestamp(dateValue);
   },
 
-  formatTime: function(dateValue) {
+  formatTime: function (dateValue) {
     try {
       return Utilities.formatDate(new Date(dateValue), CONFIG.DATE_TIME.TIMEZONE, CONFIG.DATE_TIME.TIME_ONLY);
     } catch (e) {
@@ -88,7 +88,7 @@ const Utils = {
     }
   },
 
-  parseDate: function(dateValue) {
+  parseDate: function (dateValue) {
     try {
       if (!dateValue) return null;
       const d = new Date(dateValue);
@@ -100,7 +100,7 @@ const Utils = {
     }
   },
 
-  isValidDate: function(dateValue) {
+  isValidDate: function (dateValue) {
     try {
       const d = this.parseDate(dateValue);
       return Boolean(d);
@@ -110,7 +110,7 @@ const Utils = {
     }
   },
 
-  addMinutes: function(date, minutes) {
+  addMinutes: function (date, minutes) {
     try {
       return new Date(date.getTime() + minutes * 60000);
     } catch (e) {
@@ -119,7 +119,7 @@ const Utils = {
     }
   },
 
-  addHours: function(date, hours) {
+  addHours: function (date, hours) {
     try {
       return new Date(date.getTime() + hours * 3600000);
     } catch (e) {
@@ -128,7 +128,7 @@ const Utils = {
     }
   },
 
-  isExpired: function(expiryDate) {
+  isExpired: function (expiryDate) {
     try {
       return new Date(expiryDate).getTime() < new Date().getTime();
     } catch (e) {
@@ -137,14 +137,14 @@ const Utils = {
     }
   },
 
-  checkEmptyValue: function(value) {
+  checkEmptyValue: function (value) {
     if (value === null || value === undefined) return true;
     if (typeof value === 'string' && value.trim() === '') return true;
     if (Array.isArray(value) && value.length === 0) return true;
     return false;
   },
 
-  sleep: function(milliseconds) {
+  sleep: function (milliseconds) {
     try {
       Utilities.sleep(milliseconds);
     } catch (e) {
@@ -156,7 +156,7 @@ const Utils = {
   // STRING UTILITIES
   // ==========================================
 
-  trimText: function(text) {
+  trimText: function (text) {
     try {
       return typeof text === 'string' ? text.trim() : text;
     } catch (e) {
@@ -165,10 +165,10 @@ const Utils = {
     }
   },
 
-  capitalizeWords: function(text) {
+  capitalizeWords: function (text) {
     try {
       if (typeof text !== 'string') return text;
-      return text.replace(/\b\w/g, function(char) {
+      return text.replace(/\b\w/g, function (char) {
         return char.toUpperCase();
       });
     } catch (e) {
@@ -177,7 +177,7 @@ const Utils = {
     }
   },
 
-  toUpper: function(text) {
+  toUpper: function (text) {
     try {
       return typeof text === 'string' ? text.toUpperCase() : text;
     } catch (e) {
@@ -186,7 +186,7 @@ const Utils = {
     }
   },
 
-  toLower: function(text) {
+  toLower: function (text) {
     try {
       return typeof text === 'string' ? text.toLowerCase() : text;
     } catch (e) {
@@ -195,7 +195,7 @@ const Utils = {
     }
   },
 
-  normalizeWhitespace: function(text) {
+  normalizeWhitespace: function (text) {
     try {
       if (typeof text !== 'string') return text;
       return text.replace(/\s+/g, ' ').trim();
@@ -206,7 +206,7 @@ const Utils = {
   },
 
   // Backward compatible alias
-  sanitizeInput: function(input) {
+  sanitizeInput: function (input) {
     try {
       return typeof input === 'string' ? input.trim().replace(/[<>]/g, '') : input;
     } catch (e) {
@@ -215,23 +215,23 @@ const Utils = {
     }
   },
 
-  toTitleCase: function(text) {
+  toTitleCase: function (text) {
     try {
       if (typeof text !== 'string') return text;
       return text
         .toLowerCase()
-        .replace(/\b[a-z0-9]/g, function(ch) { return ch.toUpperCase(); });
+        .replace(/\b[a-z0-9]/g, function (ch) { return ch.toUpperCase(); });
     } catch (e) {
       Logger.log('Utils.toTitleCase error: ' + (e && e.message ? e.message : e));
       return text;
     }
   },
 
-  checkEmptyValue: function(value) {
+  checkEmptyValue: function (value) {
     return this.isEmpty(value);
   },
 
-  isEmpty: function(value) {
+  isEmpty: function (value) {
     try {
       if (value === null || value === undefined) return true;
       if (typeof value === 'string' && value.trim() === '') return true;
@@ -246,11 +246,11 @@ const Utils = {
   // SECURITY UTILITIES
   // ==========================================
 
-  hashString: function(text) {
+  hashString: function (text) {
     try {
       const safeText = (text === undefined || text === null) ? '' : String(text);
       const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, safeText);
-      return bytes.map(function(b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+      return bytes.map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
     } catch (e) {
       Logger.log('Utils.hashString error: ' + (e && e.message ? e.message : e));
       return '';
@@ -258,7 +258,7 @@ const Utils = {
   },
 
   // Not used in current code, but provided for completeness
-  generateSalt: function(length) {
+  generateSalt: function (length) {
     try {
       const l = Number(length) || 16;
       return Utilities.getUuid().replace(/-/g, '').substring(0, l);
@@ -268,7 +268,7 @@ const Utils = {
     }
   },
 
-  compareHash: function(rawText, expectedHash) {
+  compareHash: function (rawText, expectedHash) {
     try {
       return this.hashString(rawText) === expectedHash;
     } catch (e) {
@@ -277,7 +277,7 @@ const Utils = {
     }
   },
 
-  generateRandomPassword: function(prefix) {
+  generateRandomPassword: function (prefix) {
     try {
       const p = prefix || 'BVC';
       const randomNum = Math.floor(1000 + Math.random() * 9000);
@@ -288,7 +288,7 @@ const Utils = {
     }
   },
 
-  generateRandomToken: function(length) {
+  generateRandomToken: function (length) {
     try {
       const l = Number(length) || 32;
       const buffer = Utilities.newBlob(Utilities.getRandomBlob(l).getBytes()).getDataAsString();
@@ -299,7 +299,7 @@ const Utils = {
     }
   },
 
-  generateOTP: function(length) {
+  generateOTP: function (length) {
     try {
       const len = Number(length) || CONFIG.SECURITY.OTP_LENGTH || 6;
       let otp = '';
@@ -311,7 +311,7 @@ const Utils = {
     }
   },
 
-  maskEmail: function(email) {
+  maskEmail: function (email) {
     try {
       if (!email) return '';
       const s = String(email).trim();
@@ -327,7 +327,7 @@ const Utils = {
     }
   },
 
-  maskPhone: function(phone) {
+  maskPhone: function (phone) {
     try {
       if (!phone) return '';
       const s = String(phone).trim();
@@ -340,7 +340,7 @@ const Utils = {
   },
 
   // Backward compatible alias
-  generateUUID: function() {
+  generateUUID: function () {
     try {
       return Utilities.getUuid();
     } catch (e) {
@@ -349,7 +349,7 @@ const Utils = {
     }
   },
 
-  generateUsername: function(fullName) {
+  generateUsername: function (fullName) {
     try {
       return fullName ? String(fullName).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
     } catch (e) {
@@ -358,7 +358,7 @@ const Utils = {
     }
   },
 
-  generateFileName: function(prefix, extension) {
+  generateFileName: function (prefix, extension) {
     try {
       const ts = Utilities.formatDate(new Date(), CONFIG.DATE_TIME.TIMEZONE, 'yyyyMMdd_HHmmss');
       return prefix + '_' + ts + '.' + extension;
@@ -372,7 +372,7 @@ const Utils = {
   // RESPONSE UTILITIES
   // ==========================================
 
-  buildResponse: function(success, message, data) {
+  buildResponse: function (success, message, data) {
     Logger.log("ENTER: Utils.buildResponse");
     try {
       const d = data || {};
@@ -394,7 +394,7 @@ const Utils = {
     }
   },
 
-  buildErrorResponse: function(message, data) {
+  buildErrorResponse: function (message, data) {
     try {
       return this.buildResponse(false, message || (CONFIG.MESSAGES ? CONFIG.MESSAGES.ERROR_DEFAULT : 'Error occurred'), data || {});
     } catch (e) {
@@ -403,7 +403,7 @@ const Utils = {
     }
   },
 
-  buildSuccessResponse: function(message, data) {
+  buildSuccessResponse: function (message, data) {
     try {
       return this.buildResponse(true, message || (CONFIG.MESSAGES ? CONFIG.MESSAGES.SUCCESS_DEFAULT : 'Success'), data || {});
     } catch (e) {
@@ -413,13 +413,13 @@ const Utils = {
   },
 
   // Backward compatible response helpers
-  successResponse: function(message, data) {
+  successResponse: function (message, data) {
     return this.buildSuccessResponse(message || 'Success', data || {});
   },
-  errorResponse: function(message, data) {
+  errorResponse: function (message, data) {
     return this.buildErrorResponse(message || 'Error occurred', data || {});
   },
-  validationResponse: function(message) {
+  validationResponse: function (message) {
     return this.buildResponse(false, message || 'Validation failed');
   },
 
@@ -427,7 +427,7 @@ const Utils = {
   // VALIDATION HELPERS
   // ==========================================
 
-  isEmail: function(email) {
+  isEmail: function (email) {
     try {
       return email ? CONFIG.VALIDATION.EMAIL.test(String(email)) : false;
     } catch (e) {
@@ -436,7 +436,7 @@ const Utils = {
     }
   },
 
-  isPhone: function(phone) {
+  isPhone: function (phone) {
     try {
       return phone ? CONFIG.VALIDATION.PHONE.test(String(phone).trim()) : false;
     } catch (e) {
@@ -445,7 +445,7 @@ const Utils = {
     }
   },
 
-  isNumber: function(value) {
+  isNumber: function (value) {
     try {
       if (value === null || value === undefined) return false;
       const n = Number(value);
@@ -456,7 +456,7 @@ const Utils = {
     }
   },
 
-  isBoolean: function(value) {
+  isBoolean: function (value) {
     try {
       return value === true || value === false;
     } catch (e) {
@@ -466,8 +466,8 @@ const Utils = {
   },
 
   // Backward compatible aliases used by current code
-  validateEmail: function(email) { return this.isEmail(email); },
-  validateRollNumber: function(rollNumber) {
+  validateEmail: function (email) { return this.isEmail(email); },
+  validateRollNumber: function (rollNumber) {
     try {
       return rollNumber ? CONFIG.VALIDATION.ROLL_NUMBER.test(String(rollNumber)) : false;
     } catch (e) {
@@ -475,8 +475,8 @@ const Utils = {
       return false;
     }
   },
-  isValidPhone: function(phone) { return this.isPhone(phone); },
-  isValidYear: function(year) {
+  isValidPhone: function (phone) { return this.isPhone(phone); },
+  isValidYear: function (year) {
     try {
       return year ? CONFIG.VALIDATION.YEAR.test(String(year).trim()) : false;
     } catch (e) {
@@ -484,7 +484,7 @@ const Utils = {
       return false;
     }
   },
-  isValidSection: function(section) {
+  isValidSection: function (section) {
     try {
       return section ? CONFIG.VALIDATION.SECTION.test(String(section).trim()) : false;
     } catch (e) {
@@ -497,7 +497,7 @@ const Utils = {
   // OBJECT & ARRAY HELPERS
   // ==========================================
 
-  deepClone: function(obj) {
+  deepClone: function (obj) {
     try {
       return JSON.parse(JSON.stringify(obj));
     } catch (e) {
@@ -506,7 +506,7 @@ const Utils = {
     }
   },
 
-  isObject: function(val) {
+  isObject: function (val) {
     try {
       return val !== null && typeof val === 'object' && !Array.isArray(val);
     } catch (e) {
@@ -515,11 +515,11 @@ const Utils = {
     }
   },
 
-  isArray: function(val) {
+  isArray: function (val) {
     return Array.isArray(val);
   },
 
-  mergeObjects: function(target, source) {
+  mergeObjects: function (target, source) {
     try {
       return Object.assign(target, source);
     } catch (e) {
@@ -528,22 +528,22 @@ const Utils = {
     }
   },
 
-  safeParseJSON: function(text) {
+  safeParseJSON: function (text) {
     try {
       return JSON.parse(text);
     } catch (e) {
       return null;
     }
   },
-  sanitizeStudent: function(student) {
+  sanitizeStudent: function (student) {
 
-  return student
+    return student
       ? JSON.parse(JSON.stringify(student))
       : null;
 
-},
+  },
 
-  safeStringify: function(object) {
+  safeStringify: function (object) {
     try {
       return JSON.stringify(object);
     } catch (e) {
@@ -551,12 +551,12 @@ const Utils = {
     }
   },
 
-  sanitizeUser: function(user) {
+  sanitizeUser: function (user) {
     try {
       if (!user) return null;
       const safeUser = this.deepClone(user);
       if (CONFIG && CONFIG.SENSITIVE_FIELDS && Array.isArray(CONFIG.SENSITIVE_FIELDS)) {
-        CONFIG.SENSITIVE_FIELDS.forEach(function(field) {
+        CONFIG.SENSITIVE_FIELDS.forEach(function (field) {
           delete safeUser[field];
         });
       }
@@ -567,11 +567,11 @@ const Utils = {
     }
   },
 
-  removeEmptyProperties: function(obj) {
+  removeEmptyProperties: function (obj) {
     try {
       if (!obj || typeof obj !== 'object') return obj;
       const out = {};
-      Object.keys(obj).forEach(function(k) {
+      Object.keys(obj).forEach(function (k) {
         const v = obj[k];
         if (!(v === null || v === undefined || (typeof v === 'string' && v.trim() === ''))) {
           out[k] = v;
@@ -584,12 +584,12 @@ const Utils = {
     }
   },
 
-  uniqueArray: function(arr) {
+  uniqueArray: function (arr) {
     try {
       if (!Array.isArray(arr)) return [];
       const seen = {};
       const out = [];
-      arr.forEach(function(v) {
+      arr.forEach(function (v) {
         const key = String(v);
         if (!seen[key]) {
           seen[key] = true;
@@ -602,13 +602,18 @@ const Utils = {
       return [];
     }
   },
-  sanitizeDepartment: function(department) {
+  sanitizeDepartment: function (department) {
     try {
       if (!department) return null;
       const safeDepartment = this.deepClone(department);
       const hod = department['HOD Name'] || department.hod_name || '';
       const empId = department['HOD Emp ID'] || department.hod_emp_id || department.hod_employee_id || '';
-      const email = department['HOD Email'] || department.hod_email || department.remarks || '';
+      const email =
+        department['HOD Email'] ||
+        department.hod_email ||
+        department['Remarks'] ||
+        department.remarks ||
+        '';
 
       safeDepartment['HOD Name'] = hod;
       safeDepartment['hod_name'] = hod;
@@ -624,11 +629,11 @@ const Utils = {
     }
   },
 
-  sanitizeEvent: function(event) {
+  sanitizeEvent: function (event) {
     try {
       if (!event) return null;
       const safeEvent = this.deepClone(event);
-      
+
       const mappings = [
         { key: 'eventId', snakeKey: 'event_id', sheetKey: CONFIG.COLUMNS.EVENT_ID },
         { key: 'eventName', snakeKey: 'event_name', sheetKey: CONFIG.COLUMNS.EVENT_NAME },
@@ -647,7 +652,7 @@ const Utils = {
 
       mappings.forEach(m => {
         var val = event[m.sheetKey] !== undefined ? event[m.sheetKey] : (event[m.key] !== undefined ? event[m.key] : event[m.snakeKey]);
-        
+
         // Handle Event Status sheet mapping fallback
         if (m.key === 'status' && val === undefined) {
           val = event['Event Status'] !== undefined ? event['Event Status'] : event['status'];
@@ -684,11 +689,11 @@ const Utils = {
   // ID / FORMATTING HELPERS
   // ==========================================
 
-  padNumber: function(number, width) {
+  padNumber: function (number, width) {
     return this._padNumber(number, width);
   },
 
-  formatCurrency: function(amount, currencySymbol) {
+  formatCurrency: function (amount, currencySymbol) {
     try {
       const sym = currencySymbol || '₹';
       const n = Number(amount);
@@ -700,7 +705,7 @@ const Utils = {
     }
   },
 
-  formatPercentage: function(value, decimals) {
+  formatPercentage: function (value, decimals) {
     try {
       const d = (decimals === 0) ? 0 : (Number(decimals) || 2);
       const n = Number(value);
@@ -716,9 +721,9 @@ const Utils = {
   // LOGGING HELPERS
   // ==========================================
 
-  logInfo: function(msg) { Logger.log('[INFO] ' + msg); },
-  logWarning: function(msg) { Logger.log('[WARN] ' + msg); },
-  logError: function(msg) { Logger.log('[ERROR] ' + msg); }
+  logInfo: function (msg) { Logger.log('[INFO] ' + msg); },
+  logWarning: function (msg) { Logger.log('[WARN] ' + msg); },
+  logError: function (msg) { Logger.log('[ERROR] ' + msg); }
 };
 
 Object.freeze(Utils);

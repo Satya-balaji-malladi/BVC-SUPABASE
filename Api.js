@@ -1523,36 +1523,7 @@ function submitEventRegistration(payload) {
  * @param {string} sessionToken - Token.
  * @returns {object} Response object.
  */
-function restoreSession(sessionToken) {
-  try {
-    const userContext = SessionService.getUserContext(sessionToken);
-    if (!userContext || !userContext.userId || !userContext.active) {
-      return { success: false, message: 'Session invalid or expired.' };
-    }
 
-    // Check role authorization for the admin dashboard shell
-    const allowedRoles = [CONFIG.ROLES.SUPER_ADMIN, CONFIG.ROLES.ADMIN, CONFIG.ROLES.HOD];
-    if (!allowedRoles.includes(userContext.role.toUpperCase()) && userContext.role.toUpperCase() !== 'SUPER ADMIN') {
-      return { success: false, message: 'Unauthorized role.' };
-    }
-
-    // Render the dashboard shell HTML
-    const shellHtml = HtmlService.createTemplateFromFile('Index').evaluate().getContent();
-
-    // Fetch full user object
-    const userRecords = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID || 'User ID', userContext.userId) || [];
-    const fullUser = userRecords.length > 0 ? userRecords[0] : {};
-
-    return {
-      success: true,
-      message: 'Session restored.',
-      user: fullUser,
-      html: shellHtml
-    };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
 
 /**
  * Marks attendance for an event (standard path).
