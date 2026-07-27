@@ -12,45 +12,45 @@
  */
 function doGet(e) {
   var page = (e && e.parameter && e.parameter.page) || 'Login';
-  
+
   if (page.toLowerCase() === 'forgotpassword') {
     return HtmlService.createTemplateFromFile('ForgotPassword')
-        .evaluate()
-        .setTitle('Forgot Password - BVC System')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      .evaluate()
+      .setTitle('Forgot Password - BVC System')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
   if (page.toLowerCase() === 'completeprofile') {
     return HtmlService.createTemplateFromFile('CompleteProfile')
-        .evaluate()
-        .setTitle('Complete Profile - BVC System')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      .evaluate()
+      .setTitle('Complete Profile - BVC System')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
-  
+
   if (page.toLowerCase() === 'dashboard') {
-    return HtmlService.createTemplateFromFile('Index')
-        .evaluate()
-        .setTitle('Dashboard - Admin')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    return HtmlService.createTemplateFromFile('Admin')
+      .evaluate()
+      .setTitle('Dashboard - Admin')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
   if (page.toLowerCase() === 'coordinator') {
     try {
       return HtmlService.createTemplateFromFile('Coordinator')
-          .evaluate()
-          .setTitle('Dashboard - Coordinator')
-          .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-          .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+        .evaluate()
+        .setTitle('Dashboard - Coordinator')
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } catch (e) {
       // Fallback if CoordinatorIndex doesn't exist yet
       return HtmlService.createTemplateFromFile('Index')
-          .evaluate()
-          .setTitle('Dashboard - Coordinator (Fallback)')
-          .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-          .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+        .evaluate()
+        .setTitle('Dashboard - Coordinator (Fallback)')
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
   }
 
@@ -58,25 +58,25 @@ function doGet(e) {
     var template = HtmlService.createTemplateFromFile('RegistrationForm');
     template.eventId = (e && e.parameter && e.parameter.eventId) || '';
     return template.evaluate()
-        .setTitle('Event Registration - BVC System')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
-  
-  if (page.toLowerCase() === 'login') {
-    return HtmlService.createTemplateFromFile('Login')
-        .evaluate()
-        .setTitle('Login - BVC System')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
-  
-  // Default fallback: Serve Index page container (client-side JS will check sessionToken)
-  return HtmlService.createTemplateFromFile('Index')
-      .evaluate()
-      .setTitle('BVC Event Attendance System')
+      .setTitle('Event Registration - BVC System')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  if (page.toLowerCase() === 'login') {
+    return HtmlService.createTemplateFromFile('Login')
+      .evaluate()
+      .setTitle('Login - BVC System')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // Default fallback: Serve Index page container (client-side JS will check sessionToken)
+  return HtmlService.createTemplateFromFile('Admin')
+    .evaluate()
+    .setTitle('BVC Event Attendance System')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /**
@@ -87,7 +87,7 @@ function doPost(e) {
     var postData = JSON.parse(e.postData.contents);
     var action = postData.action;
     var args = postData.arguments || [];
-    
+
     var result;
     if (typeof this[action] === 'function') {
       result = this[action].apply(null, args);
@@ -96,7 +96,7 @@ function doPost(e) {
     } else {
       throw new Error("Method " + action + " not found on server.");
     }
-    
+
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
@@ -116,7 +116,7 @@ function getPageContent(page) {
   try {
     if (p === 'forgotpassword') return HtmlService.createTemplateFromFile('ForgotPassword').evaluate().getContent();
     if (p === 'completeprofile') return HtmlService.createTemplateFromFile('CompleteProfile').evaluate().getContent();
-    if (p === 'dashboard') return HtmlService.createTemplateFromFile('Index').evaluate().getContent();
+    if (p === 'dashboard') return HtmlService.createTemplateFromFile('Admin').evaluate().getContent();
     if (p === 'register' || p === 'registration') return HtmlService.createTemplateFromFile('RegistrationForm').evaluate().getContent();
     if (p === 'coordinator') {
       try {
@@ -152,7 +152,7 @@ function getComponentHtml(component) {
 function getScriptUrl() {
   try {
     return ScriptApp.getService().getUrl();
-  } catch(e) {
+  } catch (e) {
     return "";
   }
 }

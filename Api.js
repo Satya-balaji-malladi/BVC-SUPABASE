@@ -60,6 +60,56 @@ function authenticate(sessionToken) {
     return { success: false, message: e.message };
   }
 }
+/**
+ * Restores an existing authenticated session.
+ * Used by Login page for automatic login after refresh/reopen.
+ *
+ * @param {string} sessionToken Existing session token.
+ * @returns {object} Session restoration result with Admin HTML.
+ */
+function restoreSession(sessionToken) {
+  try {
+    if (!sessionToken) {
+      return {
+        success: false,
+        message: 'Session token missing.'
+      };
+    }
+
+    // Validate existing session using the current authentication layer
+    var authResult = Controller.Auth.authenticate(sessionToken);
+
+    if (!authResult || !authResult.success) {
+      return {
+        success: false,
+        message: (authResult && authResult.message)
+          ? authResult.message
+          : 'Session invalid or expired.'
+      };
+    }
+
+    // Return the existing Admin shell.
+    var html = HtmlService
+      .createTemplateFromFile('Admin')
+      .evaluate()
+      .getContent();
+
+    return {
+      success: true,
+      message: 'Session restored successfully.',
+      user: authResult.user || null,
+      html: html
+    };
+
+  } catch (e) {
+    console.error('restoreSession error:', e);
+
+    return {
+      success: false,
+      message: e.message || 'Unable to restore session.'
+    };
+  }
+}
 
 /**
  * Completes the first-time profile completion onboarding details.
@@ -69,7 +119,7 @@ function authenticate(sessionToken) {
  */
 function completeProfile(sessionToken, payload) {
   try {
-    return SessionService.authorize(sessionToken, { action: 'completeProfile' }, function(userId) {
+    return SessionService.authorize(sessionToken, { action: 'completeProfile' }, function (userId) {
       return JSON.parse(JSON.stringify(UserService.completeUserProfile(userId, payload) || {}));
     });
   } catch (e) {
@@ -107,7 +157,7 @@ function forgotPassword(sessionToken, employeeId) {
       return { success: false, message: "No registered staff found with Employee ID: " + cleanEmpId };
     }
     const userId = String(user[CONFIG.COLUMNS.USER_ID]).trim();
-    
+
     // Sync email column if alias mismatch exists
     const trueEmailAttr = CONFIG.COLUMNS.USER_EMAIL || "Email Address";
     if (user[trueEmailAttr] && (!user["Email"] || user["Email"] === "")) {
@@ -703,7 +753,7 @@ function getAllEnrichedParticipants(sessionToken) {
     const res = Controller.Participant.getAllEnrichedParticipants(sessionToken);
     if (Array.isArray(res)) return JSON.parse(JSON.stringify(res));
     if (res && res.success === false) return [];
-    
+
     // Extract values if response was converted to key-value map
     const arr = [];
     for (var k in res) {
@@ -1365,11 +1415,11 @@ function runCoordinatorTerminalDiagnostic() {
   Logger.log("=== RUNNING COORDINATOR TERMINAL DIAGNOSTIC ===");
   try {
     const sessions = DatabaseService.readAllRows("SESSIONS") || [];
-    const activeSession = sessions.find(s => { 
+    const activeSession = sessions.find(s => {
       const statusCol = CONFIG.COLUMNS.SESSION_STATUS || 'Session Status';
-      return String(s[statusCol]) === 'Active'; 
+      return String(s[statusCol]) === 'Active';
     });
-    
+
     let token = "";
     if (activeSession) {
       const tokenCol = CONFIG.COLUMNS.SESSION_TOKEN || 'Session Token';
@@ -1377,7 +1427,7 @@ function runCoordinatorTerminalDiagnostic() {
       Logger.log("Found active session token: " + token);
     } else {
       const users = DatabaseService.readAllRows("USERS") || [];
-      const coordUser = users.find(u => { 
+      const coordUser = users.find(u => {
         const role = u['Role'] || u.role || '';
         return String(role).toUpperCase() === 'COORDINATOR';
       });
@@ -1386,7 +1436,7 @@ function runCoordinatorTerminalDiagnostic() {
         return;
       }
       Logger.log("Found coordinator user: " + coordUser['User ID'] + " (" + coordUser['Username'] + ")");
-      
+
       const assignments = DatabaseService.readAllRows("EVENT_COORDINATORS") || [];
       const hasAssign = assignments.some(a => {
         return String(a['User ID']).toUpperCase() === String(coordUser['User ID']).toUpperCase() && String(a['Assignment Status']) === 'Active';
@@ -1401,14 +1451,14 @@ function runCoordinatorTerminalDiagnostic() {
         const eventId = events[0]['Event ID'];
         CoordinatorService.assignCoordinator(eventId, coordUser['User ID'], 'Coordinator', 'System', 'Diagnostic Seed');
       }
-      
+
       Logger.log("Creating active session for diagnostic...");
       const sessionData = AuthService._createSession(coordUser);
       const tokenCol = CONFIG.COLUMNS.SESSION_TOKEN || 'Session Token';
       token = sessionData.token[tokenCol];
       Logger.log("Created test session token: " + token);
     }
-    
+
     Logger.log("Executing getCoordinatorTerminalData(token)...");
     const res = getCoordinatorTerminalData(token);
     Logger.log("Execution finished successfully!");
@@ -1479,20 +1529,20 @@ function restoreSession(sessionToken) {
     if (!userContext || !userContext.userId || !userContext.active) {
       return { success: false, message: 'Session invalid or expired.' };
     }
-    
+
     // Check role authorization for the admin dashboard shell
     const allowedRoles = [CONFIG.ROLES.SUPER_ADMIN, CONFIG.ROLES.ADMIN, CONFIG.ROLES.HOD];
     if (!allowedRoles.includes(userContext.role.toUpperCase()) && userContext.role.toUpperCase() !== 'SUPER ADMIN') {
       return { success: false, message: 'Unauthorized role.' };
     }
-    
+
     // Render the dashboard shell HTML
     const shellHtml = HtmlService.createTemplateFromFile('Index').evaluate().getContent();
-    
+
     // Fetch full user object
     const userRecords = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID || 'User ID', userContext.userId) || [];
     const fullUser = userRecords.length > 0 ? userRecords[0] : {};
-    
+
     return {
       success: true,
       message: 'Session restored.',
