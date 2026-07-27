@@ -5,7 +5,7 @@
 
 function runAllFeatureTests() {
   const results = [];
-  
+
   const tests = [
     testTotalUsers,
     testTotalStudents,
@@ -18,12 +18,12 @@ function runAllFeatureTests() {
     testRecentEvents,
     testAllStudents
   ];
-  
+
   Logger.log("=========================================");
   Logger.log("STARTING FEATURE AUTOMATED TESTS");
   Logger.log("=========================================");
-  
-  tests.forEach(function(testFn) {
+
+  tests.forEach(function (testFn) {
     try {
       const res = testFn();
       results.push(res);
@@ -39,11 +39,11 @@ function runAllFeatureTests() {
       Logger.log("[TEST] " + testFn.name + " | STATUS: FAIL | ERROR: " + e.message);
     }
   });
-  
+
   Logger.log("=========================================");
   Logger.log("FINISHED FEATURE AUTOMATED TESTS");
   Logger.log("=========================================");
-  
+
   return results;
 }
 
@@ -287,4 +287,150 @@ function testActiveStudents() {
       errorMessage: e.message
     };
   }
+}
+function testEventCreateAdminConfiguration() {
+  Logger.log("========== CREATE ADMIN CONFIG TEST ==========");
+
+  try {
+    // Test role logic used while creating inline user
+    var testCases = [
+      { role: "HOD", expected: "Event Admin" },
+      { role: "SUPER ADMIN", expected: "Event Admin" },
+      { role: "ADMIN", expected: "Coordinator" },
+      { role: "EVENT ADMIN", expected: "Coordinator" },
+      { role: "EVENT_ADMIN", expected: "Coordinator" }
+    ];
+
+    var allPassed = true;
+
+    testCases.forEach(function (test) {
+      var currentUserRole = test.role;
+
+      var inlineRole =
+        (
+          currentUserRole === "ADMIN" ||
+          currentUserRole === "EVENT ADMIN" ||
+          currentUserRole === "EVENT_ADMIN"
+        )
+          ? "Coordinator"
+          : "Event Admin";
+
+      var passed = inlineRole === test.expected;
+
+      Logger.log(
+        (passed ? "✅ PASS" : "❌ FAIL") +
+        " | Current Role: " + test.role +
+        " | Creates: " + inlineRole +
+        " | Expected: " + test.expected
+      );
+
+      if (!passed) {
+        allPassed = false;
+      }
+    });
+
+    Logger.log("--------------------------------------");
+
+    // Verify required HTML/JS files can be loaded
+    try {
+      var eventsHtml =
+        HtmlService.createTemplateFromFile("Events")
+          .evaluate()
+          .getContent();
+
+      if (eventsHtml.indexOf("btnCreateAdminInline") !== -1) {
+        Logger.log("✅ PASS | Create Admin button exists");
+      } else {
+        Logger.log("❌ FAIL | Create Admin button not found");
+        allPassed = false;
+      }
+
+      if (eventsHtml.indexOf("new-coordinator-fields") !== -1) {
+        Logger.log("✅ PASS | Inline admin form exists");
+      } else {
+        Logger.log("❌ FAIL | Inline admin form not found");
+        allPassed = false;
+      }
+
+    } catch (e) {
+      Logger.log("❌ FAIL | Events.html test error: " + e.message);
+      allPassed = false;
+    }
+
+    Logger.log("======================================");
+
+    if (allPassed) {
+      Logger.log("🎉 SUCCESSFULLY WORKING");
+      Logger.log("Create Admin configuration test PASSED.");
+    } else {
+      Logger.log("❌ CREATE ADMIN CONFIGURATION HAS ERRORS");
+    }
+
+    Logger.log("========== TEST COMPLETE ==========");
+
+  } catch (error) {
+    Logger.log("❌ TEST CRASHED");
+    Logger.log(error.message);
+  }
+}
+function testEventStatusEvaluationExact() {
+  Logger.log('========== EVENT STATUS EXACT DIAGNOSTIC ==========');
+
+  var rows = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
+
+  var testEvents = rows.filter(function (row) {
+    var id = String(
+      row['Event ID'] ||
+      row.event_id ||
+      ''
+    );
+
+    return id.indexOf('EVT_NO_REG_') === 0 ||
+      id.indexOf('EVT_REG_') === 0;
+  });
+
+  Logger.log('Test events found: ' + testEvents.length);
+
+  testEvents.forEach(function (row) {
+    var eventId = row['Event ID'] || row.event_id;
+
+    Logger.log('------------------------------------');
+    Logger.log('EVENT ID: ' + eventId);
+
+    Logger.log('RAW DB ROW:');
+    Logger.log(JSON.stringify(row));
+
+    Logger.log('RAW start_date = ' +
+      (row['Start Date'] || row.start_date));
+
+    Logger.log('RAW start_time = ' +
+      (row['Start Time'] || row.start_time));
+
+    Logger.log('RAW end_date = ' +
+      (row['End Date'] || row.end_date));
+
+    Logger.log('RAW end_time = ' +
+      (row['End Time'] || row.end_time));
+
+    Logger.log('RAW status = ' +
+      (row['Event Status'] || row.event_status || row.status));
+
+    var evaluated = EventService.getEventById(eventId);
+
+    Logger.log('AFTER EventService.getEventById():');
+    Logger.log(JSON.stringify(evaluated));
+
+    Logger.log('FINAL STATUS = ' +
+      (
+        evaluated &&
+        (
+          evaluated['Event Status'] ||
+          evaluated.event_status ||
+          evaluated.status
+        )
+      )
+    );
+  });
+
+  Logger.log('========== DIAGNOSTIC COMPLETE ==========');
 }

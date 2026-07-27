@@ -49,10 +49,14 @@ function runCoordinatorParticipantWorkflowTests() {
   const testUserId = 'USER_TEST_' + randNum;
   const eventNoRegId = 'EVT_NO_REG_' + randNum;
   const eventRegId = 'EVT_REG_' + randNum;
-  const testRollBvc = '23A91A' + String(Math.floor(Math.random()*89999 + 10000));
-  const testRollExt = '23EXT' + String(Math.floor(Math.random()*89999 + 10000));
-  const testRollUnk = '23UNK' + String(Math.floor(Math.random()*89999 + 10000));
-  const nowDateStr = new Date().toISOString().split('T')[0];
+  const testRollBvc = '23A91A' + String(Math.floor(Math.random() * 89999 + 10000));
+  const testRollExt = '23EXT' + String(Math.floor(Math.random() * 89999 + 10000));
+  const testRollUnk = '23UNK' + String(Math.floor(Math.random() * 89999 + 10000));
+  const nowDateStr = Utilities.formatDate(
+    new Date(),
+    CONFIG.DATE_TIME.TIMEZONE || 'Asia/Kolkata',
+    'yyyy-MM-dd'
+  );
 
   try {
     // 0. Ensure a valid Department exists for foreign key references
@@ -70,7 +74,7 @@ function runCoordinatorParticipantWorkflowTests() {
           'Department Name': 'Computer Science and Engineering',
           'Status': 'Active'
         });
-      } catch(e) {}
+      } catch (e) { }
     }
 
     // 1. Seed Test User with all mandatory Supabase PostgreSQL fields
@@ -295,7 +299,7 @@ function runCoordinatorParticipantWorkflowTests() {
 
   // TC-COORD-NR-008: Cancel -> Verify NO attendance created
   try {
-    const cancelRoll = '23CANCEL' + String(Math.floor(Math.random()*89 + 10));
+    const cancelRoll = '23CANCEL' + String(Math.floor(Math.random() * 89 + 10));
     const res8 = CoordinatorService.processParticipantForEvent(testSessionToken, eventNoRegId, cancelRoll);
     const dbCheck8 = AttendanceService.hasStudentAttended(eventNoRegId, cancelRoll);
     recordResult('TC-COORD-NR-008', 'Cancel action leaves DB clean (No attendance)', !dbCheck8, 'NO_REG', {
@@ -332,7 +336,7 @@ function runCoordinatorParticipantWorkflowTests() {
   // ==========================================================================
   Logger.log('\n--- REGISTRATION EVENT TESTS ---');
 
-  const registeredBvcRoll = '23REGBVC' + String(Math.floor(Math.random()*89 + 10));
+  const registeredBvcRoll = '23REGBVC' + String(Math.floor(Math.random() * 89 + 10));
   // Seed registration
   try {
     DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, {
@@ -359,7 +363,7 @@ function runCoordinatorParticipantWorkflowTests() {
       'Registration Status': 'Active',
       'registration_status': 'Active'
     });
-  } catch(e) {}
+  } catch (e) { }
 
   // TC-COORD-R-001: Registered BVC student
   try {
@@ -373,7 +377,7 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-002: Registered external student
-  const registeredExtRoll = '23REGEXT' + String(Math.floor(Math.random()*89 + 10));
+  const registeredExtRoll = '23REGEXT' + String(Math.floor(Math.random() * 89 + 10));
   try {
     DatabaseService.insertRow(CONFIG.SHEETS.OTHER_COLLEGE_STUDENTS, {
       'id': 'OCS_R_' + randNum,
@@ -415,7 +419,7 @@ function runCoordinatorParticipantWorkflowTests() {
 
   // TC-COORD-R-004: Registered participant -> Cancel
   try {
-    const cancelRegRoll = '23CANCELREG' + String(Math.floor(Math.random()*89 + 10));
+    const cancelRegRoll = '23CANCELREG' + String(Math.floor(Math.random() * 89 + 10));
     DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, {
       'Participant ID': 'PART_C_' + randNum,
       'participant_id': 'PART_C_' + randNum,
@@ -436,7 +440,7 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-005: Unregistered student + Spot Registration allowed
-  const unregRoll = '23UNREG' + String(Math.floor(Math.random()*89 + 10));
+  const unregRoll = '23UNREG' + String(Math.floor(Math.random() * 89 + 10));
   try {
     const resR5 = CoordinatorService.processParticipantForEvent(testSessionToken, eventRegId, unregRoll);
     const passR5 = resR5.success && resR5.state === 'SPOT_REGISTRATION_REQUIRED';
@@ -474,7 +478,7 @@ function runCoordinatorParticipantWorkflowTests() {
   }
 
   // TC-COORD-R-008: Spot Registration -> unknown student -> manual details
-  const spotUnkRoll = '23SPOTUNK' + String(Math.floor(Math.random()*89 + 10));
+  const spotUnkRoll = '23SPOTUNK' + String(Math.floor(Math.random() * 89 + 10));
   try {
     const resR8 = CoordinatorService.spotRegisterParticipant(testSessionToken, eventRegId, spotUnkRoll, {
       studentName: 'Spot Unknown Student', branch: 'ECE', college: 'GVP College'
