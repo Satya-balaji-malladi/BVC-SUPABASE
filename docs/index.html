@@ -499,7 +499,7 @@
     }
 
     /* ============================================================
-   MAIN LAYOUT  GRID
+   MAIN LAYOUT GRID
 ============================================================ */
     .coord-main {
       flex: 1;
@@ -838,7 +838,6 @@
       min-height: 200px;
       background: var(--c-bg-dark);
       border-radius: var(--radius-lg);
-      /* NOTE: No overflow:hidden here – it clips the html5-qrcode video element */
       margin-bottom: 14px;
       border: 2px solid #1E293B;
       box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.8);
@@ -1253,7 +1252,6 @@
       gap: 4px;
       max-height: 420px;
       padding-right: 2px;
-      /* Thin custom scrollbar */
       scrollbar-width: thin;
       scrollbar-color: var(--c-border) transparent;
     }
@@ -2078,50 +2076,50 @@
                 <option value="Vignan's Lara Institute of Technology and Science">
                 <option value="YSR Engineering College of Yogi Vemana University">
               </datalist>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-6">
-              <label for="spot-dept-select" class="form-label small fw-bold text-secondary">Branch</label>
-              <select class="form-select" id="spot-dept-select" style="border-radius:10px;padding:10px;">
-                <option value="CSE" selected>CSE</option>
-                <option value="CSE-AIML">CSE (AI & ML)</option>
-                <option value="CSE-DS">CSE (Data Science)</option>
-                <option value="ECE">ECE</option>
-                <option value="EEE">EEE</option>
-                <option value="MECH">MECH</option>
-                <option value="CIVIL">CIVIL</option>
-                <option value="IT">IT</option>
-                <option value="OTHERS">Others</option>
-              </select>
-            </div>
-            <div class="col-6">
-              <label for="spot-year-select" class="form-label small fw-bold text-secondary">Year of Study</label>
-              <select class="form-select" id="spot-year-select" style="border-radius:10px;padding:10px;">
-                <option value="1" selected>1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-              </select>
-            </div>
-          </div>
-          <div class="mb-3 d-none" id="spot-dept-other-container">
-            <label for="spot-dept-other-input" class="form-label small fw-bold text-secondary">Specify
-              Branch</label>
-            <input type="text" class="form-control" id="spot-dept-other-input"
-              placeholder="e.g. Artificial Intelligence" style="border-radius:10px;padding:10px;">
-          </div>
-          <div class="d-flex gap-2 mt-4">
-            <button type="button" class="btn btn-light w-50 fw-bold" data-bs-dismiss="modal"
-              style="border-radius:12px;padding:12px;">Cancel</button>
-            <button type="submit" id="btn-confirm-spot-reg" class="btn btn-primary w-50 fw-bold"
-              style="border-radius:12px;padding:12px;">Register &amp; Mark</button>
-          </div>
-          </form>
-        </div>
 
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label for="spot-dept-select" class="form-label small fw-bold text-secondary">Branch</label>
+                  <select class="form-select" id="spot-dept-select" style="border-radius:10px;padding:10px;">
+                    <option value="CSE" selected>CSE</option>
+                    <option value="CSE-AIML">CSE (AI & ML)</option>
+                    <option value="CSE-DS">CSE (Data Science)</option>
+                    <option value="ECE">ECE</option>
+                    <option value="EEE">EEE</option>
+                    <option value="MECH">MECH</option>
+                    <option value="CIVIL">CIVIL</option>
+                    <option value="IT">IT</option>
+                    <option value="OTHERS">Others</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <label for="spot-year-select" class="form-label small fw-bold text-secondary">Year of Study</label>
+                  <select class="form-select" id="spot-year-select" style="border-radius:10px;padding:10px;">
+                    <option value="1" selected>1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mb-3 d-none" id="spot-dept-other-container">
+                <label for="spot-dept-other-input" class="form-label small fw-bold text-secondary">Specify
+                  Branch</label>
+                <input type="text" class="form-control" id="spot-dept-other-input"
+                  placeholder="e.g. Artificial Intelligence" style="border-radius:10px;padding:10px;">
+              </div>
+              <div class="d-flex gap-2 mt-4">
+                <button type="button" class="btn btn-light w-50 fw-bold" data-bs-dismiss="modal"
+                  style="border-radius:12px;padding:12px;">Cancel</button>
+                <button type="submit" id="btn-confirm-spot-reg" class="btn btn-primary w-50 fw-bold"
+                  style="border-radius:12px;padding:12px;">Register &amp; Mark</button>
+              </div>
+            </form>
+          </div>
+
+        </div>
       </div>
     </div>
-  </div>
   </div>
 
   <!-- Floating Camera Debug Panel Trigger (Visible only if DEBUG_MODE is active) -->
@@ -2413,6 +2411,7 @@
 
           // Spot modal
           spotModalElement: document.getElementById('spotRegistrationModal'),
+          spotModal: new bootstrap.Modal(document.getElementById('spotRegistrationModal')),
           spotForm: document.getElementById('spot-registration-form'),
           spotRollInput: document.getElementById('spot-roll-input'),
           spotNameInput: document.getElementById('spot-name-input'),
@@ -2423,289 +2422,195 @@
           spotFixedView: document.getElementById('spot-fixed-event-view'),
           spotOpenRollDisp: document.getElementById('spot-open-roll-display'),
           spotFixedRollDisp: document.getElementById('spot-fixed-roll-display'),
-          spotDeptOtherCont: document.getElementById('spot-dept-other-container'),
-          spotDeptOtherInp: document.getElementById('spot-dept-other-input'),
-          btnConfirmSpotOpen: document.getElementById('btn-confirm-spot-open'),
         };
-
-        // Bootstrap modal init
-        if (dom.spotModalElement && typeof bootstrap !== 'undefined') {
-          dom.spotModal = new bootstrap.Modal(dom.spotModalElement);
-        }
-      };
-
-      // ==========================================================================
-      //  EVENT BINDING
-      // ==========================================================================
-      const bindEvents = () => {
-        if (dom.input) {
-          dom.input.addEventListener('input', (e) => {
-            setSubmitEnabled(dom.input.value.trim().length > 0);
-            state.lastInputType = (dom.input.value.length > 3 && !e.inputType) ? 'Barcode' : 'Manual';
-          });
-        }
-
-        if (dom.form) {
-          dom.form.addEventListener('submit', (e) => { e.preventDefault(); submitAttendance(); });
-        }
-
-        if (dom.refreshBtn) dom.refreshBtn.addEventListener('click', () => { resetUI(); loadBackendTerminalData(); });
-        if (dom.syncBtn) dom.syncBtn.addEventListener('click', () => loadBackendTerminalData(true));
-        if (dom.logoutBtn) dom.logoutBtn.addEventListener('click', () => executeLogout());
-
-        if (dom.btnToggleCamera) dom.btnToggleCamera.addEventListener('click', toggleCamera);
-        if (dom.btnFlipCamera) dom.btnFlipCamera.addEventListener('click', flipCamera);
-        if (dom.cameraDeviceSelect) {
-          dom.cameraDeviceSelect.addEventListener('change', () => {
-            const idx = dom.cameraDeviceSelect.selectedIndex;
-            state.activeCameraIndex = idx;
-            if (state.cameraRunning) {
-              stopCamera().then(() => startCameraWithCurrentDevice());
-            }
-          });
-        }
-
-        if (dom.searchInput) {
-          dom.searchInput.addEventListener('input', () => {
-            state.searchQuery = dom.searchInput.value.trim().toLowerCase();
-            renderHistory();
-          });
-        }
-        if (dom.deptFilter) {
-          dom.deptFilter.addEventListener('change', () => {
-            state.deptFilter = dom.deptFilter.value;
-            renderHistory();
-          });
-        }
-
-        const tabScanner = document.getElementById('tab-btn-scanner');
-        const tabAttendance = document.getElementById('tab-btn-attendance');
-        const panelScanner = document.getElementById('scanner-view-panel');
-        const panelAttendance = document.getElementById('attendance-view-panel');
-
-        if (tabScanner && tabAttendance) {
-          tabScanner.addEventListener('click', () => {
-            tabScanner.classList.add('active', 'text-white');
-            tabScanner.classList.remove('text-white-50');
-            tabAttendance.classList.remove('active', 'text-white');
-            tabAttendance.classList.add('text-white-50');
-
-            panelScanner && panelScanner.classList.remove('d-none');
-            panelAttendance && panelAttendance.classList.add('d-none');
-          });
-
-          tabAttendance.addEventListener('click', () => {
-            tabAttendance.classList.add('active', 'text-white');
-            tabAttendance.classList.remove('text-white-50');
-            tabScanner.classList.remove('active', 'text-white');
-            tabScanner.classList.add('text-white-50');
-
-            panelScanner && panelScanner.classList.remove('d-none');
-            panelAttendance && panelAttendance.classList.add('d-none');
-            renderAttendanceTwoColumns();
-          });
-        }
-
-        const btnVerifConfirm = document.getElementById('btn-confirm-attendance-verif');
-        if (btnVerifConfirm) {
-          btnVerifConfirm.addEventListener('click', confirmVerificationAttendance);
-        }
-
-        const spotTypeSelect = document.getElementById('spot-student-type-select');
-        if (spotTypeSelect) {
-          spotTypeSelect.addEventListener('change', (e) => {
-            const isBvc = e.target.value === 'BVC';
-            const collegeCont = document.getElementById('spot-college-container');
-            const collegeInput = document.getElementById('spot-college-input');
-
-            if (isBvc) {
-              if (collegeCont) collegeCont.classList.add('d-none');
-              if (collegeInput) collegeInput.value = 'Bonam Venkata Chalamayya Engineering College';
-            } else {
-              if (collegeCont) collegeCont.classList.remove('d-none');
-              if (collegeInput) collegeInput.value = '';
-            }
-          });
-        }
-
-        if (dom.spotForm) dom.spotForm.addEventListener('submit', (e) => { e.preventDefault(); submitSpotFixed(); });
-        if (dom.btnConfirmSpotOpen) dom.btnConfirmSpotOpen.addEventListener('click', submitSpotOpen);
-
-        if (dom.spotModalElement) {
-          dom.spotModalElement.addEventListener('hidden.bs.modal', () => { focusInput(); });
-        }
-
-        document.body.addEventListener('click', (e) => {
-          const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
-          if (modalOpen) return;
-          const ignore = [dom.logoutBtn, dom.refreshBtn, dom.syncBtn, dom.btnFlipCamera,
-          dom.btnToggleCamera, dom.cameraDeviceSelect, dom.searchInput, dom.deptFilter];
-          if (!ignore.includes(e.target) && dom.form && !dom.form.contains(e.target)) {
-            focusInput();
-          }
-        });
-
-        if (dom.input) {
-          dom.input.addEventListener('blur', () => {
-            setTimeout(() => {
-              const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
-              if (!modalOpen && document.activeElement !== dom.input) {
-                focusInput();
-              }
-            }, 150);
-          });
-        }
       };
 
       const extractSessionToken = () => {
-        state.sessionToken = window.SESSION_TOKEN_FROM_BACKEND || null;
+        const urlParams = new URLSearchParams(window.location.search);
+        state.sessionToken = urlParams.get('token') || window.SESSION_TOKEN_FROM_BACKEND || '';
       };
 
       const monitorConnection = () => {
-        const update = () => {
-          const online = navigator.onLine;
-          if (dom.connectionStatus) {
-            dom.connectionStatus.classList.toggle('offline', !online);
+        const updateOnlineStatus = () => {
+          if (navigator.onLine) {
+            if (dom.connectionStatus) dom.connectionStatus.classList.remove('offline');
+            if (dom.connLabel) dom.connLabel.textContent = 'Online';
+          } else {
+            if (dom.connectionStatus) dom.connectionStatus.classList.add('offline');
+            if (dom.connLabel) dom.connLabel.textContent = 'Offline';
           }
-          if (dom.connLabel) dom.connLabel.textContent = online ? 'Online' : 'Offline';
         };
-        window.addEventListener('online', update);
-        window.addEventListener('offline', update);
-        update();
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus();
       };
 
-      const setSubmitEnabled = (enabled) => {
-        if (dom.submitBtn) dom.submitBtn.disabled = !enabled;
-      };
+      const bindEvents = () => {
+        if (dom.form) {
+          dom.form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleManualSubmit();
+          });
+        }
 
-      const focusInput = () => {
-        if (dom.input && document.activeElement !== dom.input) {
-          dom.input.focus();
+        if (dom.input) {
+          dom.input.addEventListener('input', () => {
+            if (dom.submitBtn) dom.submitBtn.disabled = !dom.input.value.trim();
+          });
+        }
+
+        if (dom.btnToggleCamera) {
+          dom.btnToggleCamera.addEventListener('click', toggleCamera);
+        }
+
+        if (dom.btnFlipCamera) {
+          dom.btnFlipCamera.addEventListener('click', flipCamera);
+        }
+
+        if (dom.refreshBtn) {
+          dom.refreshBtn.addEventListener('click', loadBackendTerminalData);
+        }
+
+        if (dom.syncBtn) {
+          dom.syncBtn.addEventListener('click', loadBackendTerminalData);
+        }
+
+        if (dom.spotForm) {
+          dom.spotForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleSpotSubmit();
+          });
+        }
+
+        const confirmSpotOpenBtn = document.getElementById('btn-confirm-spot-open');
+        if (confirmSpotOpenBtn) {
+          confirmSpotOpenBtn.addEventListener('click', () => {
+            const roll = dom.spotRollInput ? dom.spotRollInput.value : '';
+            if (roll) submitAttendance(roll, 'Spot-Open');
+            if (dom.spotModal) dom.spotModal.hide();
+          });
         }
       };
 
-      const resetUI = () => {
-        if (dom.input) dom.input.value = '';
-        setSubmitEnabled(false);
-      };
-
-      const showToast = (message, type = 'info') => {
-        if (!dom.toastStack) return;
-        const toast = document.createElement('div');
-        toast.className = `coord-toast coord-toast-${type}`;
-        const iconMap = {
-          success: 'bi-check-circle-fill',
-          error: 'bi-x-circle-fill',
-          warning: 'bi-exclamation-triangle-fill',
-          info: 'bi-info-circle-fill'
-        };
-        toast.innerHTML = `<i class="bi ${iconMap[type] || 'bi-info-circle-fill'}"></i><span>${message}</span>`;
-        dom.toastStack.appendChild(toast);
-        setTimeout(() => { toast.remove(); }, 4000);
-      };
-
-      const loadBackendTerminalData = (silent = false) => {
-        if (!silent && dom.scannerStatus) dom.scannerStatus.textContent = "Loading event session data...";
-        google.script.run
-          .withSuccessHandler((res) => {
-            if (!res || !res.success) {
-              if (dom.scannerStatus) dom.scannerStatus.textContent = res?.message || "Failed to load terminal data.";
-              showToast(res?.message || "Session load error", "error");
-              return;
-            }
-            renderSessionData(res.data);
-          })
-          .withFailureHandler((err) => {
-            if (dom.scannerStatus) dom.scannerStatus.textContent = "Server communication error.";
-            showToast("Server connection error", "error");
-          })
-          .getCoordinatorTerminalInitData(state.sessionToken);
-      };
-
-      const renderSessionData = (data) => {
-        if (!data) return;
-
-        if (data.eventTitle && dom.eventTitleDisplay) dom.eventTitleDisplay.textContent = data.eventTitle;
-        if (data.eventTitle && dom.terminalEventName) dom.terminalEventName.textContent = data.eventTitle;
-        if (data.eventDate && dom.eventDate) dom.eventDate.innerHTML = `<i class="bi bi-calendar3"></i> ${data.eventDate}`;
-        if (data.coordinatorName && dom.coordName) dom.coordName.innerHTML = `<i class="bi bi-person-badge"></i> ${data.coordinatorName}`;
-
-        if (data.attendanceType) state.activeEventAttendanceType = data.attendanceType;
-
-        if (data.stats) {
-          state.statistics = data.stats;
-          updateStatsDisplay();
-        }
-
-        if (Array.isArray(data.scans)) {
-          state.allScans = data.scans;
-          renderHistory();
-        }
-
-        if (dom.scannerStatus) dom.scannerStatus.textContent = "Ready for verification scan";
-      };
-
-      const updateStatsDisplay = () => {
-        const { present, remaining, total } = state.statistics;
-        if (dom.statsPresent) dom.statsPresent.textContent = present ?? '--';
-        if (dom.statsRemaining) dom.statsRemaining.textContent = remaining ?? '--';
-        if (dom.statsTotal) dom.statsTotal.textContent = total ?? '--';
-        if (dom.statsDuplicate) dom.statsDuplicate.textContent = state.duplicatesCount;
-
-        const pct = total > 0 ? Math.round((present / total) * 100) : 0;
-        if (dom.statsPct) dom.statsPct.textContent = `${pct}%`;
-        if (dom.statsProgress) dom.statsProgress.style.width = `${pct}%`;
-      };
-
-      const renderHistory = () => {
-        if (!dom.historyFeed) return;
-        dom.historyFeed.innerHTML = '';
-
-        let filtered = state.allScans;
-        if (state.searchQuery) {
-          filtered = filtered.filter(s =>
-            (s.rollNumber && s.rollNumber.toLowerCase().includes(state.searchQuery)) ||
-            (s.studentName && s.studentName.toLowerCase().includes(state.searchQuery))
-          );
-        }
-        if (state.deptFilter) {
-          filtered = filtered.filter(s => s.department === state.deptFilter);
-        }
-
-        if (dom.historyCountBadge) dom.historyCountBadge.textContent = filtered.length;
-
-        if (filtered.length === 0) {
-          dom.historyFeed.innerHTML = `
-        <div class="coord-empty-state">
-          <i class="bi bi-inbox"></i>
-          <strong>No scan history</strong>
-          <span>Scanned student records will appear here.</span>
-        </div>`;
+      // ==========================================================================
+      //  CAMERA HANDLING
+      // ==========================================================================
+      const initCamera = () => {
+        if (typeof Html5Qrcode === 'undefined') {
+          if (dom.cameraStatusText) dom.cameraStatusText.textContent = 'Lib Error';
           return;
         }
 
-        filtered.forEach(scan => {
-          const row = document.createElement('div');
-          row.className = 'coord-feed-row';
-          row.innerHTML = `
-        <div class="coord-feed-avatar feed-av-success"><i class="bi bi-person-check"></i></div>
-        <div class="coord-feed-info">
-          <div class="coord-feed-roll">${scan.rollNumber || '--'}</div>
-          <div class="coord-feed-name">${scan.studentName || 'Student'}</div>
-          ${scan.department ? `<span class="coord-feed-dept">${scan.department}</span>` : ''}
-        </div>
-        <div class="coord-feed-right">
-          <span class="coord-feed-time">${scan.time || '--:--'}</span>
-          <i class="bi bi-check-circle-fill coord-feed-status-icon ok"></i>
-        </div>`;
-          dom.historyFeed.appendChild(row);
+        try {
+          html5QrCode = new Html5Qrcode("interactive-camera-scanner");
+          Html5Qrcode.getCameras().then(devices => {
+            if (devices && devices.length > 0) {
+              state.availableCameras = devices;
+              startCameraScanner(devices[0].id);
+            } else {
+              startCameraScanner({ facingMode: state.facingMode });
+            }
+          }).catch(err => {
+            console.warn("Could not get devices by ID, trying facing mode default", err);
+            startCameraScanner({ facingMode: state.facingMode });
+          });
+        } catch (e) {
+          console.error("Camera Init Error:", e);
+        }
+      };
+
+      const startCameraScanner = (cameraConfig) => {
+        if (!html5QrCode) return;
+
+        const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+        html5QrCode.start(
+          cameraConfig,
+          config,
+          (decodedText, decodedResult) => {
+            onScanSuccess(decodedText);
+          },
+          (errorMessage) => {
+            // Scanner feed frame parse errors ignored
+          }
+        ).then(() => {
+          state.cameraRunning = true;
+          if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.add('hidden');
+          if (dom.cameraStatusText) dom.cameraStatusText.textContent = 'Active';
+          if (dom.cameraToggleIcon) dom.cameraToggleIcon.className = 'bi bi-camera-video-fill';
+        }).catch(err => {
+          console.error("Failed to start camera:", err);
+          state.cameraRunning = false;
+          if (dom.cameraStatusText) dom.cameraStatusText.textContent = 'Stopped';
+          if (dom.cameraToggleIcon) dom.cameraToggleIcon.className = 'bi bi-camera-video-off-fill';
         });
       };
 
-      const submitAttendance = (rollOverride = null) => {
-        const spotRoll = (rollOverride || dom.input?.value || '').trim().toUpperCase();
-        if (!spotRoll) return;
+      const toggleCamera = () => {
+        if (!html5QrCode) return;
 
+        if (state.cameraRunning) {
+          html5QrCode.stop().then(() => {
+            state.cameraRunning = false;
+            if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.remove('hidden');
+            if (dom.cameraStatusText) dom.cameraStatusText.textContent = 'Stopped';
+            if (dom.cameraToggleIcon) dom.cameraToggleIcon.className = 'bi bi-camera-video-off-fill';
+          }).catch(err => console.error("Error stopping camera", err));
+        } else {
+          startCameraScanner({ facingMode: state.facingMode });
+        }
+      };
+
+      const flipCamera = () => {
+        if (state.availableCameras.length > 1) {
+          state.activeCameraIndex = (state.activeCameraIndex + 1) % state.availableCameras.length;
+          const nextCamId = state.availableCameras[state.activeCameraIndex].id;
+          if (state.cameraRunning) {
+            html5QrCode.stop().then(() => {
+              startCameraScanner(nextCamId);
+            });
+          }
+        } else {
+          state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+          if (state.cameraRunning) {
+            html5QrCode.stop().then(() => {
+              startCameraScanner({ facingMode: state.facingMode });
+            });
+          }
+        }
+      };
+
+      const onScanSuccess = (decodedText) => {
+        const rollNumber = decodedText.trim().toUpperCase();
+        if (!rollNumber) return;
+
+        // Duplicate cooldown check
+        const now = Date.now();
+        if (state.recentRolls[rollNumber] && (now - state.recentRolls[rollNumber] < state.DUPLICATE_COOLDOWN_MS)) {
+          return;
+        }
+        state.recentRolls[rollNumber] = now;
+
+        state.lastInputType = 'Camera';
+        processParticipant(rollNumber);
+      };
+
+      const handleManualSubmit = () => {
+        if (!dom.input) return;
+        const rollNumber = dom.input.value.trim().toUpperCase();
+        if (!rollNumber) return;
+
+        state.lastInputType = 'Barcode';
+        dom.input.value = '';
+        if (dom.submitBtn) dom.submitBtn.disabled = true;
+
+        processParticipant(rollNumber);
+      };
+
+      // ==========================================================================
+      //  MAIN ATTENDANCE PROCESSING
+      // ==========================================================================
+      const processParticipant = (spotRoll) => {
         if (state.isProcessing) return;
         state.isProcessing = true;
 
@@ -2714,167 +2619,216 @@
         google.script.run
           .withSuccessHandler((response) => {
             state.isProcessing = false;
-            resetUI();
+            if (dom.scannerStatus) dom.scannerStatus.textContent = 'Ready for verification scan';
 
             if (!response) {
-              showToast("Empty server response.", "error");
+              showToast('error', 'No response received from server.');
               return;
             }
 
-            if (response.status === 'SPOT_REGISTRATION_REQUIRED' || response.code === 'SPOT_REGISTRATION_REQUIRED') {
+            if (response.status === 'SPOT_REGISTRATION_REQUIRED') {
               openSpotModal(spotRoll);
-              return;
-            }
-
-            if (response.success) {
-              showToast(`Attendance marked for ${spotRoll}`, "success");
-              if (response.scan) {
-                state.allScans.unshift(response.scan);
-                renderHistory();
+            } else if (response.status === 'SUCCESS' || response.status === 'ALREADY_MARKED') {
+              if (response.status === 'ALREADY_MARKED') {
+                state.duplicatesCount++;
+                if (dom.statsDuplicate) dom.statsDuplicate.textContent = state.duplicatesCount;
+                showToast('warning', `Already marked: ${spotRoll}`);
+              } else {
+                showToast('success', `Marked present: ${spotRoll}`);
               }
-              if (response.stats) {
-                state.statistics = response.stats;
-                updateStatsDisplay();
-              }
+              loadBackendTerminalData();
             } else {
-              showToast(response.message || "Failed to mark attendance", "error");
+              showToast('error', response.message || 'Verification failed.');
             }
           })
-          .withFailureHandler((err) => {
+          .withFailureHandler((error) => {
             state.isProcessing = false;
-            resetUI();
-            showToast("Error processing attendance", "error");
+            if (dom.scannerStatus) dom.scannerStatus.textContent = 'Error processing scan';
+            showToast('error', 'API error processing scan.');
           })
-          .markAttendance(state.sessionToken, spotRoll, state.lastInputType);
+          .processParticipant(state.sessionToken, spotRoll, state.lastInputType);
       };
 
-      const confirmVerificationAttendance = () => {
-        // Standard verification confirmation hook
+      const submitAttendance = (rollNumber, type) => {
+        processParticipant(rollNumber);
       };
 
-      const submitSpotFixed = () => {
-        const roll = dom.spotRollInput?.value;
-        const name = dom.spotNameInput?.value;
-        const college = dom.spotCollegeInput?.value;
-        const dept = dom.spotDeptSelect?.value;
-        const year = dom.spotYearSelect?.value;
+      const handleSpotSubmit = () => {
+        const rollNumber = dom.spotRollInput ? dom.spotRollInput.value : '';
+        const name = dom.spotNameInput ? dom.spotNameInput.value.trim() : '';
+        const college = dom.spotCollegeInput ? dom.spotCollegeInput.value.trim() : '';
+        const dept = dom.spotDeptSelect ? dom.spotDeptSelect.value : '';
+        const year = dom.spotYearSelect ? dom.spotYearSelect.value : '';
 
-        if (!roll || !name) {
-          showToast("Please fill in required fields", "warning");
+        if (!rollNumber || !name) {
+          showToast('error', 'Please fill in required fields.');
           return;
         }
 
         google.script.run
-          .withSuccessHandler((res) => {
+          .withSuccessHandler((response) => {
             if (dom.spotModal) dom.spotModal.hide();
-            if (res && res.success) {
-              showToast(`Registered & marked ${roll}`, "success");
-              loadBackendTerminalData(true);
+            if (response && response.status === 'SUCCESS') {
+              showToast('success', 'Spot registration completed!');
+              loadBackendTerminalData();
             } else {
-              showToast(res?.message || "Spot registration failed", "error");
+              showToast('error', response ? response.message : 'Spot registration failed.');
             }
           })
-          .withFailureHandler(() => {
-            if (dom.spotModal) dom.spotModal.hide();
-            showToast("Spot registration request failed", "error");
+          .withFailureHandler((err) => {
+            showToast('error', 'Failed to register spot student.');
           })
-          .registerSpotStudentAndMark(state.sessionToken, { roll, name, college, dept, year });
-      };
-
-      const submitSpotOpen = () => {
-        const roll = dom.spotRollInput?.value;
-        if (!roll) return;
-
-        if (dom.spotModal) dom.spotModal.hide();
-        submitAttendance(roll);
-      };
-
-      const initCamera = () => {
-        if (typeof Html5Qrcode === 'undefined') return;
-
-        try {
-          html5QrCode = new Html5Qrcode("interactive-camera-scanner");
-          Html5Qrcode.getCameras().then(devices => {
-            if (devices && devices.length) {
-              state.availableCameras = devices;
-              startCameraWithCurrentDevice();
-            }
-          }).catch(err => {
-            console.warn("Camera enumeration error:", err);
+          .registerSpotParticipant(state.sessionToken, {
+            rollNumber,
+            name,
+            college,
+            dept,
+            year
           });
-        } catch (e) {
-          console.warn("Camera initialization exception:", e);
-        }
       };
 
-      const startCameraWithCurrentDevice = () => {
-        if (!html5QrCode || state.availableCameras.length === 0) return;
-        const cam = state.availableCameras[state.activeCameraIndex] || state.availableCameras[0];
+      // ==========================================================================
+      //  DATA FETCH & UI RENDERING
+      // ==========================================================================
+      const loadBackendTerminalData = () => {
+        google.script.run
+          .withSuccessHandler((data) => {
+            if (!data) return;
 
-        html5QrCode.start(
-          cam.id,
-          { fps: 10, qrbox: { width: 220, height: 220 } },
-          (decodedText) => {
-            if (decodedText) {
-              submitAttendance(decodedText.trim());
+            if (data.eventName) {
+              if (dom.eventTitleDisplay) dom.eventTitleDisplay.textContent = data.eventName;
+              if (dom.terminalEventName) dom.terminalEventName.textContent = data.eventName;
             }
-          },
-          () => { }
-        ).then(() => {
-          state.cameraRunning = true;
-          if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.add('hidden');
-          if (dom.cameraStatusText) dom.cameraStatusText.textContent = "Active";
-        }).catch(err => {
-          console.warn("Camera start failed:", err);
-        });
+
+            if (data.eventDate && dom.eventDate) {
+              dom.eventDate.innerHTML = `<i class="bi bi-calendar3"></i> ${data.eventDate}`;
+            }
+
+            if (data.coordinatorName && dom.coordName) {
+              dom.coordName.innerHTML = `<i class="bi bi-person-badge"></i> ${data.coordinatorName}`;
+            }
+
+            if (data.attendanceType) {
+              state.activeEventAttendanceType = data.attendanceType;
+            }
+
+            if (data.stats) {
+              state.statistics = data.stats;
+              if (dom.statsPresent) dom.statsPresent.textContent = data.stats.present || 0;
+              if (dom.statsRemaining) dom.statsRemaining.textContent = data.stats.remaining || 0;
+              if (dom.statsTotal) dom.statsTotal.textContent = data.stats.total || 0;
+
+              const total = data.stats.total || 0;
+              const present = data.stats.present || 0;
+              const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+
+              if (dom.statsPct) dom.statsPct.textContent = `${pct}%`;
+              if (dom.statsProgress) dom.statsProgress.style.width = `${pct}%`;
+            }
+
+            if (data.recentScans) {
+              state.allScans = data.recentScans;
+              renderHistoryFeed();
+            }
+          })
+          .withFailureHandler((err) => {
+            showToast('error', 'Failed to update terminal data.');
+          })
+          .getTerminalInitData(state.sessionToken);
       };
 
-      const stopCamera = () => {
-        if (html5QrCode && state.cameraRunning) {
-          return html5QrCode.stop().then(() => {
-            state.cameraRunning = false;
-            if (dom.viewportPlaceholder) dom.viewportPlaceholder.classList.remove('hidden');
-            if (dom.cameraStatusText) dom.cameraStatusText.textContent = "Stopped";
-          });
+      const renderHistoryFeed = () => {
+        if (!dom.historyFeed) return;
+
+        if (!state.allScans || state.allScans.length === 0) {
+          dom.historyFeed.innerHTML = `
+            <div class="coord-empty-state">
+              <i class="bi bi-qr-code"></i>
+              <strong>No Scans Recorded Yet</strong>
+              <span>Scanned students will appear here in real-time</span>
+            </div>`;
+          if (dom.historyCountBadge) dom.historyCountBadge.textContent = '0';
+          return;
         }
-        return Promise.resolve();
+
+        if (dom.historyCountBadge) dom.historyCountBadge.textContent = state.allScans.length;
+
+        const html = state.allScans.map(scan => `
+          <div class="coord-feed-row">
+            <div class="coord-feed-avatar feed-av-success">
+              <i class="bi bi-check-lg"></i>
+            </div>
+            <div class="coord-feed-info">
+              <div class="coord-feed-roll">${scan.rollNumber || '--'}</div>
+              <div class="coord-feed-name">${scan.name || 'Student'}</div>
+              <span class="coord-feed-dept">${scan.dept || 'GEN'}</span>
+            </div>
+            <div class="coord-feed-right">
+              <span class="coord-feed-time">${scan.timestamp || ''}</span>
+              <i class="bi bi-check-circle-fill coord-feed-status-icon ok"></i>
+            </div>
+          </div>
+        `).join('');
+
+        dom.historyFeed.innerHTML = html;
       };
 
-      const toggleCamera = () => {
-        if (state.cameraRunning) {
-          stopCamera();
-        } else {
-          startCameraWithCurrentDevice();
-        }
-      };
+      const showToast = (type, message) => {
+        if (!dom.toastStack) return;
 
-      const flipCamera = () => {
-        if (state.availableCameras.length < 2) return;
-        state.activeCameraIndex = (state.activeCameraIndex + 1) % state.availableCameras.length;
-        if (state.cameraRunning) {
-          stopCamera().then(() => startCameraWithCurrentDevice());
-        }
-      };
+        const toast = document.createElement('div');
+        toast.className = `coord-toast coord-toast-${type}`;
 
-      const renderAttendanceTwoColumns = () => {
-        // Attendance tab rendering hook
-      };
+        let icon = 'bi-info-circle-fill';
+        if (type === 'success') icon = 'bi-check-circle-fill';
+        if (type === 'error') icon = 'bi-x-circle-fill';
+        if (type === 'warning') icon = 'bi-exclamation-triangle-fill';
 
-      const executeLogout = () => {
-        window.location.reload();
+        toast.innerHTML = `<i class="bi ${icon}"></i> <span>${message}</span>`;
+        dom.toastStack.appendChild(toast);
+
+        setTimeout(() => {
+          if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 4000);
       };
 
       return {
         init,
-        openSpotModal
+        openSpotModal,
+        processParticipant
       };
     })();
 
-    const CameraDebugger = {
-      init() {
-        // Debugger initialization hook
-      }
-    };
+    // Camera Diagnostic Subsystem
+    const CameraDebugger = (() => {
+      const init = () => {
+        const trigger = document.getElementById('btn-open-camera-debug');
+        const panel = document.getElementById('camera-debug-panel');
+        const closeBtn = document.getElementById('btn-close-camera-debug');
+
+        if (trigger && panel) {
+          trigger.addEventListener('click', () => {
+            panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+          });
+        }
+        if (closeBtn && panel) {
+          closeBtn.addEventListener('click', () => {
+            panel.style.display = 'none';
+          });
+        }
+
+        const browserEl = document.getElementById('dbg-browser');
+        if (browserEl) browserEl.textContent = navigator.userAgent.split(' ')[0];
+        const platformEl = document.getElementById('dbg-platform');
+        if (platformEl) platformEl.textContent = navigator.platform;
+        const secureEl = document.getElementById('dbg-secure');
+        if (secureEl) secureEl.textContent = window.isSecureContext ? 'Yes' : 'No';
+        const libEl = document.getElementById('dbg-lib');
+        if (libEl) libEl.textContent = typeof Html5Qrcode !== 'undefined' ? 'Loaded' : 'Missing';
+      };
+
+      return { init };
+    })();
 
     document.addEventListener('DOMContentLoaded', () => {
       CoordinatorUI.init();
