@@ -1197,7 +1197,201 @@ body {
 ============================================================ */
 .d-none { display: none !important; }
 </style>
-  <?!= include('forms_css'); ?>
+  <style>
+/* ==========================================================================
+   BVC Attendance Forms Module - GAS Compatible Inlined Styles
+   ========================================================================== */
+
+:root {
+  --af-primary: #4f46e5;
+  --af-primary-hover: #4338ca;
+  --af-success: #10b981;
+  --af-warning: #f59e0b;
+  --af-danger: #ef4444;
+  --af-info: #06b6d4;
+  --af-card-bg: #ffffff;
+  --af-card-border: rgba(0, 0, 0, 0.08);
+  --af-text-main: #1f2937;
+  --af-text-muted: #6b7280;
+  --af-input-bg: #f9fafb;
+}
+
+[data-bs-theme="dark"], .dark-mode {
+  --af-card-bg: #1e293b;
+  --af-card-border: rgba(255, 255, 255, 0.1);
+  --af-text-main: #f8fafc;
+  --af-text-muted: #94a3b8;
+  --af-input-bg: #0f172a;
+}
+
+.af-modal-content {
+  background-color: var(--af-card-bg);
+  border: 1px solid var(--af-card-border);
+  border-radius: 20px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  color: var(--af-text-main);
+  transition: all 0.3s ease;
+}
+
+.af-modal-header {
+  border-bottom: 1px solid var(--af-card-border);
+  padding: 1.25rem 1.5rem;
+}
+
+.af-modal-footer {
+  border-top: 1px solid var(--af-card-border);
+  padding: 1rem 1.5rem;
+}
+
+.af-profile-card {
+  background: var(--af-input-bg);
+  border: 1px solid var(--af-card-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.af-profile-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+}
+
+.af-avatar-wrapper {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--af-primary);
+  background-color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.af-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.af-avatar-placeholder {
+  font-size: 2.5rem;
+  color: var(--af-primary);
+}
+
+.af-badge {
+  padding: 0.35em 0.75em;
+  font-size: 0.825rem;
+  font-weight: 600;
+  border-radius: 30px;
+}
+
+.af-badge-dept {
+  background-color: rgba(79, 70, 229, 0.1);
+  color: var(--af-primary);
+}
+
+.af-badge-year {
+  background-color: rgba(6, 182, 212, 0.1);
+  color: var(--af-info);
+}
+
+.af-badge-status {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--af-success);
+}
+
+.af-form-control {
+  background-color: var(--af-input-bg);
+  border: 1.5px solid var(--af-card-border);
+  color: var(--af-text-main);
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.af-form-control:focus {
+  background-color: var(--af-input-bg);
+  color: var(--af-text-main);
+  border-color: var(--af-primary);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+}
+
+.af-form-control[readonly] {
+  background-color: rgba(0, 0, 0, 0.03);
+  opacity: 0.9;
+  cursor: not-allowed;
+}
+
+.af-field-missing {
+  border-color: var(--af-danger) !important;
+  background-color: rgba(239, 68, 68, 0.03) !important;
+}
+
+.af-field-missing:focus {
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15) !important;
+}
+
+.af-btn {
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.af-btn-primary {
+  background-color: var(--af-primary);
+  border-color: var(--af-primary);
+  color: #ffffff;
+}
+
+.af-btn-primary:hover, .af-btn-primary:focus {
+  background-color: var(--af-primary-hover);
+  border-color: var(--af-primary-hover);
+  transform: translateY(-1px);
+}
+
+.af-btn-danger {
+  background-color: var(--af-danger);
+  border-color: var(--af-danger);
+  color: #ffffff;
+}
+
+.af-skeleton {
+  background: linear-gradient(90deg, var(--af-input-bg) 25%, rgba(226, 232, 240, 0.5) 50%, var(--af-input-bg) 75%);
+  background-size: 200% 100%;
+  animation: af-skeleton-loading 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes af-skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.af-success-checkmark {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--af-success);
+  font-size: 3rem;
+  animation: af-pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes af-pop-in {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+</style>
+
   <script>
     // Inject session token from backend template parameter to bypass iframe query limitations
     window.SESSION_TOKEN_FROM_BACKEND = "<?= token ?>";
@@ -1207,8 +1401,511 @@ body {
 
 <body>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-  <?!= include('forms_modals'); ?>
-  <?!= include('forms_js'); ?>
+  <!-- forms_modals.html -->
+<!-- 1. Open Event Verification Modal -->
+<div class="modal fade" id="openEventVerificationModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content af-modal-content">
+      <div class="modal-header af-modal-header bg-primary text-white">
+        <h5 class="modal-title fw-bold" id="openEventModalTitle">
+          <i class="bi bi-person-check-fill me-2"></i>Verify Participant Profile
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div id="openEventProfileContainer"></div>
+        <div class="row g-2" id="openEventConfiguredFields"></div>
+      </div>
+      <div class="modal-footer af-modal-footer">
+        <button type="button" class="btn btn-outline-secondary af-btn" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary af-btn af-btn-primary" id="btnConfirmOpenEventMark">
+          <i class="bi bi-check-circle-fill me-1"></i> Mark Present
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. Fixed Event Verification Modal -->
+<div class="modal fade" id="fixedEventVerificationModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content af-modal-content">
+      <div class="modal-header af-modal-header bg-success text-white">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-shield-check me-2"></i>Fixed Event - Participant Verification
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div id="fixedEventProfileContainer"></div>
+        <div class="p-3 bg-light rounded-3 border mb-3">
+          <div class="row g-2">
+            <div class="col-6">
+              <span class="small text-muted d-block">Registration Status</span>
+              <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle fw-semibold px-2 py-1" id="fixedRegStatus">Registered & Approved</span>
+            </div>
+            <div class="col-6">
+              <span class="small text-muted d-block">Seat / Desk No.</span>
+              <span class="fw-bold text-dark" id="fixedSeatNumber">N/A</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer af-modal-footer">
+        <button type="button" class="btn btn-outline-secondary af-btn" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success af-btn" id="btnConfirmFixedEventMark">
+          <i class="bi bi-check-circle-fill me-1"></i> Mark Present
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. Spot Registration Modal -->
+<div class="modal fade" id="spotRegistrationModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content af-modal-content">
+      <div class="modal-header af-modal-header bg-warning text-dark">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-person-plus-fill me-2"></i>Spot Registration Form
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-warning border-0 rounded-3 small mb-3">
+          <i class="bi bi-info-circle-fill me-1"></i> Participant is not registered for this event. Complete spot registration to proceed.
+        </div>
+        <form id="spotRegistrationForm">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Roll Number</label>
+            <input type="text" class="form-control af-form-control font-monospace" id="spotRollInput" readonly />
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Student Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control" id="spotNameInput" required placeholder="Enter full name" />
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Department <span class="text-danger">*</span></label>
+              <select class="form-select af-form-control" id="spotDeptSelect" required>
+                <option value="CSE">CSE</option>
+                <option value="ECE">ECE</option>
+                <option value="EEE">EEE</option>
+                <option value="CIVIL">CIVIL</option>
+                <option value="MECH">MECH</option>
+                <option value="AIDS">AIDS</option>
+                <option value="AIML">AIML</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Year <span class="text-danger">*</span></label>
+              <select class="form-select af-form-control" id="spotYearSelect" required>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3" id="spotCollegeContainer">
+            <label class="form-label small fw-bold text-muted">College / Institution <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control" id="spotCollegeInput" placeholder="Enter college name" required />
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer af-modal-footer">
+        <button type="button" class="btn btn-outline-secondary af-btn" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning af-btn fw-bold" id="btnConfirmSpotRegisterMark">
+          <i class="bi bi-check2-circle me-1"></i> Register & Mark Present
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. Student Not Found Modal -->
+<div class="modal fade" id="studentNotFoundModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content af-modal-content">
+      <div class="modal-header af-modal-header bg-danger text-white">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-person-x-fill me-2"></i>Student Not Found
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-danger border-0 rounded-3 mb-3 d-flex align-items-center">
+          <i class="bi bi-exclamation-octagon-fill fs-3 me-3"></i>
+          <div>
+            <strong>Student Record Missing!</strong><br />
+            <span class="small">The scanned roll number does not exist in the database. Register student below to mark attendance.</span>
+          </div>
+        </div>
+        <form id="studentNotFoundForm">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Roll Number <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control font-monospace" id="newStudentRollInput" readonly />
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Student Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control" id="newStudentNameInput" placeholder="Enter full name" required />
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Department <span class="text-danger">*</span></label>
+              <select class="form-select af-form-control" id="newStudentDeptSelect" required>
+                <option value="CSE">CSE</option>
+                <option value="ECE">ECE</option>
+                <option value="EEE">EEE</option>
+                <option value="CIVIL">CIVIL</option>
+                <option value="MECH">MECH</option>
+                <option value="AIDS">AIDS</option>
+                <option value="AIML">AIML</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Year <span class="text-danger">*</span></label>
+              <select class="form-select af-form-control" id="newStudentYearSelect" required>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3" id="newStudentCollegeGroup">
+            <label class="form-label small fw-bold text-muted">College / Institution <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control" id="newStudentCollegeInput" placeholder="Enter college name" required />
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer af-modal-footer">
+        <button type="button" class="btn btn-outline-secondary af-btn" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger af-btn" id="btnConfirmCreateAndMark">
+          <i class="bi bi-person-plus-fill me-1"></i> Save Student & Mark Present
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5. Student Missing Details Modal -->
+<div class="modal fade" id="studentMissingDetailsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content af-modal-content">
+      <div class="modal-header af-modal-header bg-warning text-dark">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-pencil-square me-2"></i>Complete Student Profile
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-warning border-0 rounded-3 small mb-3">
+          <i class="bi bi-exclamation-circle-fill me-1"></i> Required details are missing in this student's profile. Fill highlighted fields to continue.
+        </div>
+        <form id="studentMissingDetailsForm">
+          <div class="p-3 bg-light rounded-3 border mb-3">
+            <div class="row g-2">
+              <div class="col-6">
+                <span class="small text-muted d-block">Name</span>
+                <strong id="missingReadOnlyName">--</strong>
+              </div>
+              <div class="col-6">
+                <span class="small text-muted d-block">Roll Number</span>
+                <strong id="missingReadOnlyRoll" class="font-monospace">--</strong>
+              </div>
+            </div>
+          </div>
+          <div id="missingFieldsDynamicInputs" class="row g-3"></div>
+        </form>
+      </div>
+      <div class="modal-footer af-modal-footer">
+        <button type="button" class="btn btn-outline-secondary af-btn" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning af-btn fw-bold" id="btnConfirmSaveProfileAndMark">
+          <i class="bi bi-save-fill me-1"></i> Save Profile & Mark Present
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6. Verification Success Modal -->
+<div class="modal fade" id="verificationSuccessModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content af-modal-content text-center p-4">
+      <div class="af-success-checkmark mb-3">
+        <i class="bi bi-check-lg"></i>
+      </div>
+      <h4 class="fw-bold text-dark mb-1">Attendance Marked!</h4>
+      <p class="text-muted small mb-3" id="successModalMessage">Participant recorded successfully.</p>
+      <button type="button" class="btn btn-success af-btn w-100" data-bs-dismiss="modal">Done</button>
+    </div>
+  </div>
+</div>
+
+  <script>
+/**
+ * forms_js.html
+ * Inlined JS module for Google Apps Script HTML Service compatibility.
+ */
+
+// FormValidator
+window.AttendanceFormValidator = (() => {
+  'use strict';
+
+  const validateRollNumber = (roll) => {
+    if (!roll || typeof roll !== 'string' || !roll.trim()) {
+      return { valid: false, message: 'Roll Number is required.' };
+    }
+    const clean = roll.trim().toUpperCase();
+    if (clean.length < 3) {
+      return { valid: false, message: 'Roll Number must be at least 3 characters.' };
+    }
+    return { valid: true, clean };
+  };
+
+  const validateRequiredFields = (formData, requiredFieldsList) => {
+    const errors = {};
+    let isValid = true;
+
+    requiredFieldsList.forEach(field => {
+      const val = formData[field];
+      if (val === undefined || val === null || String(val).trim() === '') {
+        errors[field] = 'This field is required.';
+        isValid = false;
+      }
+    });
+
+    return { isValid, errors };
+  };
+
+  const checkDuplicateAttendance = async (eventId, rollNumber) => {
+    try {
+      if (typeof App !== 'undefined' && App.API && App.API._call) {
+        const attendanceList = await App.API._call('getAttendanceByEvent', eventId);
+        if (Array.isArray(attendanceList)) {
+          const normRoll = String(rollNumber).trim().toUpperCase();
+          const existing = attendanceList.find(a => {
+            const r = a.roll_number || a['Roll Number'] || '';
+            const isDel = a.deletion_flag || a['Deletion Flag'];
+            return String(r).trim().toUpperCase() === normRoll && !isDel;
+          });
+          if (existing) {
+            return {
+              isDuplicate: true,
+              timestamp: existing.attendance_time || existing.Timestamp || existing.created_at || new Date().toISOString(),
+              coordinator: existing.action_by || existing.created_by || 'Coordinator'
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Duplicate check API call error, falling back:', e);
+    }
+    return { isDuplicate: false };
+  };
+
+  return {
+    validateRollNumber,
+    validateRequiredFields,
+    checkDuplicateAttendance
+  };
+})();
+
+// FormRenderer
+window.AttendanceFormRenderer = (() => {
+  'use strict';
+
+  const escapeHtml = (str) => {
+    if (!str && str !== 0) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
+  const renderBadge = (text, type = 'dept') => {
+    const safeText = escapeHtml(text || 'N/A');
+    return `<span class="af-badge af-badge-${type} me-1 mb-1">${safeText}</span>`;
+  };
+
+  const renderProfileCard = (student, eventConfig = {}) => {
+    const name = escapeHtml(student.student_name || student.name || 'Student');
+    const roll = escapeHtml(student.roll_number || student.roll || 'N/A');
+    const dept = escapeHtml(student.department || student.branch || 'N/A');
+    const year = escapeHtml(student.year ? `${student.year} Year` : 'N/A');
+    const college = escapeHtml(student.college_name || student.college || 'BVC Engineering College');
+
+    const photoUrl = student.profile_photo || student.photo_url;
+    const avatarHtml = photoUrl
+      ? `<img src="${escapeHtml(photoUrl)}" class="af-avatar-img" alt="${name}" />`
+      : `<i class="bi bi-person-fill af-avatar-placeholder"></i>`;
+
+    return `
+      <div class="af-profile-card text-center mb-3">
+        <div class="af-avatar-wrapper mb-2">
+          ${avatarHtml}
+        </div>
+        <h5 class="fw-bold mb-1">${name}</h5>
+        <p class="text-muted font-monospace small mb-2">${roll}</p>
+        <div class="d-flex flex-wrap justify-content-center gap-1 mb-2">
+          ${renderBadge(dept, 'dept')}
+          ${renderBadge(year, 'year')}
+          ${renderBadge('Active', 'status')}
+        </div>
+        <div class="small text-muted border-top pt-2 mt-1">
+          <i class="bi bi-building me-1"></i> ${college}
+        </div>
+      </div>
+    `;
+  };
+
+  return {
+    escapeHtml,
+    renderBadge,
+    renderProfileCard
+  };
+})();
+
+// FormController
+window.AttendanceFormController = (() => {
+  'use strict';
+
+  const state = {
+    eventId: null,
+    eventObj: null,
+    studentData: null,
+    participantData: null,
+    isBvcOnly: true,
+    isRegRequired: false,
+    isSpotAllowed: false
+  };
+
+  const init = (eventId, eventObj) => {
+    state.eventId = eventId;
+    state.eventObj = eventObj || {};
+
+    const elig = String(state.eventObj.eligibility || state.eventObj['Eligibility'] || 'BVC_ONLY').toUpperCase();
+    state.isBvcOnly = elig.indexOf('BVC') !== -1;
+
+    const reg = state.eventObj.enable_registration || state.eventObj['Enable Registration'];
+    state.isRegRequired = String(reg).toLowerCase() === 'true';
+
+    const spot = state.eventObj.allow_spot_registration || state.eventObj['Allow Spot Registration'];
+    state.isSpotAllowed = String(spot).toLowerCase() === 'true';
+  };
+
+  const handleScanOrManualEntry = async (rawRollNumber) => {
+    const valid = AttendanceFormValidator.validateRollNumber(rawRollNumber);
+    if (!valid.valid) {
+      if (typeof App !== 'undefined' && App.UI) App.UI.showError(valid.message);
+      return;
+    }
+    const roll = valid.clean;
+
+    const dupCheck = await AttendanceFormValidator.checkDuplicateAttendance(state.eventId, roll);
+    if (dupCheck.isDuplicate) {
+      if (typeof App !== 'undefined' && App.UI) App.UI.showWarning(`Already marked present at ${new Date(dupCheck.timestamp).toLocaleTimeString()}`);
+      return;
+    }
+
+    let student = null;
+    try {
+      if (typeof App !== 'undefined' && App.API && App.API.getStudentByRollNumber) {
+        student = await App.API.getStudentByRollNumber(roll);
+      }
+    } catch (e) {
+      console.warn('Student API fetch failed:', e);
+    }
+
+    state.studentData = student;
+
+    const checkMissingStudentFields = (student) => {
+      let requiredList = [];
+      const openFields = state.eventObj.open_required_fields || state.eventObj['Open Required Fields'] || state.eventObj.required_student_fields;
+      if (typeof openFields === 'string') {
+        try { requiredList = JSON.parse(openFields); } catch (e) { requiredList = openFields.split(',').map(s => s.trim()); }
+      } else if (Array.isArray(openFields)) {
+        requiredList = openFields;
+      }
+
+      if (!requiredList || requiredList.length === 0) {
+        requiredList = ['Student Full Name', 'Department / Branch', 'Academic Year', 'Mobile / Phone Number'];
+      }
+
+      const fieldKeyMap = {
+        'Student Full Name': ['student_name', 'name', 'full_name'],
+        'Department / Branch': ['department', 'department_id', 'branch', 'dept'],
+        'Academic Year': ['year', 'academic_year'],
+        'Section': ['section'],
+        'Mobile / Phone Number': ['phone', 'mobile', 'phone_number'],
+        'Email Address': ['email', 'email_address'],
+        'Gender': ['gender'],
+        'College / Institution Name': ['college_name', 'college', 'institution'],
+        'Guardian Name': ['guardian_name', 'parent_name'],
+        'Date of Birth': ['dob', 'date_of_birth'],
+        'Notes': ['notes', 'remarks']
+      };
+
+      const missing = [];
+      requiredList.forEach(reqName => {
+        const keys = fieldKeyMap[reqName] || [reqName.toLowerCase().replace(/[^a-z0-9_]/g, '_')];
+        const hasVal = keys.some(k => student[k] !== undefined && student[k] !== null && String(student[k]).trim() !== '');
+        if (!hasVal) {
+          missing.push(reqName);
+        }
+      });
+      return missing;
+    };
+
+    if (!state.isRegRequired) {
+      if (student) {
+        const missing = checkMissingStudentFields(student);
+        if (missing.length > 0) {
+          const modalEl = document.getElementById('studentMissingDetailsModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            document.getElementById('missingReadOnlyName').textContent = student.student_name || student.name || '--';
+            document.getElementById('missingReadOnlyRoll').textContent = student.roll_number || student.roll || '--';
+            const inputsContainer = document.getElementById('missingFieldsDynamicInputs');
+            if (inputsContainer) {
+              inputsContainer.innerHTML = missing.map(field => `
+                <div class="col-12">
+                  <label class="form-label small fw-bold text-muted text-capitalize">${field} <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control af-form-control af-field-missing" name="${field}" required placeholder="Enter ${field}" />
+                </div>
+              `).join('');
+            }
+            new bootstrap.Modal(modalEl).show();
+          }
+        } else {
+          const modalEl = document.getElementById('openEventVerificationModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            const container = document.getElementById('openEventProfileContainer');
+            if (container) container.innerHTML = AttendanceFormRenderer.renderProfileCard(student);
+            new bootstrap.Modal(modalEl).show();
+          }
+        }
+      } else {
+        const modalEl = document.getElementById('studentNotFoundModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+          document.getElementById('newStudentRollInput').value = roll;
+          const colGroup = document.getElementById('newStudentCollegeGroup');
+          if (colGroup) colGroup.style.display = state.isBvcOnly ? 'none' : 'block';
+          new bootstrap.Modal(modalEl).show();
+        }
+      }
+    }
+  };
+
+  return {
+    init,
+    handleScanOrManualEntry
+  };
+})();
+</script>
+
   <script>
   /**
    * BVC Coordinator Terminal – JavaScript Controller (v2.0)
