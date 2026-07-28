@@ -1072,11 +1072,17 @@
       const yearEl = document.getElementById('verif-year');
       const collegeEl = document.getElementById('verif-college');
 
-      if (nameEl) nameEl.textContent = studentData.name;
-      if (rollEl) rollEl.textContent = studentData.roll;
-      if (deptEl) deptEl.textContent = studentData.dept;
-      if (yearEl) yearEl.textContent = studentData.year + ' Year';
-      if (collegeEl) collegeEl.textContent = studentData.college;
+      const sName = studentData.studentName || studentData.name || studentData.student_name || '--';
+      const sRoll = studentData.rollNumber || studentData.roll || studentData.roll_number || '--';
+      const sDept = studentData.branch || studentData.dept || studentData.department || '--';
+      const sYear = (studentData.year ? studentData.year + ' Year' : '') || '--';
+      const sCollege = studentData.college || studentData.college_name || '--';
+
+      if (nameEl) nameEl.textContent = sName;
+      if (rollEl) rollEl.textContent = sRoll;
+      if (deptEl) deptEl.textContent = sDept;
+      if (yearEl) yearEl.textContent = sYear;
+      if (collegeEl) collegeEl.textContent = sCollege;
 
       // Check missing fields against Event Admin requirements
       const missingCont = document.getElementById('verif-missing-fields-container');

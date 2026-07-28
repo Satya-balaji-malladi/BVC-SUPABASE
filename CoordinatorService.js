@@ -1158,12 +1158,21 @@ const CoordinatorService = {
     // Helper to resolve student field attributes safely
     var effectiveStudent = student || otherStudent;
 
-    var sName = effectiveStudent ? (this._findValueByNormalizedKey(effectiveStudent, 'student_name') || this._findValueByNormalizedKey(effectiveStudent, 'name') || '') : '';
+    var sName = effectiveStudent ? (
+      this._findValueByNormalizedKey(effectiveStudent, 'student_name') ||
+      this._findValueByNormalizedKey(effectiveStudent, 'name') ||
+      this._findValueByNormalizedKey(effectiveStudent, 'full_name') ||
+      this._findValueByNormalizedKey(effectiveStudent, 'studentname') ||
+      ''
+    ) : '';
 
-    // If student record exists but has no valid name, treat as NOT FOUND so registration modal is triggered
-    if (effectiveStudent && (!sName || String(sName).trim() === '' || String(sName).trim() === '--')) {
+    // If student record exists but has no valid name, invalidate record so STUDENT_NOT_FOUND registration modal triggers
+    if (effectiveStudent && (!sName || String(sName).trim() === '' || String(sName).trim() === '--' || String(sName).trim() === 'Participant')) {
       effectiveStudent = null;
+      student = null;
+      otherStudent = null;
       studentSource = 'UNKNOWN';
+      sName = '';
     }
 
     var sBranch = effectiveStudent ? (this._findValueByNormalizedKey(effectiveStudent, 'department') || this._findValueByNormalizedKey(effectiveStudent, 'branch') || this._findValueByNormalizedKey(effectiveStudent, 'department_id') || '') : '';
