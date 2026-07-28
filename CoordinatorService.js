@@ -2661,6 +2661,7 @@ const CoordinatorService = {
       workflowState === 'EVENT_NOT_AVAILABLE' ||
       workflowState === 'NOT_REGISTERED_SPOT_DISABLED' ||
       workflowState === 'SPOT_REGISTRATION_REQUIRED' ||
+      workflowState === 'STUDENT_NOT_FOUND' ||
       workflowState === 'STUDENT_TYPE_REQUIRED' ||
       workflowState === 'DEPARTMENT_ID_REQUIRED' ||
       workflowState === 'INVALID_ROLL_NUMBER' ||
