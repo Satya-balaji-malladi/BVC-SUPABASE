@@ -1188,7 +1188,7 @@ const CoordinatorService = {
 
     if (!effectiveStudent) {
       Logger.log('[COORDINATOR-FLOW][05] Student not found in database: roll=' + normRoll);
-      return Utils.buildResponse(false, 'Student with roll number ' + normRoll + ' was not found in the system database.', {
+      return Utils.buildResponse(true, 'Student with roll number ' + normRoll + ' was not found in the system database.', {
         state: 'STUDENT_NOT_FOUND',
         rollNumber: normRoll,
         event: event,
