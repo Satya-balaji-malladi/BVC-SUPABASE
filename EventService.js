@@ -615,10 +615,8 @@ const EventService = {
             (coordId && (userId === coordId || normUserId === normCoordId))
           );
 
-          if (!isOwner && (roleStr === 'EVENT ADMIN' || roleStr === 'EVENT_ADMIN' || roleStr === 'ADMIN')) {
-            if (typeof CoordinatorService !== 'undefined' && typeof CoordinatorService.canManageEvent === 'function') {
-              isOwner = CoordinatorService.canManageEvent(userId, eventId);
-            }
+          if (roleStr === 'EVENT ADMIN' || roleStr === 'EVENT_ADMIN' || roleStr === 'ADMIN') {
+            isOwner = true;
           }
 
           if (!isOwner && roleStr === 'HOD') {
