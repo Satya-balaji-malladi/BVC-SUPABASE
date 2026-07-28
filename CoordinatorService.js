@@ -1159,6 +1159,13 @@ const CoordinatorService = {
     var effectiveStudent = student || otherStudent;
 
     var sName = effectiveStudent ? (this._findValueByNormalizedKey(effectiveStudent, 'student_name') || this._findValueByNormalizedKey(effectiveStudent, 'name') || '') : '';
+
+    // If student record exists but has no valid name, treat as NOT FOUND so registration modal is triggered
+    if (effectiveStudent && (!sName || String(sName).trim() === '' || String(sName).trim() === '--')) {
+      effectiveStudent = null;
+      studentSource = 'UNKNOWN';
+    }
+
     var sBranch = effectiveStudent ? (this._findValueByNormalizedKey(effectiveStudent, 'department') || this._findValueByNormalizedKey(effectiveStudent, 'branch') || this._findValueByNormalizedKey(effectiveStudent, 'department_id') || '') : '';
 
     var rawCollege = effectiveStudent ? (this._findValueByNormalizedKey(effectiveStudent, 'college_name') || this._findValueByNormalizedKey(effectiveStudent, 'college') || '') : '';
@@ -1187,7 +1194,7 @@ const CoordinatorService = {
     };
 
     if (!effectiveStudent) {
-      Logger.log('[COORDINATOR-FLOW][05] Student not found in database: roll=' + normRoll);
+      Logger.log('[COORDINATOR-FLOW][05] Student not found or invalid profile in database: roll=' + normRoll);
       return Utils.buildResponse(true, 'Student with roll number ' + normRoll + ' was not found in the system database.', {
         state: 'STUDENT_NOT_FOUND',
         rollNumber: normRoll,
