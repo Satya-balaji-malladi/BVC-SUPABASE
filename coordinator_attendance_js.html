@@ -1147,9 +1147,9 @@
         missingCont.classList.add('d-none');
       }
 
-      const modalEl = document.getElementById('scanVerificationModal');
+      const modalEl = document.getElementById('openEventVerificationModal') || document.getElementById('scanVerificationModal');
       if (modalEl && typeof bootstrap !== 'undefined') {
-        const verifModal = new bootstrap.Modal(modalEl);
+        const verifModal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         verifModal.show();
       }
     };
