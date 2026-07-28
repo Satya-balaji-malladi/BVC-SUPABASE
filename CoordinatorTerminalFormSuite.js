@@ -63,6 +63,7 @@ function runCoordinatorFormTestSuite() {
     DatabaseService.insertRow(CONFIG.SHEETS.USERS, {
       'user_id': userId,
       'User ID': userId,
+      'employee_id': 'EMP_' + rand,
       'first_name': 'Test',
       'last_name': 'Coordinator',
       'email_address': 'coord_' + rand + '@bvc.edu.in',
