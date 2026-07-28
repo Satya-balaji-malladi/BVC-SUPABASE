@@ -602,14 +602,16 @@ const EventService = {
           
           const creatorId = String(existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by || '').trim();
           const coordId = String(existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id || '').trim();
+          const organizerId = String(existingEvent['Organizer'] || existingEvent.organizer || '').trim();
 
           const normCreatorId = creatorId.toUpperCase();
           const normCoordId = coordId.toUpperCase();
+          const normOrganizerId = organizerId.toUpperCase();
           const normUserId = userId.toUpperCase();
 
           let isOwner = (
-            (userId && (userId === creatorId || normUserId === normCreatorId)) ||
-            (userEmpId && (userEmpId === normCreatorId || userEmpId === normCoordId)) ||
+            (userId && (userId === creatorId || normUserId === normCreatorId || userId === organizerId || normUserId === normOrganizerId)) ||
+            (userEmpId && (userEmpId === normCreatorId || userEmpId === normCoordId || userEmpId === normOrganizerId)) ||
             (coordId && (userId === coordId || normUserId === normCoordId))
           );
 
