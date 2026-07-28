@@ -1126,7 +1126,7 @@
         return;
       }
 
-      const btnConfirm = document.getElementById('btn-confirm-attendance');
+      const btnConfirm = document.getElementById('btnConfirmOpenEventMark') || document.getElementById('btn-confirm-attendance-verif') || document.getElementById('btn-confirm-attendance');
       if (btnConfirm) {
         btnConfirm.disabled = true;
         btnConfirm.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Marking...';
@@ -1146,10 +1146,10 @@
             showToast('success', res.message || 'Participation marked successfully.');
             setScannerStatus('Participation Recorded', 'status-success');
 
-            const modalEl = document.getElementById('scanVerificationModal');
+            const modalEl = document.getElementById('openEventVerificationModal') || document.getElementById('scanVerificationModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
-              const verifModal = bootstrap.Modal.getInstance(modalEl);
-              if (verifModal) verifModal.hide();
+              const modalInst = bootstrap.Modal.getInstance(modalEl);
+              if (modalInst) modalInst.hide();
             }
 
             if (res.data && res.data.statistics) {

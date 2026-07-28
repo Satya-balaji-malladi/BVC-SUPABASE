@@ -164,3 +164,19 @@ function getScriptUrl() {
 function include(filename) {
   return HtmlService.createTemplateFromFile(filename).evaluate().getContent();
 }
+
+/**
+ * Top-level wrappers for Coordinator Terminal Flow (called directly by GAS google.script.run)
+ */
+function processParticipant(sessionToken, rollNumber, eventId) {
+  return Api.processParticipant(sessionToken, rollNumber, eventId);
+}
+
+function confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData) {
+  return Api.confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData);
+}
+
+function spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) {
+  return Api.spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData);
+}
+
