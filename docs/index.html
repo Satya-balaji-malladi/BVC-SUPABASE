@@ -2237,11 +2237,14 @@ window.AttendanceFormController = (() => {
         });
       }
 
-      // Verification modal confirm button
-      const btnVerifConfirm = document.getElementById('btn-confirm-attendance-verif');
-      if (btnVerifConfirm) {
-        btnVerifConfirm.addEventListener('click', confirmVerificationAttendance);
-      }
+      // Verification modal confirm buttons
+      const bindClick = (id, handler) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', handler);
+      };
+      bindClick('btnConfirmOpenEventMark', confirmVerificationAttendance);
+      bindClick('btnConfirmFixedEventMark', confirmVerificationAttendance);
+      bindClick('btn-confirm-attendance-verif', confirmVerificationAttendance);
 
       // Spot Student Type select change
       const spotTypeSelect = document.getElementById('spot-student-type-select');
