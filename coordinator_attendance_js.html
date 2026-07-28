@@ -1070,6 +1070,12 @@
 
 
     const openVerificationModal = (studentData) => {
+      const container = document.getElementById('openEventProfileContainer');
+      if (container && typeof AttendanceFormRenderer !== 'undefined') {
+        container.innerHTML = AttendanceFormRenderer.renderProfileCard(studentData);
+      }
+
+      // Also set legacy elements if present
       const nameEl = document.getElementById('verif-name');
       const rollEl = document.getElementById('verif-roll');
       const deptEl = document.getElementById('verif-dept');
@@ -1087,65 +1093,6 @@
       if (deptEl) deptEl.textContent = sDept;
       if (yearEl) yearEl.textContent = sYear;
       if (collegeEl) collegeEl.textContent = sCollege;
-
-      // Check missing fields against Event Admin requirements
-      const missingCont = document.getElementById('verif-missing-fields-container');
-      const missingInputs = document.getElementById('verif-missing-fields-inputs');
-      if (missingInputs) missingInputs.innerHTML = '';
-
-      const reqFields = state.activeEventRequiredFields || [];
-      const missingList = [];
-
-      const fieldMap = {
-        'College / Institution Name': { key: 'college', label: 'College Name', type: 'text' },
-        'Department / Branch': { key: 'dept', label: 'Department / Branch', type: 'text' },
-        'Academic Year': { key: 'year', label: 'Academic Year', type: 'text' },
-        'Section': { key: 'section', label: 'Section', type: 'text' },
-        'Email Address': { key: 'email_address', label: 'Email Address', type: 'email' },
-        'Mobile / Phone Number': { key: 'phone_number', label: 'Phone Number', type: 'tel' },
-        'Gender': { key: 'gender', label: 'Gender', type: 'text' },
-        'City / Town': { key: 'city', label: 'City', type: 'text' },
-        'State': { key: 'state', label: 'State', type: 'text' },
-        'Emergency Contact Number': { key: 'emergency_contact', label: 'Emergency Contact', type: 'tel' },
-        'Accommodation Needed': { key: 'accommodation_needed', label: 'Accommodation Needed', type: 'select', options: ['No', 'Yes'] },
-        'Food Preference': { key: 'food_preference', label: 'Food Preference', type: 'select', options: ['Veg', 'Non-Veg'] },
-        'ID Proof Number': { key: 'id_proof_number', label: 'ID Proof Number', type: 'text' }
-      };
-
-      reqFields.forEach(fName => {
-        const config = fieldMap[fName];
-        if (config) {
-          const val = studentData[config.key] || studentData.student?.[config.key];
-          if (!val || String(val).trim() === '' || val === '--') {
-            missingList.push({ fName, config });
-          }
-        }
-      });
-
-      if (missingList.length > 0 && missingCont && missingInputs) {
-        missingCont.classList.remove('d-none');
-        missingList.forEach(item => {
-          const col = document.createElement('div');
-          col.className = 'col-12';
-          if (item.config.type === 'select') {
-            const opts = item.config.options.map(o => `<option value="${o}">${o}</option>`).join('');
-            col.innerHTML = `
-            <label class="form-label small fw-bold text-secondary mb-1">${item.config.label} *</label>
-            <select class="form-select form-select-sm missing-field-input" data-field="${item.config.key}" required style="border-radius:8px;">
-              ${opts}
-            </select>
-          `;
-          } else {
-            col.innerHTML = `
-            <label class="form-label small fw-bold text-secondary mb-1">${item.config.label} *</label>
-            <input type="${item.config.type}" class="form-control form-control-sm missing-field-input" data-field="${item.config.key}" placeholder="Enter ${item.config.label}" required style="border-radius:8px;">
-          `;
-          }
-          missingInputs.appendChild(col);
-        });
-      } else if (missingCont) {
-        missingCont.classList.add('d-none');
-      }
 
       const modalEl = document.getElementById('openEventVerificationModal') || document.getElementById('scanVerificationModal');
       if (modalEl && typeof bootstrap !== 'undefined') {
