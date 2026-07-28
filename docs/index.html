@@ -3008,7 +3008,7 @@ window.AttendanceFormController = (() => {
             return;
           }
 
-          if (stateType === 'READY_TO_MARK' && stateData.studentData && stateData.studentData.isKnownStudent) {
+          if (stateType === 'READY_TO_MARK' || (stateData && stateData.studentData)) {
             playTone('success');
             setScannerStatus('Ready to confirm', 'status-success');
             openVerificationModal(stateData.studentData || pendingScanState, []);
