@@ -292,7 +292,15 @@ function runCoordinatorParticipantWorkflowTests() {
 
   // TC-COORD-NR-007: Mark Participated
   try {
-    const res7 = CoordinatorService.confirmMarkParticipation(testSessionToken, eventNoRegId, testRollBvc);
+    const res7 =
+      CoordinatorService.confirmMarkParticipation(
+        testSessionToken,
+        eventNoRegId,
+        testRollBvc,
+        {
+          phone: '9999999999'
+        }
+      );
     const dbVerified7 = AttendanceService.hasStudentAttended(eventNoRegId, testRollBvc);
     recordResult('TC-COORD-NR-007', 'Mark Participated & DB Verification', res7.success && dbVerified7, 'NO_REG', {
       rollNumber: testRollBvc, eventId: eventNoRegId, expected: 'Success + DB Attendance', actual: res7.success
@@ -484,9 +492,22 @@ function runCoordinatorParticipantWorkflowTests() {
   // TC-COORD-R-008: Spot Registration -> unknown student -> manual details
   const spotUnkRoll = '23SPOTUNK' + String(Math.floor(Math.random() * 89 + 10));
   try {
-    const resR8 = CoordinatorService.spotRegisterParticipant(testSessionToken, eventRegId, spotUnkRoll, {
-      studentName: 'Spot Unknown Student', branch: 'ECE', college: 'GVP College'
-    });
+    const resR8 =
+      CoordinatorService.spotRegisterParticipant(
+        testSessionToken,
+        eventRegId,
+        spotUnkRoll,
+        {
+          studentName: 'Spot Unknown Student',
+          branch: 'ECE',
+          college: 'GVP College',
+          studentType: 'EXTERNAL'
+        }
+      );
+
+
+
+
     const passR8 = resR8.success;
     recordResult('TC-COORD-R-008', 'Spot Registration -> unknown student -> manual details', passR8, 'REG', {
       rollNumber: spotUnkRoll, eventId: eventRegId, expected: 'Success', actual: resR8.state
@@ -497,12 +518,35 @@ function runCoordinatorParticipantWorkflowTests() {
 
   // TC-COORD-R-009: Spot Registration -> missing required field check
   try {
-    const resR9 = CoordinatorService.spotRegisterParticipant(testSessionToken, eventRegId, unregRoll, {
-      studentName: 'Spot Required Test'
-    });
-    recordResult('TC-COORD-R-009', 'Spot Registration -> missing required field check', resR9.success, 'REG', {
-      rollNumber: unregRoll, eventId: eventRegId, expected: 'Success evaluation', actual: resR9.state
-    });
+    const resR9 =
+      CoordinatorService.spotRegisterParticipant(
+        testSessionToken,
+        eventRegId,
+        unregRoll,
+        {
+          studentName: 'Spot Required Test'
+        }
+      );
+
+    const passR9 =
+      !resR9.success &&
+      (
+        resR9.state === 'MISSING_REQUIRED_FIELDS' ||
+        resR9.state === 'STUDENT_TYPE_REQUIRED'
+      );
+
+    recordResult(
+      'TC-COORD-R-009',
+      'Spot Registration -> missing required field check',
+      passR9,
+      'REG',
+      {
+        rollNumber: unregRoll,
+        eventId: eventRegId,
+        expected: 'MISSING_REQUIRED_FIELDS or STUDENT_TYPE_REQUIRED',
+        actual: resR9.state
+      }
+    );
   } catch (e) {
     recordResult('TC-COORD-R-009', 'Missing required spot field check', false, 'REG', { error: e.message });
   }
@@ -619,6 +663,38 @@ function runCoordinatorParticipantWorkflowTests() {
       'Assignment Status': 'Active',
       'assignment_status': 'Active'
     });
+    // Seed one real active participant so the event is actually full.
+    // Capacity logic uses EVENT_PARTICIPANTS as the source of truth.
+    const capacityParticipantId = 'PART_CAP_' + randNum;
+
+    DatabaseService.insertRow(
+      CONFIG.SHEETS.EVENT_PARTICIPANTS,
+      {
+        'Participant ID': capacityParticipantId,
+        'participant_id': capacityParticipantId,
+
+        'Event ID': fullCapEventId,
+        'event_id': fullCapEventId,
+
+        'Roll Number': testRollBvc,
+        'roll_number': testRollBvc,
+
+        'Registration Type': 'Pre-Registered',
+        'registration_type': 'Pre-Registered',
+
+        'Registration Status': 'Active',
+        'registration_status': 'Active',
+
+        'Attendance Status': 'Absent',
+        'attendance_status': 'Absent',
+
+        'Approval Status': 'Approved',
+        'approval_status': 'Approved',
+
+        'Deletion Flag': false,
+        'deletion_flag': false
+      }
+    );
 
     const resR14 = CoordinatorService.spotRegisterParticipant(testSessionToken, fullCapEventId, unregRoll, {
       studentName: 'Cap Overflow Student'

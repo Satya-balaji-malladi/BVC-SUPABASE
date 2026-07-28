@@ -1,0 +1,262 @@
+<script>
+/**
+ * forms_js.html
+ * Inlined JS module for Google Apps Script HTML Service compatibility.
+ */
+
+// FormValidator
+window.AttendanceFormValidator = (() => {
+  'use strict';
+
+  const validateRollNumber = (roll) => {
+    if (!roll || typeof roll !== 'string' || !roll.trim()) {
+      return { valid: false, message: 'Roll Number is required.' };
+    }
+    const clean = roll.trim().toUpperCase();
+    if (clean.length < 3) {
+      return { valid: false, message: 'Roll Number must be at least 3 characters.' };
+    }
+    return { valid: true, clean };
+  };
+
+  const validateRequiredFields = (formData, requiredFieldsList) => {
+    const errors = {};
+    let isValid = true;
+
+    requiredFieldsList.forEach(field => {
+      const val = formData[field];
+      if (val === undefined || val === null || String(val).trim() === '') {
+        errors[field] = 'This field is required.';
+        isValid = false;
+      }
+    });
+
+    return { isValid, errors };
+  };
+
+  const checkDuplicateAttendance = async (eventId, rollNumber) => {
+    try {
+      if (typeof App !== 'undefined' && App.API && App.API._call) {
+        const attendanceList = await App.API._call('getAttendanceByEvent', eventId);
+        if (Array.isArray(attendanceList)) {
+          const normRoll = String(rollNumber).trim().toUpperCase();
+          const existing = attendanceList.find(a => {
+            const r = a.roll_number || a['Roll Number'] || '';
+            const isDel = a.deletion_flag || a['Deletion Flag'];
+            return String(r).trim().toUpperCase() === normRoll && !isDel;
+          });
+          if (existing) {
+            return {
+              isDuplicate: true,
+              timestamp: existing.attendance_time || existing.Timestamp || existing.created_at || new Date().toISOString(),
+              coordinator: existing.action_by || existing.created_by || 'Coordinator'
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Duplicate check API call error, falling back:', e);
+    }
+    return { isDuplicate: false };
+  };
+
+  return {
+    validateRollNumber,
+    validateRequiredFields,
+    checkDuplicateAttendance
+  };
+})();
+
+// FormRenderer
+window.AttendanceFormRenderer = (() => {
+  'use strict';
+
+  const escapeHtml = (str) => {
+    if (!str && str !== 0) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
+  const renderBadge = (text, type = 'dept') => {
+    const safeText = escapeHtml(text || 'N/A');
+    return `<span class="af-badge af-badge-${type} me-1 mb-1">${safeText}</span>`;
+  };
+
+  const renderProfileCard = (student, eventConfig = {}) => {
+    const name = escapeHtml(student.student_name || student.name || 'Student');
+    const roll = escapeHtml(student.roll_number || student.roll || 'N/A');
+    const dept = escapeHtml(student.department || student.branch || 'N/A');
+    const year = escapeHtml(student.year ? `${student.year} Year` : 'N/A');
+    const college = escapeHtml(student.college_name || student.college || 'BVC Engineering College');
+
+    const photoUrl = student.profile_photo || student.photo_url;
+    const avatarHtml = photoUrl
+      ? `<img src="${escapeHtml(photoUrl)}" class="af-avatar-img" alt="${name}" />`
+      : `<i class="bi bi-person-fill af-avatar-placeholder"></i>`;
+
+    return `
+      <div class="af-profile-card text-center mb-3">
+        <div class="af-avatar-wrapper mb-2">
+          ${avatarHtml}
+        </div>
+        <h5 class="fw-bold mb-1">${name}</h5>
+        <p class="text-muted font-monospace small mb-2">${roll}</p>
+        <div class="d-flex flex-wrap justify-content-center gap-1 mb-2">
+          ${renderBadge(dept, 'dept')}
+          ${renderBadge(year, 'year')}
+          ${renderBadge('Active', 'status')}
+        </div>
+        <div class="small text-muted border-top pt-2 mt-1">
+          <i class="bi bi-building me-1"></i> ${college}
+        </div>
+      </div>
+    `;
+  };
+
+  return {
+    escapeHtml,
+    renderBadge,
+    renderProfileCard
+  };
+})();
+
+// FormController
+window.AttendanceFormController = (() => {
+  'use strict';
+
+  const state = {
+    eventId: null,
+    eventObj: null,
+    studentData: null,
+    participantData: null,
+    isBvcOnly: true,
+    isRegRequired: false,
+    isSpotAllowed: false
+  };
+
+  const init = (eventId, eventObj) => {
+    state.eventId = eventId;
+    state.eventObj = eventObj || {};
+
+    const elig = String(state.eventObj.eligibility || state.eventObj['Eligibility'] || 'BVC_ONLY').toUpperCase();
+    state.isBvcOnly = elig.indexOf('BVC') !== -1;
+
+    const reg = state.eventObj.enable_registration || state.eventObj['Enable Registration'];
+    state.isRegRequired = String(reg).toLowerCase() === 'true';
+
+    const spot = state.eventObj.allow_spot_registration || state.eventObj['Allow Spot Registration'];
+    state.isSpotAllowed = String(spot).toLowerCase() === 'true';
+  };
+
+  const handleScanOrManualEntry = async (rawRollNumber) => {
+    const valid = AttendanceFormValidator.validateRollNumber(rawRollNumber);
+    if (!valid.valid) {
+      if (typeof App !== 'undefined' && App.UI) App.UI.showError(valid.message);
+      return;
+    }
+    const roll = valid.clean;
+
+    const dupCheck = await AttendanceFormValidator.checkDuplicateAttendance(state.eventId, roll);
+    if (dupCheck.isDuplicate) {
+      if (typeof App !== 'undefined' && App.UI) App.UI.showWarning(`Already marked present at ${new Date(dupCheck.timestamp).toLocaleTimeString()}`);
+      return;
+    }
+
+    let student = null;
+    try {
+      if (typeof App !== 'undefined' && App.API && App.API.getStudentByRollNumber) {
+        student = await App.API.getStudentByRollNumber(roll);
+      }
+    } catch (e) {
+      console.warn('Student API fetch failed:', e);
+    }
+
+    state.studentData = student;
+
+    const checkMissingStudentFields = (student) => {
+      let requiredList = [];
+      const openFields = state.eventObj.open_required_fields || state.eventObj['Open Required Fields'] || state.eventObj.required_student_fields;
+      if (typeof openFields === 'string') {
+        try { requiredList = JSON.parse(openFields); } catch (e) { requiredList = openFields.split(',').map(s => s.trim()); }
+      } else if (Array.isArray(openFields)) {
+        requiredList = openFields;
+      }
+
+      if (!requiredList || requiredList.length === 0) {
+        requiredList = ['Student Full Name', 'Department / Branch', 'Academic Year', 'Mobile / Phone Number'];
+      }
+
+      const fieldKeyMap = {
+        'Student Full Name': ['student_name', 'name', 'full_name'],
+        'Department / Branch': ['department', 'department_id', 'branch', 'dept'],
+        'Academic Year': ['year', 'academic_year'],
+        'Section': ['section'],
+        'Mobile / Phone Number': ['phone', 'mobile', 'phone_number'],
+        'Email Address': ['email', 'email_address'],
+        'Gender': ['gender'],
+        'College / Institution Name': ['college_name', 'college', 'institution'],
+        'Guardian Name': ['guardian_name', 'parent_name'],
+        'Date of Birth': ['dob', 'date_of_birth'],
+        'Notes': ['notes', 'remarks']
+      };
+
+      const missing = [];
+      requiredList.forEach(reqName => {
+        const keys = fieldKeyMap[reqName] || [reqName.toLowerCase().replace(/[^a-z0-9_]/g, '_')];
+        const hasVal = keys.some(k => student[k] !== undefined && student[k] !== null && String(student[k]).trim() !== '');
+        if (!hasVal) {
+          missing.push(reqName);
+        }
+      });
+      return missing;
+    };
+
+    if (!state.isRegRequired) {
+      if (student) {
+        const missing = checkMissingStudentFields(student);
+        if (missing.length > 0) {
+          const modalEl = document.getElementById('studentMissingDetailsModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            document.getElementById('missingReadOnlyName').textContent = student.student_name || student.name || '--';
+            document.getElementById('missingReadOnlyRoll').textContent = student.roll_number || student.roll || '--';
+            const inputsContainer = document.getElementById('missingFieldsDynamicInputs');
+            if (inputsContainer) {
+              inputsContainer.innerHTML = missing.map(field => `
+                <div class="col-12">
+                  <label class="form-label small fw-bold text-muted text-capitalize">${field} <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control af-form-control af-field-missing" name="${field}" required placeholder="Enter ${field}" />
+                </div>
+              `).join('');
+            }
+            new bootstrap.Modal(modalEl).show();
+          }
+        } else {
+          const modalEl = document.getElementById('openEventVerificationModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            const container = document.getElementById('openEventProfileContainer');
+            if (container) container.innerHTML = AttendanceFormRenderer.renderProfileCard(student);
+            new bootstrap.Modal(modalEl).show();
+          }
+        }
+      } else {
+        const modalEl = document.getElementById('studentNotFoundModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+          document.getElementById('newStudentRollInput').value = roll;
+          const colGroup = document.getElementById('newStudentCollegeGroup');
+          if (colGroup) colGroup.style.display = state.isBvcOnly ? 'none' : 'block';
+          new bootstrap.Modal(modalEl).show();
+        }
+      }
+    }
+  };
+
+  return {
+    init,
+    handleScanOrManualEntry
+  };
+})();
+</script>

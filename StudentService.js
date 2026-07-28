@@ -171,6 +171,8 @@ var StudentService = {
    * Helper to check department state directly against DepartmentService custom response wrapper.
    */
   _validateDepartmentLinkActive: function (departmentId) {
+    Logger.log("[DEBUG] Received departmentId = " + departmentId);
+    Logger.log("[DEBUG] CONFIG Department ID Column = " + CONFIG.COLUMNS.DEPARTMENT_ID);
     try {
       if (!DepartmentService) return true;
       if (!departmentId) return false;
@@ -180,7 +182,7 @@ var StudentService = {
       if (cleanId === 'SPOT GROUP' || cleanId === 'SPOT' || cleanId === 'OTHERS') {
         return true;
       }
-      
+
       // 1. Try finding by ID
       var deptResp = typeof DepartmentService.getDepartmentById === 'function' ? DepartmentService.getDepartmentById(departmentId) : null;
       var dept = null;
@@ -189,7 +191,21 @@ var StudentService = {
         else if (deptResp.data && deptResp.data.department) dept = deptResp.data.department;
         else if (deptResp.success !== false) dept = deptResp;
       }
-      
+      // 2. Fallback: search directly by Department ID
+      if (!dept && typeof DatabaseService !== 'undefined') {
+
+        var found = DatabaseService.findOne(
+          CONFIG.SHEETS.DEPARTMENTS,
+          CONFIG.COLUMNS.DEPARTMENT_ID || 'Department ID',
+          cleanId
+        );
+
+        if (found) {
+          dept = Utils.sanitizeDepartment
+            ? Utils.sanitizeDepartment(found)
+            : found;
+        }
+      }
       // 2. If not found by ID, try finding by Code in sheet directly
       if (!dept && typeof DatabaseService !== 'undefined') {
         const cleanedId = String(departmentId).trim().toUpperCase();
@@ -198,7 +214,7 @@ var StudentService = {
           dept = Utils.sanitizeDepartment ? Utils.sanitizeDepartment(found) : found;
         }
       }
-      
+
       // 3. If still not found, try finding by Name in sheet directly
       if (!dept && typeof DatabaseService !== 'undefined') {
         const cleanedId = String(departmentId).trim();
@@ -501,7 +517,7 @@ var StudentService = {
       Logger.log("STUDENTS_MODULE | STEP 3 - Reading Google Sheet | Sheet Name: " + this._studentsSheet());
       var rawStudents = this._getStudents();
       var scopedStudents = userContext ? SecurityUtils.applyStudentRLS(rawStudents, userContext) : rawStudents;
-      
+
       Logger.log("STUDENTS_MODULE | STEP 4 - Processing data | Records found: " + scopedStudents.length);
       var sanitizedItems = scopedStudents.map(function (s) {
         return Utils.sanitizeStudent(s);

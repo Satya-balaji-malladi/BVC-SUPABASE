@@ -142,7 +142,7 @@ function getComponentHtml(component) {
     return HtmlService.createTemplateFromFile(name).evaluate().getContent();
   } catch (e) {
     // Return empty state or error if component not found
-    return `<div class="alert alert-danger m-4"><i class="bi bi-exclamation-triangle-fill me-2"></i> Failed to load component: ${component}</div>`;
+    return '<div class="alert alert-danger m-4"><i class="bi bi-exclamation-triangle-fill me-2"></i> Failed to load component: ' + component + '</div>';
   }
 }
 

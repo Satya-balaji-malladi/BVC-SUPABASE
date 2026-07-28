@@ -272,21 +272,11 @@ const SecurityUtils = {
       });
     }
 
-    if (userContext.role === 'Admin') {
-      const assignedEvents = this.applyEventRLS(DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [], userContext);
-      const assignedEventIds = new Set(assignedEvents.map(e => String(e['Event ID'] || e.event_id || e.eventId).trim()));
-      
-      const assignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_ASSIGNMENTS) || [];
-      const allowedUserIds = new Set(
-        assignments
-          .filter(a => assignedEventIds.has(String(a['Event ID'] || a.event_id).trim()))
-          .map(a => String(a['User ID'] || a.user_id).trim())
-      );
-      allowedUserIds.add(String(userContext.userId).trim());
-
+    if (userContext.role === 'Admin' || userContext.role === 'Event Admin' || userContext.role === 'EVENT_ADMIN') {
       return users.filter(u => {
         if (!u) return false;
-        return allowedUserIds.has(String(u['User ID'] || u.user_id || u.userId).trim());
+        const r = String(u['Role'] || u.role || u['User Role'] || '').toUpperCase().trim();
+        return r === 'COORDINATOR' || r === 'ADMIN' || r === 'EVENT ADMIN' || r === 'EVENT_ADMIN';
       });
     }
 

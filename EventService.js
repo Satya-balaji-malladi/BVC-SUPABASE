@@ -597,27 +597,41 @@ const EventService = {
 
         // Verify if user is HOD/Admin and owns/created the event
         if (roleStr !== 'SUPER ADMIN' && roleStr !== 'SUPER_ADMIN') {
-          const userId = updaterUser[CONFIG.COLUMNS.USER_ID] || updaterUser.user_id;
-          const creatorId = existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by;
-          const coordId = existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id;
+          const userId = String(updaterUser[CONFIG.COLUMNS.USER_ID] || updaterUser.user_id || '').trim();
+          const userEmpId = String(updaterUser[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || updaterUser.employee_id || '').trim().toUpperCase();
           
-          let isOwner = (userId === creatorId || userId === coordId);
-          
+          const creatorId = String(existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by || '').trim();
+          const coordId = String(existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id || '').trim();
+
+          const normCreatorId = creatorId.toUpperCase();
+          const normCoordId = coordId.toUpperCase();
+          const normUserId = userId.toUpperCase();
+
+          let isOwner = (
+            (userId && (userId === creatorId || normUserId === normCreatorId)) ||
+            (userEmpId && (userEmpId === normCreatorId || userEmpId === normCoordId)) ||
+            (coordId && (userId === coordId || normUserId === normCoordId))
+          );
+
+          if (!isOwner && (roleStr === 'EVENT ADMIN' || roleStr === 'EVENT_ADMIN' || roleStr === 'ADMIN')) {
+            if (typeof CoordinatorService !== 'undefined' && typeof CoordinatorService.canManageEvent === 'function') {
+              isOwner = CoordinatorService.canManageEvent(userId, eventId);
+            }
+          }
+
           if (!isOwner && roleStr === 'HOD') {
-            // Check HOD department matching organizer
             const organizerDeptId = existingEvent['Organizer'] || existingEvent.organizer;
             if (organizerDeptId) {
-              const dept = DatabaseService.findByColumn(CONFIG.SHEETS.DEPARTMENTS, 'Department ID', organizerDeptId)[0];
-              if (dept) {
-                const hodEmployeeId = dept['HOD Employee ID'];
-                const userEmployeeId = updaterUser[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || updaterUser.employee_id;
-                if (hodEmployeeId && userEmployeeId && String(hodEmployeeId).trim() === String(userEmployeeId).trim()) {
+              const deptRows = DatabaseService.findByColumn(CONFIG.SHEETS.DEPARTMENTS, 'Department ID', organizerDeptId) || [];
+              if (deptRows.length > 0) {
+                const hodEmployeeId = String(deptRows[0]['HOD Employee ID'] || deptRows[0].hod_employee_id || '').trim().toUpperCase();
+                if (hodEmployeeId && userEmpId && hodEmployeeId === userEmpId) {
                   isOwner = true;
                 }
               }
             }
           }
-          
+
           if (!isOwner) {
             return Utils.buildResponse(false, 'Unauthorized: You do not own this event.');
           }

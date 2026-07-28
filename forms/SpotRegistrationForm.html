@@ -1,0 +1,65 @@
+<!-- SpotRegistrationForm.html -->
+<div class="modal fade" id="spotRegistrationModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content af-modal-content">
+      <div class="modal-header af-modal-header bg-warning text-dark">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-person-plus-fill me-2"></i>Spot Registration Form
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-warning border-0 rounded-3 small mb-3">
+          <i class="bi bi-info-circle-fill me-1"></i> Participant is not registered for this event. Complete spot registration to proceed.
+        </div>
+
+        <form id="spotRegistrationForm">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Roll Number</label>
+            <input type="text" class="form-control af-form-control font-monospace" id="spotRollInput" readonly />
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Student Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control" id="spotNameInput" required placeholder="Enter full name" />
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Department <span class="text-danger">*</span></label>
+              <select class="form-select af-form-control" id="spotDeptSelect" required>
+                <option value="CSE">CSE</option>
+                <option value="ECE">ECE</option>
+                <option value="EEE">EEE</option>
+                <option value="CIVIL">CIVIL</option>
+                <option value="MECH">MECH</option>
+                <option value="AIDS">AIDS</option>
+                <option value="AIML">AIML</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Year <span class="text-danger">*</span></label>
+              <select class="form-select af-form-control" id="spotYearSelect" required>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3" id="spotCollegeContainer">
+            <label class="form-label small fw-bold text-muted">College / Institution <span class="text-danger">*</span></label>
+            <input type="text" class="form-control af-form-control" id="spotCollegeInput" placeholder="Enter college name" required />
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer af-modal-footer">
+        <button type="button" class="btn btn-outline-secondary af-btn" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning af-btn fw-bold" id="btnConfirmSpotRegisterMark">
+          <i class="bi bi-check2-circle me-1"></i> Register & Mark Present
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

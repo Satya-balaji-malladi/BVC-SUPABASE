@@ -102,18 +102,28 @@
         ? '<option value="">Select Event Coordinator</option>'
         : '<option value="">Select Event Admin</option>';
 
-      coordHtml += '<option value="NEW_COORDINATOR">+ Create New ' +
-        (isEventAdmin ? 'Coordinator' : 'Event Admin') +
-        '</option>';
       let coordFilterHtml = isEventAdmin ? '<option value="">All Coordinators</option>' : '<option value="">All Admins</option>';
+
+      if (canCreateCoordinator) {
+        coordHtml += isEventAdmin
+          ? '<option value="NEW_COORDINATOR">+ Create New Event Coordinator</option>'
+          : '<option value="NEW_COORDINATOR">+ Create New Admin / User</option>';
+      }
 
       this.coordinatorsData.forEach(c => {
         if (!c) return;
         const role = String(c.role || c['Role'] || c['User Role'] || '').toUpperCase().trim();
 
         // If current user is Event Admin, show Coordinators and Event Admins
-        if (isEventAdmin && role !== 'COORDINATOR' && role !== 'EVENT ADMIN' && role !== 'EVENT_ADMIN' && role !== 'ADMIN') {
-          return;
+        if (isEventAdmin) {
+          if (role !== 'COORDINATOR' && role !== 'EVENT ADMIN' && role !== 'EVENT_ADMIN' && role !== 'ADMIN') {
+            return;
+          }
+        } else {
+          // HOD or Super Admin: MUST show ONLY Event Admins / Admins in the dropdown
+          if (role !== 'EVENT ADMIN' && role !== 'EVENT_ADMIN' && role !== 'ADMIN') {
+            return;
+          }
         }
 
         // Support both sheet column keys ('User ID','First Name') and sanitized camelCase keys
@@ -124,12 +134,6 @@
         coordHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
         coordFilterHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
       });
-
-      if (canCreateCoordinator) {
-        coordHtml += isEventAdmin
-          ? '<option value="NEW_COORDINATOR">+ Create New Event Coordinator</option>'
-          : '<option value="NEW_COORDINATOR">+ Create New Admin / User</option>';
-      }
 
       if (coordFilter) coordFilter.innerHTML = coordFilterHtml;
       if (coordSelect) coordSelect.innerHTML = coordHtml;

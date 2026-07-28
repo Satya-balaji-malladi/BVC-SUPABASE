@@ -1186,6 +1186,16 @@ const CoordinatorService = {
       sourceStudent: effectiveStudent || {}
     };
 
+    if (!effectiveStudent) {
+      Logger.log('[COORDINATOR-FLOW][05] Student not found in database: roll=' + normRoll);
+      return Utils.buildResponse(false, 'Student with roll number ' + normRoll + ' was not found in the system database.', {
+        state: 'STUDENT_NOT_FOUND',
+        rollNumber: normRoll,
+        event: event,
+        studentData: knownData
+      });
+    }
+
     // 5. Registration Mode Resolution
     var regCol = (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION) ? CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION : 'Enable Registration';
     var rawRegEnable = event[regCol] !== undefined ? event[regCol] : (event.enable_registration !== undefined ? event.enable_registration : event.enableRegistration);
@@ -1331,9 +1341,24 @@ const CoordinatorService = {
     // FLOW B: REGISTRATION REQUIRED
     // ------------------------------------------------------------------------
     Logger.log('[COORDINATOR-FLOW][08] Registration evaluated for roll=' + normRoll);
-    var participantsList = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'Event ID', normEventId) || [];
+    var participantsList = DatabaseService.findByColumn(
+      CONFIG.SHEETS.EVENT_PARTICIPANTS,
+      'Event ID',
+      normEventId,
+      {
+        strict: true
+      }
+    ) || [];
+
     if (participantsList.length === 0) {
-      participantsList = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'event_id', normEventId) || [];
+      participantsList = DatabaseService.findByColumn(
+        CONFIG.SHEETS.EVENT_PARTICIPANTS,
+        'event_id',
+        normEventId,
+        {
+          strict: true
+        }
+      ) || [];
     }
 
     var registrationRecord = participantsList.find(function (p) {
@@ -1420,7 +1445,35 @@ const CoordinatorService = {
     var normRoll = String(rawRollNumber || '').trim().toUpperCase();
     var normEventId = String(eventId || '').trim();
     spotData = spotData || {};
+    // Extract custom fields safely from supported input formats.
+    var customFieldsInput =
+      spotData.customFields ||
+      spotData.custom_fields ||
+      spotData.customData ||
+      spotData.custom_fields_data ||
+      {};
 
+    // Support JSON string input as well as object input.
+    if (typeof customFieldsInput === 'string') {
+      try {
+        customFieldsInput = JSON.parse(customFieldsInput);
+      } catch (e) {
+        Logger.log(
+          '[COORDINATOR-FLOW][ERROR] Invalid custom fields JSON: ' +
+          (e && e.message ? e.message : e)
+        );
+        customFieldsInput = {};
+      }
+    }
+
+    // Prevent invalid values such as arrays/numbers from entering the workflow.
+    if (
+      !customFieldsInput ||
+      typeof customFieldsInput !== 'object' ||
+      Array.isArray(customFieldsInput)
+    ) {
+      customFieldsInput = {};
+    }
     Logger.log(
       '[COORDINATOR-FLOW][01] Spot registration requested roll=' +
       normRoll +
@@ -2029,20 +2082,6 @@ const CoordinatorService = {
           studentData: knownSpotData
         }
       );
-    } {
-      Logger.log(
-        '[COORDINATOR-FLOW][09] Final state=STUDENT_TYPE_REQUIRED'
-      );
-
-      return Utils.buildResponse(
-        false,
-        'Student classification (BVC or External College) is required.',
-        {
-          state: 'STUDENT_TYPE_REQUIRED',
-          rollNumber: normRoll,
-          studentData: knownSpotData
-        }
-      );
     }
 
     // ------------------------------------------------------------
@@ -2127,8 +2166,43 @@ const CoordinatorService = {
           spotData.department_id ||
           '';
 
-        realDepartmentId =
-          String(realDepartmentId).trim();
+        realDepartmentId = String(realDepartmentId || '').trim();
+
+        if (!realDepartmentId && knownSpotData.branch) {
+
+          var departments =
+            DatabaseService.readAllRows(
+              CONFIG.SHEETS.DEPARTMENTS
+            ) || [];
+
+          var branch =
+            String(knownSpotData.branch)
+              .trim()
+              .toUpperCase();
+
+          var department = departments.find(function (dept) {
+
+            return (
+              String(dept["Department Code"] || "")
+                .trim()
+                .toUpperCase() === branch ||
+
+              String(dept["Department Name"] || "")
+                .trim()
+                .toUpperCase() === branch
+            );
+
+          });
+
+          if (department) {
+
+            realDepartmentId =
+              String(
+                department["Department ID"] || ""
+              ).trim();
+
+          }
+        }
 
         if (!realDepartmentId) {
 

@@ -933,6 +933,14 @@
 
       const rawInput = rawVal.trim().toUpperCase();
 
+      if (typeof window.AttendanceFormController !== 'undefined' && state.eventId) {
+        window.AttendanceFormController.init(state.eventId, state.currentEventObj || {});
+        window.AttendanceFormController.handleScanOrManualEntry(rawInput);
+        clearInput();
+        focusInput();
+        return;
+      }
+
       // Rapid double scan protection
       if (isProcessingRoll) {
         console.log('[COORDINATOR-UI] Rapid processing lock active. Ignoring duplicate attempt for:', rawInput);
@@ -1008,7 +1016,27 @@
             return;
           }
 
-          if (stateType === 'READY_TO_MARK' || res.success) {
+          if (stateType === 'STUDENT_NOT_FOUND') {
+            playTone('warn');
+            setScannerStatus('Student Not Found - Registration Needed', 'status-warn');
+            
+            const notFoundModal = document.getElementById('studentNotFoundModal');
+            if (notFoundModal && typeof bootstrap !== 'undefined') {
+              const rollInput = document.getElementById('newStudentRollInput');
+              if (rollInput) rollInput.value = rawInput;
+              const modalInst = bootstrap.Modal.getInstance(notFoundModal) || new bootstrap.Modal(notFoundModal);
+              modalInst.show();
+            } else if (typeof AttendanceFormController !== 'undefined' && typeof AttendanceFormController.handleScanOrManualEntry === 'function') {
+              AttendanceFormController.handleScanOrManualEntry(rawInput);
+            } else {
+              showToast('error', res.message || `Student ${rawInput} is not registered in the database.`);
+            }
+            clearInput();
+            focusInput();
+            return;
+          }
+
+          if ((stateType === 'READY_TO_MARK' || res.success) && stateData.studentData && stateData.studentData.isKnownStudent) {
             playTone('success');
             setScannerStatus('Ready to confirm', 'status-success');
             openVerificationModal(stateData.studentData || pendingScanState, []);

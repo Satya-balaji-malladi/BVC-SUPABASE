@@ -64,15 +64,16 @@
       const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
       const isHOD = (userRole === 'HOD');
 
-      const navMonitoring = document.getElementById('navLinkMonitoring');
+      const navMonitoring = document.getElementById('nav-item-monitoring');
       if (navMonitoring) {
-        if (userRole === 'HOD' || isEventAdmin) {
+        if (isHOD || isEventAdmin) {
           navMonitoring.classList.add('d-none');
         } else {
           navMonitoring.classList.remove('d-none');
         }
       }
 
+      // Hide Students navigation specifically in Event Admin screen
       const navStudents = document.getElementById('nav-item-students');
       if (navStudents) {
         if (isEventAdmin) {

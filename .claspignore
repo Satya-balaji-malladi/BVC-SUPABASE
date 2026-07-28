@@ -1,3 +1,6 @@
+# Ignore forms directory for Google Apps Script server (inlined via forms_js.html and forms_css.html)
+forms/**
+
 # Ignore node build scripts
 compile_index.js
 index.html
