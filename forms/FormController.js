@@ -23,11 +23,12 @@ if (typeof window !== 'undefined') {
       const elig = String(state.eventObj.eligibility || state.eventObj['Eligibility'] || 'BVC_ONLY').toUpperCase();
       state.isBvcOnly = elig.indexOf('BVC') !== -1;
 
+      const attType = String(state.eventObj.attendance_type || state.eventObj['Attendance Type'] || '').toUpperCase();
       const reg = state.eventObj.enable_registration || state.eventObj['Enable Registration'];
-      state.isRegRequired = String(reg).toLowerCase() === 'true';
+      state.isRegRequired = attType === 'FIXED' || String(reg).toLowerCase() === 'true';
 
-      const spot = state.eventObj.allow_spot_registration || state.eventObj['Allow Spot Registration'];
-      state.isSpotAllowed = String(spot).toLowerCase() === 'true';
+      const spot = state.eventObj.allow_spot_registration || state.eventObj['Allow Spot Registration'] || state.eventObj.spot_registration || state.eventObj['Enable Spot Registration'];
+      state.isSpotAllowed = String(spot).toLowerCase() === 'true' || spot === true;
 
       bindFormEvents();
     };

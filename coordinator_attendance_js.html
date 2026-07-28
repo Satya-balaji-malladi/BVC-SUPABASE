@@ -751,6 +751,7 @@
       // Event details
       const ev = data.event || {};
 
+      state.currentEventObj = ev;
       state.eventId =
         ev['Event ID'] ||
         ev.event_id ||

@@ -1790,11 +1790,12 @@ window.AttendanceFormController = (() => {
     const elig = String(state.eventObj.eligibility || state.eventObj['Eligibility'] || 'BVC_ONLY').toUpperCase();
     state.isBvcOnly = elig.indexOf('BVC') !== -1;
 
+    const attType = String(state.eventObj.attendance_type || state.eventObj['Attendance Type'] || '').toUpperCase();
     const reg = state.eventObj.enable_registration || state.eventObj['Enable Registration'];
-    state.isRegRequired = String(reg).toLowerCase() === 'true';
+    state.isRegRequired = attType === 'FIXED' || String(reg).toLowerCase() === 'true';
 
-    const spot = state.eventObj.allow_spot_registration || state.eventObj['Allow Spot Registration'];
-    state.isSpotAllowed = String(spot).toLowerCase() === 'true';
+    const spot = state.eventObj.allow_spot_registration || state.eventObj['Allow Spot Registration'] || state.eventObj.spot_registration || state.eventObj['Enable Spot Registration'];
+    state.isSpotAllowed = String(spot).toLowerCase() === 'true' || spot === true;
   };
 
   const handleScanOrManualEntry = async (rawRollNumber) => {
@@ -1861,9 +1862,11 @@ window.AttendanceFormController = (() => {
     };
 
     if (!state.isRegRequired) {
+      // CASE 1: OPEN EVENT
       if (student) {
         const missing = checkMissingStudentFields(student);
         if (missing.length > 0) {
+          // CASE 1B: Student Exists but Required Data Missing
           const modalEl = document.getElementById('studentMissingDetailsModal');
           if (modalEl && typeof bootstrap !== 'undefined') {
             document.getElementById('missingReadOnlyName').textContent = student.student_name || student.name || '--';
@@ -1880,6 +1883,7 @@ window.AttendanceFormController = (() => {
             new bootstrap.Modal(modalEl).show();
           }
         } else {
+          // CASE 1A: Student Exists with Complete Data
           const modalEl = document.getElementById('openEventVerificationModal');
           if (modalEl && typeof bootstrap !== 'undefined') {
             const container = document.getElementById('openEventProfileContainer');
@@ -1888,12 +1892,68 @@ window.AttendanceFormController = (() => {
           }
         }
       } else {
+        // CASE 1C: Student NOT Found
         const modalEl = document.getElementById('studentNotFoundModal');
         if (modalEl && typeof bootstrap !== 'undefined') {
           document.getElementById('newStudentRollInput').value = roll;
           const colGroup = document.getElementById('newStudentCollegeGroup');
           if (colGroup) colGroup.style.display = state.isBvcOnly ? 'none' : 'block';
           new bootstrap.Modal(modalEl).show();
+        }
+      }
+    } else {
+      // CASE 2: FIXED EVENT (Registration Required)
+      let participant = null;
+      try {
+        if (typeof App !== 'undefined' && App.API && App.API.getEventParticipants) {
+          const parts = await App.API.getEventParticipants(state.eventId);
+          if (Array.isArray(parts)) {
+            const norm = String(roll).toUpperCase();
+            participant = parts.find(p => String(p.roll_number || p['Roll Number']).toUpperCase() === norm);
+          }
+        }
+      } catch (e) {
+        console.warn('Participant check failed:', e);
+      }
+
+      if (student) {
+        if (participant) {
+          // CASE 2A: Registered Participant -> Open FixedEventVerificationModal
+          const modalEl = document.getElementById('fixedEventVerificationModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            const container = document.getElementById('fixedEventProfileContainer');
+            if (container) container.innerHTML = AttendanceFormRenderer.renderProfileCard(student);
+            const seatEl = document.getElementById('fixedSeatNumber');
+            if (seatEl) seatEl.textContent = participant.seat_number || 'General';
+            new bootstrap.Modal(modalEl).show();
+          }
+        } else if (state.isSpotAllowed) {
+          // CASE 2B: Not Registered -> Spot Registration Enabled
+          const modalEl = document.getElementById('spotRegistrationModal');
+          if (modalEl && typeof bootstrap !== 'undefined') {
+            document.getElementById('spotRollInput').value = roll;
+            document.getElementById('spotNameInput').value = student.student_name || student.name || '';
+            const colGroup = document.getElementById('spotCollegeContainer');
+            if (colGroup) colGroup.style.display = state.isBvcOnly ? 'none' : 'block';
+            new bootstrap.Modal(modalEl).show();
+          }
+        } else {
+          // CASE 2C: Not Registered -> Spot Registration Disabled
+          if (typeof App !== 'undefined' && App.UI) {
+            App.UI.showError('Registration Closed. Student is not registered for this fixed event.');
+          }
+        }
+      } else if (state.isSpotAllowed) {
+        const modalEl = document.getElementById('studentNotFoundModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+          document.getElementById('newStudentRollInput').value = roll;
+          const colGroup = document.getElementById('newStudentCollegeGroup');
+          if (colGroup) colGroup.style.display = state.isBvcOnly ? 'none' : 'block';
+          new bootstrap.Modal(modalEl).show();
+        }
+      } else {
+        if (typeof App !== 'undefined' && App.UI) {
+          App.UI.showError('Registration Closed. Student record not found.');
         }
       }
     }
@@ -2659,6 +2719,7 @@ window.AttendanceFormController = (() => {
       // Event details
       const ev = data.event || {};
 
+      state.currentEventObj = ev;
       state.eventId =
         ev['Event ID'] ||
         ev.event_id ||
