@@ -2902,6 +2902,8 @@ window.AttendanceFormController = (() => {
 
       const rawInput = rawVal.trim().toUpperCase();
 
+      // Forward scan to Backend Central Orchestrator for full Cases A-G resolution
+      /*
       if (typeof window.AttendanceFormController !== 'undefined' && state.eventId) {
         window.AttendanceFormController.init(state.eventId, state.currentEventObj || {});
         window.AttendanceFormController.handleScanOrManualEntry(rawInput);
@@ -2909,6 +2911,7 @@ window.AttendanceFormController = (() => {
         focusInput();
         return;
       }
+      */
 
       // Rapid double scan protection
       if (isProcessingRoll) {
