@@ -64,6 +64,8 @@ function runCoordinatorFormTestSuite() {
       'user_id': userId,
       'User ID': userId,
       'employee_id': 'EMP_' + rand,
+      'username': 'coord_' + rand,
+      'password_hash': 'test_hash_123',
       'first_name': 'Test',
       'last_name': 'Coordinator',
       'email_address': 'coord_' + rand + '@bvc.edu.in',
