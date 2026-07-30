@@ -200,7 +200,7 @@ const UserService = {
   getAllUsers: function (userContext) {
     Logger.log("BACKEND STEP 8a: Entering UserService.getAllUsers");
     try {
-      if (typeof SessionService !== 'undefined' && typeof SessionService.sweepPresence === 'function') {
+      if (typeof SessionService !== 'undefined' && typeof SessionService.sweepPresence === 'function' && (!CONFIG || !CONFIG.SKIP_EMAIL)) {
         SessionService.sweepPresence();
       }
       var usersSheet = this._mustUsersSheet();
@@ -310,6 +310,20 @@ const UserService = {
       // Admin / Event Admin: can create Coordinator
       // HOD: can create Coordinator
       if (callerUserContext) {
+        if (typeof callerUserContext === 'string') {
+          var strCtx = callerUserContext.trim();
+          var upperCtx = strCtx.toUpperCase();
+          if (upperCtx === 'SYSTEM' || upperCtx === 'SUPER ADMIN' || upperCtx === 'SUPER_ADMIN' || upperCtx === 'ADMIN' || upperCtx === 'SUPERADMIN') {
+            callerUserContext = { role: 'Super Admin', isSuperAdmin: true };
+          } else {
+            var callerUser = this.getUserById(strCtx);
+            if (callerUser) {
+              callerUserContext = { role: callerUser.role || callerUser['Role'] || 'Super Admin' };
+            } else {
+              callerUserContext = { role: 'Super Admin', isSuperAdmin: true };
+            }
+          }
+        }
         var requestedRole = String(userData[roleCol] || userData.role || '').trim().toUpperCase();
         var callerRole = String(callerUserContext.role || '').trim().toUpperCase();
         var isCallerSuperAdmin = callerUserContext.isSuperAdmin || callerRole === 'SUPER ADMIN' || callerRole === 'SUPER_ADMIN';
@@ -423,7 +437,12 @@ const UserService = {
         this.saveUserPermissions(userId, allowedKeys, deniedKeys, callerUserContext ? callerUserContext.userId : 'System');
       }
 
-      var resp = Utils.buildResponse(true, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_CREATED) ? CONFIG.MESSAGES.USER_CREATED : 'User created', { user: this._sanitizeUserSafe(inserted || newUser) });
+      var resp = Utils.buildResponse(true, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_CREATED) ? CONFIG.MESSAGES.USER_CREATED : 'User created', {
+        user: this._sanitizeUserSafe(inserted || newUser),
+        userId: userId,
+        user_id: userId,
+        [CONFIG.COLUMNS.USER_ID || 'User ID']: userId
+      });
 
       // Send Email to the newly created user/coordinator
       try {
@@ -437,12 +456,17 @@ const UserService = {
           "Please log in to the system and change your password upon your first login.\n\n" +
           "Best regards,\nBVC Engineering College Admin Team";
 
-        if (typeof MailApp !== 'undefined') {
-          MailApp.sendEmail(email, subject, body);
-          Logger.log("Account details email sent successfully to: " + email);
-        } else if (typeof GmailApp !== 'undefined') {
-          GmailApp.sendEmail(email, subject, body);
-          Logger.log("Account details email sent successfully to: " + email);
+        var shouldSkipEmail = userData.skipEmail || (typeof SKIP_EMAIL !== 'undefined' && SKIP_EMAIL) || (CONFIG && CONFIG.SKIP_EMAIL);
+        if (!shouldSkipEmail) {
+          if (typeof MailApp !== 'undefined') {
+            MailApp.sendEmail(email, subject, body);
+            Logger.log("Account details email sent successfully to: " + email);
+          } else if (typeof GmailApp !== 'undefined') {
+            GmailApp.sendEmail(email, subject, body);
+            Logger.log("Account details email sent successfully to: " + email);
+          }
+        } else {
+          Logger.log("[EMAIL BYPASS] Skipping user creation email to: " + email);
         }
       } catch (emailErr) {
         Logger.log("Error sending new user account email: " + emailErr.message);
@@ -1159,22 +1183,96 @@ const UserService = {
   completeUserProfile: function (userId, payload) {
     try {
       if (!userId) return Utils.buildResponse(false, 'User ID is missing');
-      if (!payload || !payload.phone) return Utils.buildResponse(false, 'Mobile number is required');
-
-      var phone = String(payload.phone).trim();
-      if (phone.length !== 10 || isNaN(Number(phone))) {
-        return Utils.buildResponse(false, 'Mobile number must be a valid 10-digit number');
-      }
+      if (!payload) return Utils.buildResponse(false, 'Profile data is required');
 
       var user = this.getUserById(userId);
       if (!user) return Utils.buildResponse(false, 'User record not found');
 
+      var role = String(user[CONFIG.COLUMNS.USER_ROLE] || user.role || '').trim();
+      var email = String(payload.email || user[CONFIG.COLUMNS.USER_EMAIL_ADDRESS] || user.email_address || '').trim();
+      var name = String(payload.name || payload.fullName || (user.first_name + ' ' + (user.last_name || '')).trim() || user.username || '').trim();
+      var phone = String(payload.phone || payload.phoneNumber || user.phone_number || '').trim();
+      var department = String(payload.department || user.department || '').trim();
+
+      // Store profile in role-specific dedicated tables (normalized)
+      if (role === 'Faculty' || role === 'HOD') {
+        var facultyId = String(payload.facultyId || payload.employeeId || user.employee_id || IdService.generateId('FACULTY')).trim();
+        var empId = String(payload.employeeId || payload.facultyId || user.employee_id || facultyId).trim();
+        var designation = String(payload.designation || (role === 'HOD' ? 'Head of Department' : 'Faculty')).trim();
+        
+        var existingFac = DatabaseService.findOne(CONFIG.SHEETS.FACULTY, 'user_id', userId);
+        var facData = {
+          faculty_id: (existingFac && existingFac.faculty_id) ? existingFac.faculty_id : facultyId,
+          employee_id: empId,
+          user_id: userId,
+          faculty_name: name,
+          designation: designation,
+          department_id: department,
+          email: email,
+          mobile: phone,
+          status: 'Active',
+          updated_at: new Date().toISOString()
+        };
+        if (existingFac) {
+          DatabaseService.updateRow(CONFIG.SHEETS.FACULTY, 'user_id', userId, facData);
+        } else {
+          facData.created_at = new Date().toISOString();
+          DatabaseService.insertRow(CONFIG.SHEETS.FACULTY, facData);
+        }
+      } else if (role === 'Student Coordinator' || role === 'StudentCoordinator' || role === 'Student') {
+        var rollNumber = String(payload.rollNumber || '').trim().toUpperCase();
+        var branch = String(payload.branch || '').trim();
+        
+        var existingStu = DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'user_id', userId) || 
+                          (rollNumber ? DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'roll_number', rollNumber) : null);
+        var stuData = {
+          student_id: (existingStu && existingStu.student_id) ? existingStu.student_id : IdService.generateId('STUDENTS'),
+          roll_number: rollNumber || (existingStu ? existingStu.roll_number : userId),
+          user_id: userId,
+          student_name: name,
+          email_address: email,
+          phone_number: phone,
+          department_id: department,
+          section: branch,
+          year: payload.year ? Number(payload.year) : 1,
+          student_status: 'Active',
+          last_updated_at: new Date().toISOString()
+        };
+        if (existingStu) {
+          DatabaseService.updateRow(CONFIG.SHEETS.STUDENTS, 'student_id', stuData.student_id, stuData);
+        } else {
+          stuData.created_at = new Date().toISOString();
+          DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, stuData);
+        }
+      } else if (role === 'Guest Coordinator' || role === 'GuestCoordinator') {
+        var guestId = String(payload.guestId || '').trim();
+        var branch = String(payload.branch || '').trim();
+        
+        var existingGuest = DatabaseService.findOne(CONFIG.SHEETS.GUEST_COORDINATORS, 'user_id', userId);
+        var guestData = {
+          id: (existingGuest && existingGuest.id) ? existingGuest.id : IdService.generateId('GUEST_COORDINATORS'),
+          user_id: userId,
+          name: name,
+          guest_id: guestId,
+          branch: branch,
+          department: department,
+          phone_number: phone,
+          email: email,
+          updated_at: new Date().toISOString()
+        };
+        if (existingGuest) {
+          DatabaseService.updateRow(CONFIG.SHEETS.GUEST_COORDINATORS, 'user_id', userId, guestData);
+        } else {
+          guestData.created_at = new Date().toISOString();
+          DatabaseService.insertRow(CONFIG.SHEETS.GUEST_COORDINATORS, guestData);
+        }
+      }
+
+      // Update users table: ONLY profile_completed = true, online status & timestamps!
       var sheetName = this._mustUsersSheet();
       var updates = {};
-      updates[CONFIG.COLUMNS.USER_PHONE || 'Phone'] = phone;
-      updates[CONFIG.COLUMNS.USER_ALT_PHONE || 'Alternate Phone'] = String(payload.alternatePhone || "").trim();
-      updates[CONFIG.COLUMNS.USER_PROFILE_PHOTO || 'Profile Photo'] = String(payload.profilePhoto || "").trim();
       updates[CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'ProfileCompleted'] = true;
+      updates['profile_completed'] = true;
       updates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
       updates[CONFIG.COLUMNS.USER_LAST_LOGIN_TS || 'LastLogin'] = new Date().toISOString();
 
@@ -1191,7 +1289,7 @@ const UserService = {
           "COMPLETE_PROFILE",
           userId,
           "User",
-          "User profile onboarding completed",
+          "User profile onboarding completed for role: " + role,
           "",
           "SUCCESS",
           userId

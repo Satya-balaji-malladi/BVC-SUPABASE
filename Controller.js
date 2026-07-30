@@ -37,6 +37,23 @@ const Controller = {
      */
     authenticate: function (sessionToken) {
       return AuthService.authenticate(sessionToken);
+    },
+
+    /**
+     * Retrieves events assigned to the logged in user.
+     * @param {string} sessionToken
+     */
+    getUserAssignedEvents: function (sessionToken) {
+      return RoleResolutionEngine.getAssignedEvents(sessionToken);
+    },
+
+    /**
+     * Dynamically resolves effective role for selected event.
+     * @param {string} sessionToken
+     * @param {string} eventId
+     */
+    resolveEffectiveRole: function (sessionToken, eventId) {
+      return RoleResolutionEngine.resolveEffectiveRole(sessionToken, eventId);
     }
   },
 
@@ -78,6 +95,15 @@ const Controller = {
   // ==========================================
   User: {
     /**
+     * Creates a new Super Admin user account (Super Admin only).
+     * @param {string} sessionToken
+     * @param {object} payload
+     */
+    createSuperAdmin: function (sessionToken, payload) {
+      return SuperAdminService.createSuperAdmin(sessionToken, payload);
+    },
+
+    /**
      * Creates a new user.
      * @param {object} userData 
      * @returns {object} Response object.
@@ -113,17 +139,6 @@ const Controller = {
     },
 
     /**
-     * Retrieves a user by ID.
-     * @param {string} userId 
-     * @returns {object|null}
-     */
-    getUserById: function (sessionToken, userId) {
-      return SessionService.withSession(sessionToken, function (_sessionUserId) {
-        return UserService.getUserById(userId);
-      });
-    },
-
-    /**
      * Completes first-time login setup (password & details).
      */
     completeFirstTimeSetup: function (sessionToken, setupData) {
@@ -141,8 +156,45 @@ const Controller = {
       return SessionService.withSession(sessionToken, function (_sessionUserId) {
         return UserService.getUserByUsername(username);
       });
-    },
+    }
+  },
 
+  // ==========================================
+  // Faculty Controller
+  // ==========================================
+  Faculty: {
+    createFaculty: function (sessionToken, facultyData) {
+      return FacultyService.createFaculty(sessionToken, facultyData);
+    },
+    getFacultyMembers: function (sessionToken) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        return FacultyService.getFacultyMembers();
+      });
+    },
+    getFacultyByDepartment: function (sessionToken, departmentId) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        return FacultyService.getFacultyByDepartment(departmentId);
+      });
+    },
+    getFacultyListForUser: function (sessionToken) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        var userContext = SessionService.getUserContext(sessionToken);
+        return FacultyService.getFacultyListForUser(userContext.role, userContext.department);
+      });
+    },
+    updateFaculty: function (sessionToken, facultyId, updates) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        return FacultyService.updateFaculty(facultyId, updates);
+      });
+    },
+    deactivateFaculty: function (sessionToken, facultyId) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        return FacultyService.deactivateFaculty(facultyId);
+      });
+    }
+  },
+
+  User: {
     /**
      * @returns {object[]} Array of all users.
      */
@@ -247,7 +299,69 @@ const Controller = {
       return SessionService.withSession(sessionToken, function (_sessionUserId) {
         return UserService.changePassword(userId, oldPassword, newPassword);
       });
+    }
+  },
+
+  // ==========================================
+  // HOD Controller
+  // ==========================================
+  Hod: {
+    /**
+     * Fetches Cross Department Participation analytics report for HOD.
+     * @param {string} sessionToken
+     * @param {object} filters
+     */
+    getCrossDepartmentReport: function (sessionToken, filters) {
+      return HodService.getCrossDepartmentReport(sessionToken, filters);
+    }
+  },
+
+  // ==========================================
+  // Event Admin Controller
+  // ==========================================
+  EventAdmin: {
+    /**
+     * Retrieves Event Admin dashboard for selected event.
+     * @param {string} sessionToken
+     * @param {string} eventId
+     */
+    getDashboard: function (sessionToken, eventId) {
+      return EventAdminService.getEventAdminDashboard(sessionToken, eventId);
     },
+
+    /**
+     * Assigns or creates inline coordinator for event.
+     * @param {string} sessionToken
+     * @param {string} eventId
+     * @param {object} payload
+     */
+    assignCoordinator: function (sessionToken, eventId, payload) {
+      return EventAdminService.assignCoordinator(sessionToken, eventId, payload);
+    },
+
+    /**
+     * Removes assignment from event.
+     * @param {string} sessionToken
+     * @param {string} assignmentId
+     * @param {string} remarks
+     */
+    removeAssignment: function (sessionToken, assignmentId, remarks) {
+      return EventAdminService.removeAssignment(sessionToken, assignmentId, remarks);
+    },
+
+    /**
+     * Single event scoped report endpoint.
+     */
+    getSingleEventReport: function (sessionToken, eventId, statusFilter) {
+      return ReportService.getSingleEventReport(sessionToken, eventId, statusFilter);
+    },
+
+    /**
+     * Single event scoped analytics endpoint.
+     */
+    getSingleEventAnalytics: function (sessionToken, eventId) {
+      return AnalyticsService.getSingleEventAnalytics(sessionToken, eventId);
+    }
   },
 
   // ==========================================
@@ -1307,13 +1421,17 @@ const Controller = {
       });
     },
 
-    registerSpotStudentAndMarkAttendance: function (sessionToken, rollNumber, studentName, departmentId, year, section, collegeName) {
+    registerSpotStudentAndMarkAttendance: function (sessionToken, rollNumber, studentName, departmentId, year, section, collegeName, targetEventId) {
       return SessionService.withSession(sessionToken, function (userId) {
-        const activeAssignedIds = CoordinatorService.getAssignedEventIds(userId) || [];
-        if (activeAssignedIds.length === 0) {
-          return Utils.buildResponse(false, 'No active event assignments associated with this account credentials.');
+        let eventId = targetEventId;
+        if (!eventId) {
+          Logger.log('[WARN][Controller] targetEventId omitted in registerSpotStudentAndMarkAttendance. Falling back to activeAssignedIds[0].');
+          const activeAssignedIds = CoordinatorService.getAssignedEventIds(userId) || [];
+          if (activeAssignedIds.length === 0) {
+            return Utils.buildResponse(false, 'No active event assignments associated with this account credentials.');
+          }
+          eventId = activeAssignedIds[0];
         }
-        const eventId = activeAssignedIds[0];
 
         if (!rollNumber) {
           return Utils.buildResponse(false, 'Missing required student registration identifier.');
@@ -1341,11 +1459,15 @@ const Controller = {
             studentPayload[CONFIG.COLUMNS.STUDENT_STATUS] = CONFIG.STUDENT_STATUS.ACTIVE;
             studentPayload["College"] = targetCollege || 'BVC Engineering College';
 
+            Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] Calling StudentService.createStudent with payload: ' + JSON.stringify(studentPayload));
             var createResp = StudentService.createStudent(studentPayload, creatorName);
+            Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] StudentService.createStudent response: ' + JSON.stringify(createResp));
             if (!createResp.success) {
+              Logger.log('[TRACE][registerSpotStudentAndMarkAttendance][EARLY-RETURN] createStudent failed: ' + createResp.message);
               return Utils.buildResponse(false, 'Failed to add student to database: ' + createResp.message);
             }
             student = StudentService.getStudentByRollNumber(normalizedRoll);
+            Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] Re-fetched student: ' + JSON.stringify(student));
           } else {
             // Save to 'other_college_students' table/sheet for other college students
             var otherStudentPayload = {
@@ -1387,6 +1509,7 @@ const Controller = {
 
         // 2. If the event is Fixed type, register them as a participant
         var event = EventService.getEventById(eventId);
+        Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] Loaded event: ' + JSON.stringify(event));
         if (event) {
           var attendanceType = event.attendance_type || event.attendanceType || 'Fixed';
           if (attendanceType === 'Fixed') {
@@ -1400,10 +1523,11 @@ const Controller = {
               participantData['Participant ID'] = 'PAR' + Date.now();
               participantData['Event ID'] = eventId;
               participantData['Roll Number'] = normalizedRoll;
-              participantData['Registration Status'] = 'Confirmed';
+              participantData['Registration Status'] = 'Approved';
               participantData['Status'] = 'Active';
               participantData['Created At'] = Utils.getCurrentTimestamp();
               DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, participantData);
+              Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] Inserted fixed participant: ' + JSON.stringify(participantData));
             }
           }
         }
@@ -1416,7 +1540,10 @@ const Controller = {
           status: CONFIG.ATTENDANCE_STATUS.PRESENT
         };
 
-        return AttendanceService.markAttendance(attendanceData, userId);
+        Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] Calling AttendanceService.markAttendance with payload: ' + JSON.stringify(attendanceData));
+        var markResult = AttendanceService.markAttendance(attendanceData, userId);
+        Logger.log('[TRACE][registerSpotStudentAndMarkAttendance] AttendanceService.markAttendance returned: ' + JSON.stringify(markResult));
+        return markResult;
       });
     },
 

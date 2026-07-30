@@ -105,15 +105,10 @@
    * Populates Quick Stats with real data
    */
   function updateStatsUI(stats) {
-    console.log("User Role:", userRole);
-    console.log("Is HOD:", isHOD);
-    console.log("Department Card Found:", !!cardDepts);
-    console.log("===== DASHBOARD STATS =====");
-    console.log(JSON.stringify(stats, null, 2));
     if (!stats) return;
-    console.log("Updating Stats UI:", stats);
 
-    const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
+    // 1. Initialize role resolution & DOM handles first (Avoid Temporal Dead Zone)
+    const userRole = String(localStorage.getItem('userRole') || (window.App && window.App.State && window.App.State.currentUser ? window.App.State.currentUser.role : '') || '').toUpperCase().trim();
     const isHOD = (userRole === 'HOD');
     const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
 
@@ -121,6 +116,14 @@
     const cardAdmins = document.getElementById('cardTotalAdminsContainer');
     const labelCoords = document.getElementById('labelTotalCoordinators');
     const labelEvents = document.getElementById('labelActiveEvents');
+
+    // 2. Safe diagnostic logging (Variables are now initialized)
+    console.log("User Role:", userRole);
+    console.log("Is HOD:", isHOD);
+    console.log("Department Card Found:", !!cardDepts);
+    console.log("===== DASHBOARD STATS =====");
+    console.log(JSON.stringify(stats, null, 2));
+    console.log("Updating Stats UI:", stats);
 
     if (isHOD) {
       if (cardDepts) cardDepts.classList.add('d-none');
@@ -434,7 +437,8 @@
       .getTrendData(sessionToken);
   }
 
-  let crossDeptDataList = [];
+  // Attach crossDeptDataList to window or IIFE scope to prevent re-declaration SyntaxErrors when SPA re-injects dashboard_js.html
+  window.crossDeptDataList = window.crossDeptDataList || [];
 
   function loadCrossDepartmentAttendance(sessionToken) {
     const container = document.getElementById('crossDeptCardContainer');
@@ -444,9 +448,9 @@
     google.script.run
       .withSuccessHandler(function (response) {
         if (response && response.success && response.data) {
-          crossDeptDataList = response.data.list || [];
+          window.crossDeptDataList = response.data.list || [];
           if (countEl) {
-            countEl.textContent = crossDeptDataList.length;
+            countEl.textContent = window.crossDeptDataList.length;
           }
 
           // Show card for HOD or Admin/Super Admin
@@ -476,7 +480,7 @@
     const branchFilter = document.getElementById('cdBranchFilter');
     if (branchFilter) {
       const branches = new Set();
-      crossDeptDataList.forEach(item => {
+      (window.crossDeptDataList || []).forEach(item => {
         if (item.branch) branches.add(item.branch);
       });
       let optionsHtml = '<option value="">All Branches</option>';
@@ -499,7 +503,7 @@
       const branch = branchSelect ? branchSelect.value : '';
       const year = yearSelect ? yearSelect.value : '';
 
-      const filtered = crossDeptDataList.filter(item => {
+      const filtered = (window.crossDeptDataList || []).filter(item => {
         const matchSearch = !q ||
           (item.name || '').toLowerCase().includes(q) ||
           (item.roll || '').toLowerCase().includes(q) ||
@@ -534,7 +538,7 @@
   function renderCrossDeptTable(data) {
     const tbody = document.getElementById('crossDeptTableBody');
     const totalCountEl = document.getElementById('cdTotalCount');
-    const list = data || crossDeptDataList;
+    const list = data || window.crossDeptDataList || [];
 
     if (totalCountEl) totalCountEl.textContent = list.length;
     if (!tbody) return;

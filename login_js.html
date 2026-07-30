@@ -251,6 +251,7 @@
       ).trim().toUpperCase();
 
       console.log("Detected Role:", role);
+      console.log("Current User:", user);
 
       // ==========================
       // Extract Session Token
@@ -332,12 +333,19 @@
         }
         return;
       } else {
-        const targetPage = 'dashboard';
-        // Admin / Super Admin: load the full dashboard shell via document.write
+        let targetPage = 'dashboard';
+        const isProfileCompleted = (user.profile_completed === true || user.profile_completed === 'true' || user.ProfileCompleted === true || user.ProfileCompleted === 'true');
+        if (!isProfileCompleted) {
+          targetPage = 'completeprofile';
+        } else if (role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'EVENTADMIN') {
+          targetPage = 'eventadmin';
+        }
+
+        // Admin / Event Admin / HOD / Super Admin: load the app shell via document.write
         google.script.run
           .withSuccessHandler(function (html) {
 
-            console.log('Application shell loaded.');
+            console.log('Application shell loaded for target:', targetPage);
 
             if (google.script.history && google.script.history.replace) {
               google.script.history.replace(

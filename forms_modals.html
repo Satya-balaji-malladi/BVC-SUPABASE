@@ -239,3 +239,81 @@
     </div>
   </div>
 </div>
+
+<!-- 7. Create Faculty Modal -->
+<div class="modal fade" id="createFacultyModal" tabindex="-1" aria-labelledby="createFacultyModalLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header bg-primary text-white border-0 py-3">
+        <h5 class="modal-title fw-bold" id="createFacultyModalLabel">
+          <i class="bi bi-person-workspace me-2"></i>Create New Faculty Member
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div id="facultyAlertContainer" class="d-none alert alert-danger p-3 mb-3 rounded-3 small">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i><span id="facultyAlertText"></span>
+        </div>
+        <form id="createFacultyForm" novalidate>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="facName" class="form-label small fw-bold text-dark">Faculty Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="facName" placeholder="Dr. / Prof. / Mr. / Ms. Name" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facEmployeeId" class="form-label small fw-bold text-dark">Employee ID <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="facEmployeeId" placeholder="e.g. EMP1025" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facDepartment" class="form-label small fw-bold text-dark">Department <span class="text-danger">*</span></label>
+              <select class="form-select" id="facDepartment" required>
+                <option value="">Select Department...</option>
+                <option value="CSE">Computer Science and Engineering (CSE)</option>
+                <option value="ECE">Electronics and Communication (ECE)</option>
+                <option value="EEE">Electrical and Electronics (EEE)</option>
+                <option value="MECH">Mechanical Engineering (MECH)</option>
+                <option value="CIVIL">Civil Engineering (CIVIL)</option>
+                <option value="AIDS">Artificial Intelligence and Data Science (AIDS)</option>
+                <option value="AIML">Artificial Intelligence and Machine Learning (AIML)</option>
+                <option value="IT">Information Technology (IT)</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="facDesignation" class="form-label small fw-bold text-dark">Designation <span class="text-danger">*</span></label>
+              <select class="form-select" id="facDesignation" required>
+                <option value="Assistant Professor">Assistant Professor</option>
+                <option value="Associate Professor">Associate Professor</option>
+                <option value="Professor">Professor</option>
+                <option value="Head of Department">Head of Department (HOD)</option>
+                <option value="Senior Lecturer">Senior Lecturer</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="facPhone" class="form-label small fw-bold text-dark">Phone Number <span class="text-danger">*</span></label>
+              <input type="tel" class="form-control" id="facPhone" placeholder="10-digit mobile" pattern="[0-9]{10}" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facEmail" class="form-label small fw-bold text-dark">Email Address <span class="text-danger">*</span></label>
+              <input type="email" class="form-control" id="facEmail" placeholder="faculty@bvc.edu.in" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facUsername" class="form-label small fw-bold text-dark">Username <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="facUsername" placeholder="e.g. jdoe_cse" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facTempPassword" class="form-label small fw-bold text-dark">Temporary Password <span class="text-danger">*</span></label>
+              <input type="text" class="form-control font-monospace" id="facTempPassword" placeholder="Temp password" required>
+            </div>
+          </div>
+          <div class="mt-4 text-end">
+            <button type="button" class="btn btn-outline-secondary px-4 me-2" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary px-4 fw-bold" id="btnSaveFaculty">
+              <span class="btn-text"><i class="bi bi-check-circle-fill me-1"></i> Save Faculty</span>
+              <span class="spinner-border spinner-border-sm d-none ms-2" role="status"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

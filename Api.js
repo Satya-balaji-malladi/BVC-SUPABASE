@@ -19,6 +19,25 @@ function ping() {
 }
 
 // ==========================================
+// Faculty API
+// ==========================================
+function getFacultyMembers(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyMembers(sessionToken) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
+function getFacultyByDepartment(sessionToken, departmentId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyByDepartment(sessionToken, departmentId) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
+// ==========================================
 // 1. Authentication API
 // ==========================================
 
@@ -56,6 +75,120 @@ function logout(sessionToken) {
 function authenticate(sessionToken) {
   try {
     return JSON.parse(JSON.stringify(Controller.Auth.authenticate(sessionToken) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Retrieves events assigned to the logged in user.
+ * @param {string} sessionToken
+ */
+function getUserAssignedEvents(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Auth.getUserAssignedEvents(sessionToken) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Resolves effective role for selected event.
+ * @param {string} sessionToken
+ * @param {string} eventId
+ */
+function resolveEffectiveRole(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Auth.resolveEffectiveRole(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Creates a new Super Admin account (Super Admin only).
+ * @param {string} sessionToken
+ * @param {object} payload
+ */
+function createSuperAdmin(sessionToken, payload) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.User.createSuperAdmin(sessionToken, payload) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Fetches Cross Department Participation analytics report for HOD.
+ * @param {string} sessionToken
+ * @param {object} filters
+ */
+function getHodCrossDeptReport(sessionToken, filters) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Hod.getCrossDepartmentReport(sessionToken, filters) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Retrieves Event Admin dashboard metrics and details for selected event.
+ * @param {string} sessionToken
+ * @param {string} eventId
+ */
+function getEventAdminDashboard(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.getDashboard(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Assigns or creates inline coordinator for event.
+ * @param {string} sessionToken
+ * @param {string} eventId
+ * @param {object} payload
+ */
+function assignEventCoordinator(sessionToken, eventId, payload) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.assignCoordinator(sessionToken, eventId, payload) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Removes assignment from event.
+ * @param {string} sessionToken
+ * @param {string} assignmentId
+ * @param {string} remarks
+ */
+function removeEventAssignment(sessionToken, assignmentId, remarks) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.removeAssignment(sessionToken, assignmentId, remarks) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Single event scoped report endpoint.
+ */
+function getSingleEventReport(sessionToken, eventId, statusFilter) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.getSingleEventReport(sessionToken, eventId, statusFilter) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Single event scoped analytics endpoint.
+ */
+function getSingleEventAnalytics(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.getSingleEventAnalytics(sessionToken, eventId) || {}));
   } catch (e) {
     return { success: false, message: e.message };
   }
@@ -997,11 +1130,12 @@ function validateCoordinatorSession(sessionToken) {
  * @param {number|string} year - Year.
  * @param {string} section - Section.
  * @param {string} college - College name.
+ * @param {string} targetEventId - Target Event ID.
  * @returns {object} Response containing status.
  */
-function registerSpotStudentAndMark(sessionToken, rollNumber, name, department, year, section, college) {
+function registerSpotStudentAndMark(sessionToken, rollNumber, name, department, year, section, college, targetEventId) {
   try {
-    return Controller.CoordinatorTerminal.registerSpotStudentAndMarkAttendance(sessionToken, rollNumber, name, department, year, section, college);
+    return Controller.CoordinatorTerminal.registerSpotStudentAndMarkAttendance(sessionToken, rollNumber, name, department, year, section, college, targetEventId);
   } catch (error) {
     return Utils.buildResponse(false, "Failed to register spot student and mark attendance: " + error.message);
   }
@@ -1752,5 +1886,24 @@ function spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) {
     return JSON.parse(JSON.stringify(Controller.CoordinatorTerminal.spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) || { success: false }));
   } catch (e) {
     return { success: false, message: e.message };
+  }
+}
+
+// ==========================================
+// Faculty Management API Wrappers
+// ==========================================
+function createFaculty(sessionToken, facultyData) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.createFaculty(sessionToken, facultyData) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function getFacultyListForUser(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyListForUser(sessionToken) || []));
+  } catch (e) {
+    return [];
   }
 }

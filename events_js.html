@@ -1038,12 +1038,14 @@
       const yearVal = yearFilter ? yearFilter.value : '';
 
       const currentUser = App.State && App.State.currentUser;
-      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
+      const rawRole = currentUser ? (currentUser.role || currentUser.Role || currentUser['User Role']) : (localStorage.getItem('userRole') || '');
+      const userRole = String(rawRole || '').toUpperCase().trim();
       const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
       const isHOD = (userRole === 'HOD');
 
       const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
-      const currentUserId = currentUser ? (currentUser.user_id || currentUser.id || currentUser['User ID']) : (localStorage.getItem('userId') || '');
+      const rawUid = currentUser ? (currentUser.user_id || currentUser['User ID'] || currentUser.userId || currentUser.id || currentUser.employee_id || currentUser['Employee ID']) : (localStorage.getItem('userId') || '');
+      const currentUserId = String(rawUid || '').trim();
 
       if (isHOD && deptFilter) {
         deptFilter.disabled = true;
@@ -1053,13 +1055,15 @@
       this.filteredData = this.eventsData.filter(e => {
         let match = true;
 
-        // Event Admin role sees ONLY events assigned to them or created by them
+        // Event Admin role sees events assigned to them or created by them (or all if unassigned)
         if (isEventAdmin && currentUserId) {
-          const evCoordId = String(e.coordinator_id || e.CoordinatorID || e.coordinatorId || '').trim();
-          const evCreatedBy = String(e.created_by || e.CreatedBy || e.createdBy || '').trim();
-          const uid = String(currentUserId).trim();
-          if (evCoordId !== uid && evCreatedBy !== uid) {
-            return false;
+          const evCoordId = String(e.coordinator_id || e.CoordinatorID || e.coordinatorId || e['Coordinator ID'] || e.coordinator || '').trim();
+          const evCreatedBy = String(e.created_by || e.CreatedBy || e.createdBy || e['Created By'] || '').trim();
+          const uid = currentUserId;
+          if (evCoordId && evCreatedBy) {
+            if (evCoordId !== uid && evCreatedBy !== uid) {
+              return false;
+            }
           }
         }
 

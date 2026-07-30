@@ -383,32 +383,42 @@
               res.user['First Login'] === 'true' ||
               res.user.first_login === 1;
 
-            // First-time login prompt is available on demand if requested
-            console.log("User session authenticated:", res.user.username);
+            const uname = res.user.username || res.user.Username || res.user['User ID'] || res.user.user_id || 'User';
+            console.log("User session authenticated:", uname);
           }
         })
         .authenticate(token);
     }
 
-    // Automatically load the Dashboard component when the shell initializes
-    // First, check if there's a specific page requested in the URL
+    // Automatically load the appropriate component when the shell initializes based on userRole and URL
+    const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
+    let defaultPage = 'Dashboard';
+    if (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'EVENTADMIN') {
+      defaultPage = 'EventAdmin';
+    }
+
     if (google && google.script && google.script.url) {
       google.script.url.getLocation(function (location) {
-        let requestedPage = location.parameter.page || 'Dashboard';
+        let requestedPage = location.parameter.page || defaultPage;
 
         // Prevent loading login inside the shell
         if (requestedPage.toLowerCase() === 'login' || requestedPage.toLowerCase() === 'forgotpassword') {
-          requestedPage = 'Dashboard';
+          requestedPage = defaultPage;
         }
 
-        // Capitalize first letter to match component filename
-        requestedPage = requestedPage.charAt(0).toUpperCase() + requestedPage.slice(1).toLowerCase();
+        // Standardize component filename casing
+        if (requestedPage.toLowerCase() === 'eventadmin') {
+          requestedPage = 'EventAdmin';
+        } else {
+          requestedPage = requestedPage.charAt(0).toUpperCase() + requestedPage.slice(1).toLowerCase();
+        }
+
         loadPage(requestedPage);
         checkAndPromptFirstLogin();
       });
     } else {
       // Fallback
-      loadPage('Dashboard');
+      loadPage(defaultPage);
       checkAndPromptFirstLogin();
     }
   });

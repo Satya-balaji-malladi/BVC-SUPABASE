@@ -471,6 +471,15 @@ const DepartmentService = {
         );
 
       if (!dept) {
+        var cleanCode = String(departmentId).trim().toUpperCase();
+        dept = DatabaseService.findOne(
+          CONFIG.SHEETS.DEPARTMENTS,
+          CONFIG.COLUMNS.DEPARTMENT_CODE || 'Department Code',
+          cleanCode
+        );
+      }
+
+      if (!dept) {
         return Utils.buildResponse(
           false,
           CONFIG.MESSAGES.DEPARTMENT_NOT_FOUND

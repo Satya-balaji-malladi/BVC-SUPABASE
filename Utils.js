@@ -342,10 +342,12 @@ const Utils = {
   // Backward compatible alias
   generateUUID: function () {
     try {
-      return Utilities.getUuid();
+      if (typeof Utilities !== 'undefined' && typeof Utilities.getUuid === 'function') {
+        return Utilities.getUuid();
+      }
+      return 'UUID_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     } catch (e) {
-      Logger.log('Utils.generateUUID error: ' + (e && e.message ? e.message : e));
-      return '';
+      return 'UUID_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
   },
 
@@ -373,24 +375,16 @@ const Utils = {
   // ==========================================
 
   buildResponse: function (success, message, data) {
-    Logger.log("ENTER: Utils.buildResponse");
     try {
       const d = data || {};
-      var response = { success: Boolean(success), message: message, ...d };
-      Logger.log("RETURNING FROM: Utils.buildResponse");
-      Logger.log("Returned value:");
-      Logger.log(JSON.stringify(response));
-      if (response == null) {
-        Logger.log("CRITICAL: Returning NULL");
+      var response = { success: Boolean(success), message: message, data: d, ...d };
+      if (CONFIG && CONFIG.DEBUG) {
+        Logger.log("ENTER: Utils.buildResponse | Success: " + success + " | Msg: " + message);
       }
       return response;
     } catch (e) {
       Logger.log('Utils.buildResponse error: ' + (e && e.message ? e.message : e));
-      var errorResponse = { success: false, message: CONFIG && CONFIG.MESSAGES ? CONFIG.MESSAGES.ERROR_DEFAULT : 'Error' };
-      Logger.log("RETURNING FROM: Utils.buildResponse (Error Catch)");
-      Logger.log("Returned value:");
-      Logger.log(JSON.stringify(errorResponse));
-      return errorResponse;
+      return { success: false, message: CONFIG && CONFIG.MESSAGES ? CONFIG.MESSAGES.ERROR_DEFAULT : 'Error' };
     }
   },
 

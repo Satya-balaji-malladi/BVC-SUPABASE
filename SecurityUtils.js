@@ -120,7 +120,12 @@ const SecurityUtils = {
       const denied = [];
       records.forEach(r => {
         const key = String(r['Permission Key'] || r.permission_key || r.permissionKey || '').trim().toLowerCase();
-        const allowedVal = String(r['Is Allowed'] || r.is_allowed || r.isAllowed || 'true').trim().toLowerCase() === 'true';
+        var rawVal = r['Is Allowed'];
+        if (rawVal === undefined) rawVal = r.is_allowed;
+        if (rawVal === undefined) rawVal = r.isAllowed;
+        if (rawVal === undefined) rawVal = true;
+
+        const allowedVal = (rawVal === true || String(rawVal).trim().toLowerCase() === 'true');
         if (key) {
           if (allowedVal) {
             allowed.push(key);
@@ -321,5 +326,13 @@ const SecurityUtils = {
     if (!user) return false;
 
     return this.hasPermission(user['User ID'], 'edit_event', eventId);
+  },
+
+  isSuperAdmin: function(userId) {
+    if (!userId) return false;
+    const user = this._resolveUser(userId);
+    if (!user) return false;
+    const role = String(user['Role'] || user.role || user.Role || '').toUpperCase().trim();
+    return role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN';
   }
 };

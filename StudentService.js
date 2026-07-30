@@ -118,7 +118,16 @@ var StudentService = {
       obj[CONFIG.COLUMNS.STUDENT_ID] = IdService && typeof IdService.generateStudentId === 'function' ? IdService.generateStudentId() : 'STU' + now;
       obj[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] = normalizedData[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER];
       obj[CONFIG.COLUMNS.STUDENT_NAME] = normalizedData[CONFIG.COLUMNS.STUDENT_NAME];
-      obj[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = normalizedData[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID];
+
+      var rawDept = normalizedData[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID];
+      var resolvedDeptId = rawDept;
+      if (rawDept && typeof DepartmentService !== 'undefined' && typeof DepartmentService.getDepartmentById === 'function') {
+        var deptRes = DepartmentService.getDepartmentById(rawDept);
+        if (deptRes && deptRes.success && deptRes.department) {
+          resolvedDeptId = deptRes.department[CONFIG.COLUMNS.DEPARTMENT_ID] || deptRes.department.department_id || rawDept;
+        }
+      }
+      obj[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] = resolvedDeptId;
       obj[CONFIG.COLUMNS.STUDENT_BRANCH] = normalizedData[CONFIG.COLUMNS.STUDENT_BRANCH] || '';
       obj[CONFIG.COLUMNS.STUDENT_YEAR] = normalizedData[CONFIG.COLUMNS.STUDENT_YEAR];
       obj[CONFIG.COLUMNS.STUDENT_SECTION] = normalizedData[CONFIG.COLUMNS.STUDENT_SECTION];
@@ -171,20 +180,46 @@ var StudentService = {
    * Helper to check department state directly against DepartmentService custom response wrapper.
    */
   _validateDepartmentLinkActive: function (departmentId) {
-    Logger.log("[DEBUG] Received departmentId = " + departmentId);
-    Logger.log("[DEBUG] CONFIG Department ID Column = " + CONFIG.COLUMNS.DEPARTMENT_ID);
+    Logger.log("[TRACE][_validateDepartmentLinkActive][START] input departmentId: " + departmentId);
+    Logger.log("[TRACE][_validateDepartmentLinkActive] CONFIG Department ID Column: " + CONFIG.COLUMNS.DEPARTMENT_ID);
     try {
-      if (!DepartmentService) return true;
-      if (!departmentId) return false;
+      if (!DepartmentService) {
+        Logger.log("[TRACE][_validateDepartmentLinkActive] DepartmentService undefined, returning true");
+        return true;
+      }
+      if (!departmentId) {
+        Logger.log("[TRACE][_validateDepartmentLinkActive] departmentId is falsy, returning false");
+        return false;
+      }
 
       // Bypass check for spot registrations
       var cleanId = String(departmentId).trim().toUpperCase();
       if (cleanId === 'SPOT GROUP' || cleanId === 'SPOT' || cleanId === 'OTHERS') {
+        Logger.log("[TRACE][_validateDepartmentLinkActive] Bypass cleanId matched: " + cleanId + ", returning true");
         return true;
+      }
+
+      var allDepts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+      if (allDepts.length === 0) {
+        var defaultDepts = [
+          { 'Department ID': 'DEPT_CSE', 'Department Code': 'CSE', 'Department Name': 'Computer Science and Engineering', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_AIML', 'Department Code': 'CSE-AIML', 'Department Name': 'CSE (AI & ML)', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_DS', 'Department Code': 'CSE-DS', 'Department Name': 'CSE (Data Science)', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_AIDS', 'Department Code': 'AI&DS', 'Department Name': 'Artificial Intelligence & Data Science', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_IT', 'Department Code': 'IT', 'Department Name': 'Information Technology', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_ECE', 'Department Code': 'ECE', 'Department Name': 'Electronics and Communication Engineering', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_EEE', 'Department Code': 'EEE', 'Department Name': 'Electrical and Electronics Engineering', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_ME', 'Department Code': 'ME', 'Department Name': 'Mechanical Engineering', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_CIVIL', 'Department Code': 'CIVIL', 'Department Name': 'Civil Engineering', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_MBA', 'Department Code': 'MBA', 'Department Name': 'Master of Business Administration', 'Status': 'Active' },
+          { 'Department ID': 'DEPT_MCA', 'Department Code': 'MCA', 'Department Name': 'Master of Computer Applications', 'Status': 'Active' }
+        ];
+        try { DatabaseService.insertRows(CONFIG.SHEETS.DEPARTMENTS, defaultDepts); } catch(se) {}
       }
 
       // 1. Try finding by ID
       var deptResp = typeof DepartmentService.getDepartmentById === 'function' ? DepartmentService.getDepartmentById(departmentId) : null;
+      Logger.log("[TRACE][_validateDepartmentLinkActive] DepartmentService.getDepartmentById response: " + JSON.stringify(deptResp));
       var dept = null;
       if (deptResp) {
         if (deptResp.department) dept = deptResp.department;
@@ -193,13 +228,12 @@ var StudentService = {
       }
       // 2. Fallback: search directly by Department ID
       if (!dept && typeof DatabaseService !== 'undefined') {
-
         var found = DatabaseService.findOne(
           CONFIG.SHEETS.DEPARTMENTS,
           CONFIG.COLUMNS.DEPARTMENT_ID || 'Department ID',
           cleanId
         );
-
+        Logger.log("[TRACE][_validateDepartmentLinkActive] DatabaseService.findOne by Department ID (" + cleanId + "): " + JSON.stringify(found));
         if (found) {
           dept = Utils.sanitizeDepartment
             ? Utils.sanitizeDepartment(found)
@@ -210,6 +244,7 @@ var StudentService = {
       if (!dept && typeof DatabaseService !== 'undefined') {
         const cleanedId = String(departmentId).trim().toUpperCase();
         const found = DatabaseService.findOne(CONFIG.SHEETS.DEPARTMENTS, CONFIG.COLUMNS.DEPARTMENT_CODE || 'Department Code', cleanedId);
+        Logger.log("[TRACE][_validateDepartmentLinkActive] DatabaseService.findOne by Department Code (" + cleanedId + "): " + JSON.stringify(found));
         if (found) {
           dept = Utils.sanitizeDepartment ? Utils.sanitizeDepartment(found) : found;
         }
@@ -219,25 +254,28 @@ var StudentService = {
       if (!dept && typeof DatabaseService !== 'undefined') {
         const cleanedId = String(departmentId).trim();
         const found = DatabaseService.findOne(CONFIG.SHEETS.DEPARTMENTS, CONFIG.COLUMNS.DEPARTMENT_NAME || 'Department Name', cleanedId);
+        Logger.log("[TRACE][_validateDepartmentLinkActive] DatabaseService.findOne by Department Name (" + cleanedId + "): " + JSON.stringify(found));
         if (found) {
           dept = Utils.sanitizeDepartment ? Utils.sanitizeDepartment(found) : found;
         }
       }
 
       if (!dept) {
-        Logger.log('StudentService._validateDepartmentLinkActive: Department ' + departmentId + ' not found.');
+        Logger.log('[TRACE][_validateDepartmentLinkActive][END] Department ' + departmentId + ' NOT FOUND anywhere. Returning false.');
         return false;
       }
 
       var statusField = CONFIG.COLUMNS.STATUS || 'Status';
       var activeStatus = (CONFIG.DEPARTMENT_STATUS && CONFIG.DEPARTMENT_STATUS.ACTIVE) ? CONFIG.DEPARTMENT_STATUS.ACTIVE : 'Active';
+      Logger.log('[TRACE][_validateDepartmentLinkActive] Examining department record statusField (' + statusField + '): ' + dept[statusField] + ' vs activeStatus: ' + activeStatus);
       if (dept[statusField] !== activeStatus) {
-        Logger.log('StudentService._validateDepartmentLinkActive: Department ' + departmentId + ' is inactive.');
+        Logger.log('[TRACE][_validateDepartmentLinkActive][END] Department ' + departmentId + ' is INACTIVE. Returning false.');
         return false;
       }
+      Logger.log('[TRACE][_validateDepartmentLinkActive][END] Department ' + departmentId + ' VALIDATED ACTIVE. Returning true.');
       return true;
     } catch (e) {
-      Logger.log('StudentService._validateDepartmentLinkActive validation error: ' + e);
+      Logger.log('[TRACE][_validateDepartmentLinkActive][ERROR]: ' + e);
       return false;
     }
   },
@@ -251,31 +289,50 @@ var StudentService = {
    */
   createStudent: function (studentData, createdBy) {
     try {
+      Logger.log('[TRACE][createStudent][START] Incoming payload: ' + JSON.stringify(studentData) + ' | createdBy: ' + createdBy);
       var failMsg = CONFIG.MESSAGES.STUDENT_CREATE_FAILED || 'Student create failed';
-      if (!studentData) return Utils.buildResponse(false, failMsg);
+      if (!studentData) {
+        Logger.log('[TRACE][createStudent][EARLY-RETURN] Falsy studentData');
+        return Utils.buildResponse(false, failMsg);
+      }
 
       var normalized = this._normalizeStudentData(studentData);
+      Logger.log('[TRACE][createStudent] Normalized payload: ' + JSON.stringify(normalized));
+      Logger.log('[TRACE][createStudent] Extract departmentId: ' + normalized[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID]);
 
       // Centralized validation on normalized target payload
       var validationResult = ValidationService.validateStudent(normalized);
+      Logger.log('[TRACE][createStudent] ValidationService.validateStudent result: ' + JSON.stringify(validationResult));
       if (!validationResult || !validationResult.valid) {
         var errorString = validationResult && validationResult.errors ? validationResult.errors.join(' ') : 'Validation failed';
+        Logger.log('[TRACE][createStudent][EARLY-RETURN] ValidationService failed: ' + errorString);
         return Utils.buildResponse(false, errorString);
       }
 
       // Business Logic Constraint Verifications
-      if (!this._validateDepartmentLinkActive(normalized[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID])) {
+      var isDeptActive = this._validateDepartmentLinkActive(normalized[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID]);
+      Logger.log('[TRACE][createStudent] _validateDepartmentLinkActive return value: ' + isDeptActive);
+      if (!isDeptActive) {
+        Logger.log('[TRACE][createStudent][EARLY-RETURN] _validateDepartmentLinkActive returned false');
         return Utils.buildResponse(false, CONFIG.MESSAGES.INVALID_DEPARTMENT || 'Invalid or inactive department specified');
       }
 
-      if (this._studentExists(normalized[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER])) {
+      var exists = this._studentExists(normalized[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER]);
+      Logger.log('[TRACE][createStudent] _studentExists return value: ' + exists);
+      if (exists) {
+        Logger.log('[TRACE][createStudent][EARLY-RETURN] _studentExists returned true');
         return Utils.buildResponse(false, CONFIG.MESSAGES.ROLL_NUMBER_EXISTS || 'Roll number already exists');
       }
 
       var newStudentObj = this._buildStudentObject(normalized, createdBy);
-      if (!newStudentObj) return Utils.buildResponse(false, failMsg);
+      Logger.log('[TRACE][createStudent] Built student object: ' + JSON.stringify(newStudentObj));
+      if (!newStudentObj) {
+        Logger.log('[TRACE][createStudent][EARLY-RETURN] _buildStudentObject returned null');
+        return Utils.buildResponse(false, failMsg);
+      }
 
       var success = DatabaseService.insertRow(this._studentsSheet(), newStudentObj);
+      Logger.log('[TRACE][createStudent] DatabaseService.insertRow result: ' + success);
       if (success) {
         var cleanedOutput = Utils.sanitizeStudent(newStudentObj);
 
@@ -290,11 +347,14 @@ var StudentService = {
           CacheManager.remove("student_roll_" + newStudentObj[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER]);
         }
 
-        return Utils.buildResponse(true, CONFIG.MESSAGES.STUDENT_CREATED || 'Student created successfully', { student: cleanedOutput });
+        var finalResp = Utils.buildResponse(true, CONFIG.MESSAGES.STUDENT_CREATED || 'Student created successfully', { student: cleanedOutput });
+        Logger.log('[TRACE][createStudent][SUCCESS-RETURN] Final response: ' + JSON.stringify(finalResp));
+        return finalResp;
       }
+      Logger.log('[TRACE][createStudent][EARLY-RETURN] DatabaseService.insertRow returned false');
       return Utils.buildResponse(false, failMsg);
     } catch (error) {
-      Logger.log("StudentService.createStudent error: " + (error && error.message ? error.message : error));
+      Logger.log("[TRACE][createStudent][EXCEPTION]: " + (error && error.message ? error.message : error));
       return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_CREATE_FAILED || 'Student create failed');
     }
   },

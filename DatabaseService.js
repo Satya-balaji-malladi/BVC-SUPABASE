@@ -6,9 +6,9 @@ const DatabaseService = {
   _appToDbMap: null,
   _tableColumns: {
     departments: ['department_id', 'department_code', 'department_name', 'short_name', 'hod_name', 'hod_employee_id', 'total_students', 'total_coordinators', 'total_events_hosted', 'total_participants', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at', 'remarks', 'deletion_flag'],
-    students: ['student_id', 'roll_number', 'student_name', 'email_address', 'year', 'semester', 'section', 'gender', 'student_status', 'phone_number', 'department_id', 'guardian_name', 'date_of_birth', 'enrollment_date', 'last_updated_at', 'notes', 'college', 'deletion_flag'],
-    users: ['user_id', 'employee_id', 'first_name', 'last_name', 'email_address', 'phone_number', 'department', 'title_designation', 'username', 'password_hash', 'salt', 'authentication_provider', 'first_login', 'role', 'status', 'profile_picture_url', 'failed_login_attempts', 'account_locked', 'last_login_timestamp', 'last_logout_timestamp', 'password_reset_required', 'password_last_changed', 'password_expiry_date', 'two_factor_enabled', 'two_factor_secret', 'otp', 'otp_expiry', 'otp_attempts', 'popup_notifications', 'notification_sound', 'theme_preference', 'language', 'timezone', 'bio_notes', 'created_by', 'created_at', 'updated_by', 'updated_at', 'deletion_flag'],
-    events: ['event_id', 'event_name', 'description', 'location', 'event_category', 'organizer', 'start_date', 'end_date', 'start_time', 'end_time', 'attendance_type', 'barcode_attendance', 'manual_attendance', 'capacity', 'registered_count', 'event_status', 'report_generated', 'report_date', 'remarks', 'created_at', 'updated_at', 'last_attendance_sync', 'notes', 'deletion_flag', 'attendance_window_start', 'attendance_window_end', 'check_out_enabled', 'departments', 'years', 'last_action', 'last_action_at', 'last_action_by', 'enable_registration', 'registration_open', 'registration_close', 'maximum_seats', 'allow_spot_registration', 'registration_fields', 'terms_and_conditions', 'registration_url'],
+    students: ['student_id', 'roll_number', 'user_id', 'student_name', 'email_address', 'year', 'semester', 'section', 'gender', 'student_status', 'phone_number', 'department_id', 'guardian_name', 'date_of_birth', 'enrollment_date', 'last_updated_at', 'notes', 'college', 'deletion_flag'],
+    users: ['user_id', 'employee_id', 'first_name', 'last_name', 'email_address', 'phone_number', 'department', 'title_designation', 'username', 'password_hash', 'salt', 'authentication_provider', 'first_login', 'role', 'status', 'profile_picture_url', 'failed_login_attempts', 'account_locked', 'last_login_timestamp', 'last_logout_timestamp', 'password_reset_required', 'password_last_changed', 'password_expiry_date', 'two_factor_enabled', 'two_factor_secret', 'otp', 'otp_expiry', 'otp_attempts', 'popup_notifications', 'notification_sound', 'theme_preference', 'language', 'timezone', 'bio_notes', 'profile_completed', 'created_by', 'created_at', 'updated_by', 'updated_at', 'deletion_flag'],
+    events: ['event_id', 'event_name', 'description', 'location', 'event_category', 'organizer', 'start_date', 'end_date', 'start_time', 'end_time', 'attendance_type', 'barcode_attendance', 'manual_attendance', 'capacity', 'registered_count', 'event_status', 'approval_status', 'approved_by', 'approved_at', 'report_generated', 'report_date', 'remarks', 'created_at', 'updated_at', 'last_attendance_sync', 'notes', 'deletion_flag', 'attendance_window_start', 'attendance_window_end', 'rules', 'schedule', 'speakers', 'certificates_config', 'attendance_settings', 'check_out_enabled', 'departments', 'years', 'last_action', 'last_action_at', 'last_action_by', 'enable_registration', 'registration_open', 'registration_close', 'maximum_seats', 'allow_spot_registration', 'registration_fields', 'terms_and_conditions', 'registration_url'],
     event_coordinators: ['assignment_id', 'event_id', 'user_id', 'assignment_role', 'assignment_status', 'assigned_by', 'assigned_date', 'updated_by', 'updated_date', 'remarks', 'deletion_flag'],
     event_participants: ['participant_id', 'event_id', 'roll_number', 'registration_type', 'registration_status', 'attendance_status', 'approval_status', 'approved_by', 'registration_date', 'registration_time', 'registration_timestamp', 'attendance_timestamp', 'certificate_issued', 'certificate_id', 'created_at', 'updated_at', 'created_by', 'deletion_flag', 'last_action', 'remarks', 'last_sync_timestamp', 'custom_fields_data'],
     attendance: ['attendance_id', 'event_id', 'roll_number', 'user_id', 'attendance_status', 'attendance_method', 'date', 'time', 'timestamp', 'is_undo', 'undo_reason', 'undo_timestamp', 'correction_requested', 'correction_status', 'correction_reason', 'correction_handled_by', 'location', 'remarks', 'created_at', 'updated_at', 'sync_status', 'deletion_flag', 'check_out_timestamp', 'total_duration_minutes'],
@@ -21,7 +21,23 @@ const DatabaseService = {
     export_templates: ['template_id', 'user_id', 'template_name', 'module_type', 'configuration', 'created_at', 'updated_at', 'deletion_flag'],
     event_templates: ['template_id', 'template_name', 'default_config', 'created_at', 'deletion_flag'],
     attendance_corrections: ['request_id', 'attendance_id', 'user_id', 'requested_status', 'reason', 'approval_status', 'handled_by', 'created_at', 'deletion_flag'],
-    test_history: ['run_id', 'run_timestamp', 'triggered_by', 'summary', 'details', 'deletion_flag']
+    test_history: ['run_id', 'run_timestamp', 'triggered_by', 'summary', 'details', 'deletion_flag'],
+    faculty: ['faculty_id', 'employee_id', 'user_id', 'faculty_name', 'designation', 'department_id', 'email', 'mobile', 'gender', 'joining_date', 'qualification', 'experience_years', 'employment_type', 'status', 'created_at', 'updated_at'],
+    guest_coordinators: ['id', 'user_id', 'name', 'guest_id', 'branch', 'department', 'phone_number', 'email', 'created_at', 'updated_at', 'deletion_flag'],
+    other_college_students: ['id', 'roll_number', 'student_name', 'college_name', 'department', 'year', 'section', 'email_address', 'phone_number', 'gender', 'city', 'state', 'emergency_contact', 'accommodation_needed', 'food_preference', 'id_proof_number', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at', 'deletion_flag'],
+    user_permissions: ['id', 'user_id', 'permission_key', 'is_allowed', 'created_by', 'created_at']
+  },
+
+  /**
+   * Helper to check if a database table supports deletion_flag
+   */
+  _hasDeletionFlag: function (dbTable) {
+    if (!dbTable) return true;
+    var validCols = this._tableColumns[dbTable];
+    if (validCols && validCols.indexOf('deletion_flag') === -1) {
+      return false;
+    }
+    return true;
   },
 
   /**
@@ -82,6 +98,8 @@ const DatabaseService = {
           dbKey = 'hod_employee_id';
         } else if (dbTable === 'departments' && (dbKey === 'hod_email' || dbKey === 'hod_contact_email')) {
           dbKey = 'remarks';
+        } else if (dbTable === 'events' && dbKey === 'status') {
+          dbKey = 'event_status';
         } else {
           continue; // Skip fields not present in Supabase table
         }
@@ -137,7 +155,9 @@ const DatabaseService = {
   _request: function (endpoint, method, payload, queryParams, extraHeaders) {
     const url = CONFIG.SUPABASE.URL + '/rest/v1/' + endpoint + (queryParams ? '?' + queryParams : '');
 
-    Logger.log("[DEBUG] URL = " + url);
+    if (CONFIG && CONFIG.DEBUG) {
+      Logger.log("[DEBUG] URL = " + url);
+    }
 
     const headers = {
       'apikey': CONFIG.SUPABASE.KEY,
@@ -161,8 +181,10 @@ const DatabaseService = {
     }
 
     const response = UrlFetchApp.fetch(url, options);
-    Logger.log("[DEBUG] HTTP Status = " + response.getResponseCode());
-    Logger.log("[DEBUG] Response Body = " + response.getContentText());
+    if (CONFIG && CONFIG.DEBUG) {
+      Logger.log("[DEBUG] HTTP Status = " + response.getResponseCode());
+      Logger.log("[DEBUG] Response Body = " + response.getContentText());
+    }
     const code = response.getResponseCode();
     const content = response.getContentText();
 
@@ -232,18 +254,27 @@ const DatabaseService = {
   },
 
   /**
+  _hasDeletionFlag: function(dbTable) {
+    var tbl = String(dbTable || '').toLowerCase().trim();
+    if (tbl === 'faculty' || tbl === 'departments' || tbl === 'sessions' || tbl === 'audit_logs' || tbl === 'audit_log' || tbl === 'system_logs') {
+      return false;
+    }
+    return true;
+  },
+
+  /**
    * Counts active records in a table.
    */
   count: function (sheetName) {
     try {
       const dbTable = this._getDbTableName(sheetName);
-      const res = this._request(dbTable, 'GET', null, 'select=count&deletion_flag=eq.false', {
+      const q = this._hasDeletionFlag(dbTable) ? 'select=count&deletion_flag=eq.false' : 'select=count';
+      const res = this._request(dbTable, 'GET', null, q, {
         'Prefer': 'count=exact,head=true'
       });
-      return res.length; // PostgREST head request returns count metadata
+      return res.length;
     } catch (e) {
       Logger.log('DatabaseService.count error: ' + e.message);
-      // Fallback to read count
       return this.readAllRows(sheetName).length;
     }
   },
@@ -252,6 +283,9 @@ const DatabaseService = {
     if (sheetName) {
       const logicalKey = this._getLogicalSheetKey(sheetName);
       delete this._cache[logicalKey];
+      delete this._cache[sheetName];
+      delete this._cache[String(sheetName).toUpperCase()];
+      delete this._cache[String(sheetName).toLowerCase()];
       delete this._nextIdCounters[logicalKey];
     } else {
       this._cache = {};
@@ -270,7 +304,8 @@ const DatabaseService = {
       // Local runtime caching
       if (this._cache[logicalKey]) return this._cache[logicalKey];
 
-      const dbRecords = this._request(dbTable, 'GET', null, 'deletion_flag=eq.false');
+      const q = this._hasDeletionFlag(dbTable) ? 'deletion_flag=eq.false' : '';
+      const dbRecords = this._request(dbTable, 'GET', null, q);
       const records = dbRecords.map(this._mapToAppRecord.bind(this));
 
       this._cache[logicalKey] = records;
@@ -299,7 +334,7 @@ const DatabaseService = {
   getRows: function (sheetName, limit, offset) {
     try {
       const dbTable = this._getDbTableName(sheetName);
-      const q = 'deletion_flag=eq.false&limit=' + (limit || 100) + '&offset=' + (offset || 0);
+      const q = (this._hasDeletionFlag(dbTable) ? 'deletion_flag=eq.false&' : '') + 'limit=' + (limit || 100) + '&offset=' + (offset || 0);
       const dbRecords = this._request(dbTable, 'GET', null, q);
       return dbRecords.map(this._mapToAppRecord.bind(this));
     } catch (e) {
@@ -317,26 +352,12 @@ const DatabaseService = {
   },
 
   findOne: function (sheetName, key, val, includeDeleted) {
-    const dbTable = this._getDbTableName(sheetName);
-    const dbCol = this._appToDbMap[key] || this._toSnakeCase(key);
-
-    let query = dbCol + '=eq.' + encodeURIComponent(val);
-
-    if (!includeDeleted) {
-      query += '&deletion_flag=eq.false';
-    }
-
-    Logger.log("[DEBUG] Sheet = " + sheetName);
-    Logger.log("[DEBUG] App Column = " + key);
-    Logger.log("[DEBUG] DB Column = " + dbCol);
-    Logger.log("[DEBUG] Value = " + val);
-    Logger.log("[DEBUG] Query = " + query);
     try {
       const dbTable = this._getDbTableName(sheetName);
       const dbCol = this._appToDbMap[key] || this._toSnakeCase(key);
 
       let query = dbCol + '=eq.' + encodeURIComponent(val);
-      if (!includeDeleted) {
+      if (!includeDeleted && this._hasDeletionFlag(dbTable)) {
         query += '&deletion_flag=eq.false';
       }
 
@@ -357,11 +378,11 @@ const DatabaseService = {
       const dbTable = this._getDbTableName(sheetName);
       const dbCol = this._appToDbMap[col] || this._toSnakeCase(col);
 
-      let query = 'deletion_flag=eq.false';
+      let query = this._hasDeletionFlag(dbTable) ? 'deletion_flag=eq.false' : '';
       if (options.strict) {
-        query += '&' + dbCol + '=eq.' + encodeURIComponent(val);
+        query += (query ? '&' : '') + dbCol + '=eq.' + encodeURIComponent(val);
       } else {
-        query += '&' + dbCol + '=ilike.*' + encodeURIComponent(val) + '*';
+        query += (query ? '&' : '') + dbCol + '=ilike.*' + encodeURIComponent(val) + '*';
       }
 
       const res = this._request(dbTable, 'GET', null, query);
@@ -483,7 +504,7 @@ const DatabaseService = {
         this.onUpdate(logicalKey, val, updated);
         return updated;
       }
-      return null;
+      return true;
     } catch (e) {
       Logger.log('DatabaseService.updateRow error: ' + e.message);
       return null;
@@ -535,8 +556,15 @@ const DatabaseService = {
   softDelete: function (sheetName, key, val, deletedValue) {
     try {
       const logicalKey = this._getLogicalSheetKey(sheetName);
+      const dbTable = this._getDbTableName(sheetName);
       const updateData = {};
-      updateData[CONFIG.COLUMNS.DELETION_FLAG || 'Deletion Flag'] = (deletedValue !== undefined) ? deletedValue : true;
+
+      if (this._hasDeletionFlag && !this._hasDeletionFlag(dbTable)) {
+        updateData['status'] = (deletedValue === false || deletedValue === 'false') ? 'Active' : 'Inactive';
+        updateData['Status'] = (deletedValue === false || deletedValue === 'false') ? 'Active' : 'Inactive';
+      } else {
+        updateData[CONFIG.COLUMNS.DELETION_FLAG || 'Deletion Flag'] = (deletedValue !== undefined) ? deletedValue : true;
+      }
       return Boolean(this.updateRow(logicalKey, key, val, updateData));
     } catch (e) {
       return false;
@@ -579,9 +607,9 @@ const DatabaseService = {
     return cfg.prefix + String(maxId + 1).padStart(cfg.digits, '0');
   },
 
-  onInsert: function (s, d) { Logger.log('Audit: Insert ' + s); },
-  onUpdate: function (s, k, d) { Logger.log('Audit: Update ' + s); },
-  onDelete: function (s, k) { Logger.log('Audit: Delete ' + s); },
+  onInsert: function (s, d) { if (CONFIG && CONFIG.DEBUG) Logger.log('Audit: Insert ' + s); },
+  onUpdate: function (s, k, d) { if (CONFIG && CONFIG.DEBUG) Logger.log('Audit: Update ' + s); },
+  onDelete: function (s, k) { if (CONFIG && CONFIG.DEBUG) Logger.log('Audit: Delete ' + s); },
   beginTransaction: function () { Logger.log('Transaction Started'); },
   getSheet: function (sheetName) {
     if (typeof SpreadsheetApp === 'undefined') return null;
@@ -594,6 +622,44 @@ const DatabaseService = {
       return null;
     }
   },
+
+  findByColumn: function (sheetName, columnName, columnValue, options) {
+    try {
+      var opt = options || {};
+      var isCaseSensitive = opt.caseSensitive === true;
+      var isStrict = opt.strict === true;
+      var rows = this.readAllRows(sheetName) || [];
+      var cleanVal = String(columnValue !== undefined && columnValue !== null ? columnValue : '').trim();
+      if (!cleanVal && isStrict) return [];
+      var targetVal = isCaseSensitive ? cleanVal : cleanVal.toLowerCase();
+
+      return rows.filter(function (r) {
+        if (r.deletion_flag === true || r['Deletion Flag'] === true || r.deletion_flag === 'true' || r['Deletion Flag'] === 'true') return false;
+        var val = r[columnName];
+        if (val === undefined || val === null) {
+          var snakeKey = DatabaseService._toSnakeCase ? DatabaseService._toSnakeCase(columnName) : columnName.toLowerCase();
+          val = r[snakeKey];
+        }
+        if (val === undefined || val === null) {
+          // Check all keys in object case-insensitively
+          for (var k in r) {
+            if (k.toLowerCase() === String(columnName).toLowerCase()) {
+              val = r[k];
+              break;
+            }
+          }
+        }
+        if (val === undefined || val === null) return false;
+        var rVal = String(val).trim();
+        var cmpVal = isCaseSensitive ? rVal : rVal.toLowerCase();
+        return isStrict ? (cmpVal === targetVal) : (cmpVal.indexOf(targetVal) !== -1);
+      });
+    } catch (e) {
+      Logger.log('DatabaseService.findByColumn error: ' + (e && e.message ? e.message : e));
+      return [];
+    }
+  },
+
   commit: function () { Logger.log('Transaction Committed'); },
   rollback: function () { Logger.log('Transaction Rollback'); }
 };

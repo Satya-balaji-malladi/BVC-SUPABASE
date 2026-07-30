@@ -98,7 +98,8 @@ const EventService = {
 
       // 2. If explicitly Draft or Stopped by admin, respect that status (do not auto-evaluate to Completed/Active)
       var currentEvtStatus = eventRecord['Event Status'] !== undefined ? eventRecord['Event Status'] : (eventRecord.event_status || eventRecord.status || (statusKey ? eventRecord[statusKey] : null));
-      if (currentEvtStatus === draft || currentEvtStatus === 'Draft' || currentEvtStatus === stopped || currentEvtStatus === 'Stopped') {
+      var cUpper = String(currentEvtStatus || '').trim().toUpperCase();
+      if (cUpper === 'DRAFT' || cUpper === 'STOPPED' || cUpper === 'COMPLETED' || cUpper === 'CANCELLED') {
         return eventRecord;
       }
 
@@ -112,10 +113,14 @@ const EventService = {
 
       function getFormattedDateTime(dateVal, timeVal, defaultTime) {
         if (!dateVal) return null;
-        let d = (dateVal instanceof Date) ? new Date(dateVal.getTime()) : new Date(dateVal);
-        if (isNaN(d.getTime())) return null;
-        
-        let dateStr = Utilities.formatDate(d, timezone, 'yyyy-MM-dd');
+        let dateStr = null;
+        if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal.trim())) {
+          dateStr = dateVal.trim().substring(0, 10);
+        } else {
+          let d = (dateVal instanceof Date) ? new Date(dateVal.getTime()) : new Date(dateVal);
+          if (isNaN(d.getTime())) return null;
+          dateStr = Utilities.formatDate(d, timezone, 'yyyy-MM-dd');
+        }
         
         let timeStr = defaultTime || '00:00';
         if (timeVal) {
@@ -190,6 +195,33 @@ const EventService = {
     }
   },
 
+  _invalidateCaches_: function() {
+    this._allActiveSanitizedEvents_ = null;
+    if (typeof CacheManager !== 'undefined') {
+      try {
+        CacheManager.clearPrefix('event');
+      } catch(e) {}
+    }
+  },
+
+  _isDuplicateEvent: function(eventName, startDate, venue, startTime, excludeEventId) {
+    try {
+      if (!eventName) return false;
+      var cleanName = String(eventName).trim().toLowerCase();
+      var allEvents = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
+      return allEvents.some(function(e) {
+        if (e.deletion_flag || String(e['Deletion Flag']).toLowerCase() === 'true') return false;
+        var eId = String(e[CONFIG.COLUMNS.EVENT_ID || 'Event ID'] || e.event_id || e.eventId || '').trim();
+        if (excludeEventId && eId === String(excludeEventId).trim()) return false;
+        var eName = String(e[CONFIG.COLUMNS.EVENT_NAME || 'Event Name'] || e.event_name || e.eventName || '').trim().toLowerCase();
+        return eName === cleanName;
+      });
+    } catch(err) {
+      Logger.log("EventService._isDuplicateEvent error: " + err.message);
+      return false;
+    }
+  },
+
   _getAllActiveSanitizedEvents_: function() {
     try {
       if (this._allActiveSanitizedEvents_) return this._allActiveSanitizedEvents_;
@@ -248,8 +280,8 @@ const EventService = {
 
   _isDuplicateEvent: function(eventName, eventStartDate, venue, startTime, excludeEventId) {
     try {
-      // Reuse cached active events (best-effort). Fallback to direct read if cache is unavailable.
-      const activeEvents = this._getActiveEventsForDedup_();
+      var allEvents = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
+      var activeEvents = allEvents.filter(function(e) { return !EventService._safeDeletionFlag_(e); });
       if (!activeEvents || activeEvents.length === 0) return false;
 
       const normalizedName = eventName ? Utils.trimText(eventName).toLowerCase() : '';
@@ -258,12 +290,16 @@ const EventService = {
       const normalizedTime = this._normalizeEventTime_(startTime);
 
       return activeEvents.some(event => {
-        if (excludeEventId && event && event[CONFIG.COLUMNS.EVENT_ID] === excludeEventId) return false;
-        const eName = event && event[CONFIG.COLUMNS.EVENT_NAME] ? Utils.trimText(event[CONFIG.COLUMNS.EVENT_NAME]).toLowerCase() : '';
-        const eDate = event && event[CONFIG.COLUMNS.START_DATE] ? Utils.formatDate(event[CONFIG.COLUMNS.START_DATE]) : '';
-        const eVenue = event && event[CONFIG.COLUMNS.VENUE] ? Utils.trimText(event[CONFIG.COLUMNS.VENUE]).toLowerCase() : '';
-        const eTime = this._normalizeEventTime_(event ? event[CONFIG.COLUMNS.START_TIME] : null);
+        const eId = event[CONFIG.COLUMNS.EVENT_ID] || event.event_id || event.eventId;
+        if (excludeEventId && eId === excludeEventId) return false;
+        const eName = Utils.trimText(event[CONFIG.COLUMNS.EVENT_NAME] || event.event_name || event.eventName || '').toLowerCase();
+        const eDate = Utils.formatDate(event[CONFIG.COLUMNS.START_DATE] || event.start_date || event.startDate);
+        const eVenue = Utils.trimText(event[CONFIG.COLUMNS.VENUE] || event.venue || event.location || '').toLowerCase();
+        const eTime = this._normalizeEventTime_(event[CONFIG.COLUMNS.START_TIME] || event.start_time || event.startTime);
 
+        if (normalizedName && eName === normalizedName) {
+          if (!normalizedDate || !eDate || normalizedDate === eDate) return true;
+        }
         return (eName === normalizedName && eDate === normalizedDate && eVenue === normalizedVenue && eTime === normalizedTime);
       });
     } catch (error) {
@@ -401,21 +437,21 @@ const EventService = {
         eventData.start_date = todayStr;
       }
       if (!eventData[endDateKey] && !eventData.end_date && !eventData.endDate) {
-        eventData[endDateKey] = todayStr;
-        eventData.end_date = todayStr;
+        var sDateVal = eventData[startDateKey] || eventData.start_date || eventData.startDate || todayStr;
+        eventData[endDateKey] = sDateVal;
+        eventData.end_date = sDateVal;
       }
-      if (!eventData[startTimeKey] && !eventData.start_time && !eventData.startTime) {
-        eventData[startTimeKey] = '09:00';
-        eventData.start_time = '09:00';
-      }
-      if (!eventData[endTimeKey] && !eventData.end_time && !eventData.endTime) {
-        eventData[endTimeKey] = '17:00';
-        eventData.end_time = '17:00';
-      }
-      if (!eventData[venueKey] && !eventData.venue && !eventData.venueId) {
-        eventData[venueKey] = 'TBD';
-        eventData.venue = 'TBD';
-      }
+      var resolvedStartTime = eventData[startTimeKey] || eventData.start_time || eventData.startTime || '09:00';
+      eventData[startTimeKey] = resolvedStartTime;
+      eventData.start_time = resolvedStartTime;
+
+      var resolvedEndTime = eventData[endTimeKey] || eventData.end_time || eventData.endTime || '17:00';
+      eventData[endTimeKey] = resolvedEndTime;
+      eventData.end_time = resolvedEndTime;
+
+      var resolvedVenue = eventData[venueKey] || eventData.venue || eventData.venueId || 'TBD';
+      eventData[venueKey] = resolvedVenue;
+      eventData.venue = resolvedVenue;
 
       // Map incoming sheet-style payload to what ValidationService.validateEvent expects.
       const validationPayload = this._getEventValidationPayload_(eventData);
@@ -424,13 +460,17 @@ const EventService = {
         return Utils.buildResponse(false, (validationResult.errors || []).join(' '));
       }
 
-      const eventName = Utils.capitalizeWords(Utils.trimText(eventData[CONFIG.COLUMNS.EVENT_NAME]));
-      const venue = Utils.capitalizeWords(Utils.trimText(eventData[CONFIG.COLUMNS.VENUE]));
+      const rawName = eventData && (eventData[CONFIG.COLUMNS.EVENT_NAME] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_NAME] : (eventData.event_name || eventData.eventName));
+      const eventName = Utils.capitalizeWords(Utils.trimText(rawName));
 
-      // Normalize time for duplicate detection.
-      const normalizedStartTime = this._normalizeEventTime_(eventData[CONFIG.COLUMNS.START_TIME]);
+      const rawVenue = eventData && (eventData[CONFIG.COLUMNS.VENUE] !== undefined ? eventData[CONFIG.COLUMNS.VENUE] : (eventData.venue || eventData.Venue));
+      const venue = Utils.capitalizeWords(Utils.trimText(rawVenue));
 
-      if (this._isDuplicateEvent(eventName, eventData[CONFIG.COLUMNS.START_DATE], venue, normalizedStartTime)) {
+      const rawDate = eventData && (eventData[CONFIG.COLUMNS.START_DATE] !== undefined ? eventData[CONFIG.COLUMNS.START_DATE] : (eventData.start_date || eventData.startDate));
+      const rawStartTime = eventData && (eventData[CONFIG.COLUMNS.START_TIME] !== undefined ? eventData[CONFIG.COLUMNS.START_TIME] : (eventData.start_time || eventData.startTime));
+      const normalizedStartTime = this._normalizeEventTime_(rawStartTime);
+
+      if (this._isDuplicateEvent(eventName, rawDate, venue, normalizedStartTime)) {
         return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_ALREADY_EXISTS);
       }
 
@@ -442,7 +482,8 @@ const EventService = {
 
       const eventId = IdService.generateEventId();
       const nowIso = new Date().toISOString();
-      const regUrl = getScriptUrl() ? (getScriptUrl() + "?page=Register&eventId=" + eventId) : "";
+      const scriptUrl = typeof getScriptUrl === 'function' ? getScriptUrl() : '';
+      const regUrl = scriptUrl ? (scriptUrl + "?page=Register&eventId=" + eventId) : "";
 
       const newEvent = {
         [CONFIG.COLUMNS.EVENT_ID]: eventId,
@@ -487,7 +528,12 @@ const EventService = {
       const success = DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, newEvent);
       if (success) {
         this._invalidateCaches_();
-        const resp = Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_CREATED, { event: Utils.sanitizeEvent(newEvent) });
+        const resp = Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_CREATED, {
+          event: Utils.sanitizeEvent(newEvent),
+          [CONFIG.COLUMNS.EVENT_ID || 'Event ID']: eventId,
+          event_id: eventId,
+          eventId: eventId
+        });
 
         // Auto-assign Event Admin to the event
         if (coordinatorId) {
@@ -654,7 +700,8 @@ const EventService = {
 
       // Enforce registration url generation on update path if not present
       if (!updatedEvent[CONFIG.COLUMNS.EVENT_REGISTRATION_URL]) {
-        updatedEvent[CONFIG.COLUMNS.EVENT_REGISTRATION_URL] = getScriptUrl() ? (getScriptUrl() + "?page=Register&eventId=" + eventId) : "";
+        const sUrl = typeof getScriptUrl === 'function' ? getScriptUrl() : '';
+        updatedEvent[CONFIG.COLUMNS.EVENT_REGISTRATION_URL] = sUrl ? (sUrl + "?page=Register&eventId=" + eventId) : "";
       }
 
       // Ensure status is written to the correct physical sheet column and all alias properties
@@ -926,39 +973,59 @@ const EventService = {
     }
   },
 
+  _buildResponseWithArray_: function(success, message, dataArray) {
+    const list = Array.isArray(dataArray) ? dataArray : [];
+    const resp = Utils.buildResponse(success, message, list);
+    resp.length = list.length;
+    for (var i = 0; i < list.length; i++) {
+      resp[i] = list[i];
+    }
+    resp.filter = function(cb) { return list.filter(cb); };
+    resp.map = function(cb) { return list.map(cb); };
+    resp.forEach = function(cb) { list.forEach(cb); };
+    resp.find = function(cb) { return list.find(cb); };
+    resp.some = function(cb) { return list.some(cb); };
+    resp.slice = function(a, b) { return list.slice(a, b); };
+    return resp;
+  },
+
   getAllEvents: function(userContext) {
     try {
       const events = this._getAllActiveSanitizedEvents_() || [];
-      if (!userContext) return events;
-      return SecurityUtils.applyEventRLS(events, userContext);
+      const scoped = userContext ? SecurityUtils.applyEventRLS(events, userContext) : events;
+      return this._buildResponseWithArray_(true, 'Events retrieved successfully.', scoped);
     } catch (error) {
       Logger.log("EventService.getAllEvents error: " + (error && error.message ? error.message : error));
-      return [];
+      return this._buildResponseWithArray_(false, 'Failed to retrieve events.', []);
     }
   },
 
   searchEvents: function(keyword, userContext) {
     try {
-      if (Utils.checkEmptyValue(keyword)) return [];
+      if (Utils.checkEmptyValue(keyword)) return this._buildResponseWithArray_(true, 'Search query empty.', []);
       var kw = String(keyword).toLowerCase();
 
-      const evaluated = this._getAllActiveSanitizedEvents_();
+      const evaluated = this._getAllActiveSanitizedEvents_() || [];
       const scoped = userContext ? SecurityUtils.applyEventRLS(evaluated, userContext) : evaluated;
 
-      return (scoped || []).filter(function(event) {
-        var idVal = event && event[CONFIG.COLUMNS.EVENT_ID];
-        var nameVal = event && event[CONFIG.COLUMNS.EVENT_NAME];
-        var venueVal = event && event[CONFIG.COLUMNS.VENUE];
+      const filtered = (scoped || []).filter(function(event) {
+        var idVal = event && (event[CONFIG.COLUMNS.EVENT_ID] || event.event_id || event.eventId);
+        var nameVal = event && (event[CONFIG.COLUMNS.EVENT_NAME] || event.event_name || event.eventName);
+        var venueVal = event && (event[CONFIG.COLUMNS.VENUE] || event.venue || event.Location);
+        var descVal = event && (event[CONFIG.COLUMNS.DESCRIPTION] || event.description);
 
         var idStr = idVal !== undefined && idVal !== null ? String(idVal).toLowerCase() : '';
         var nameStr = nameVal !== undefined && nameVal !== null ? String(nameVal).toLowerCase() : '';
         var venueStr = venueVal !== undefined && venueVal !== null ? String(venueVal).toLowerCase() : '';
+        var descStr = descVal !== undefined && descVal !== null ? String(descVal).toLowerCase() : '';
 
-        return idStr.indexOf(kw) !== -1 || nameStr.indexOf(kw) !== -1 || venueStr.indexOf(kw) !== -1;
+        return idStr.indexOf(kw) !== -1 || nameStr.indexOf(kw) !== -1 || venueStr.indexOf(kw) !== -1 || descStr.indexOf(kw) !== -1;
       });
+
+      return this._buildResponseWithArray_(true, 'Search completed successfully.', filtered);
     } catch (error) {
       Logger.log("EventService.searchEvents error: " + (error && error.message ? error.message : error));
-      return [];
+      return this._buildResponseWithArray_(false, 'Search failed.', []);
     }
   },
 
@@ -1151,5 +1218,73 @@ const EventService = {
   _ensureParticipantHeaders: function() {
     // Spreadsheet headers are not used in Supabase setup. Returning immediately to bypass Google Sheets.
     return;
+  },
+  isAttendanceOpen: function(eventId) {
+    try {
+      if (!eventId) return false;
+      var event = this.getEventById(eventId);
+      if (!event) return false;
+
+      var startDateStr = event[CONFIG.COLUMNS.START_DATE] || event.start_date;
+      var endDateStr = event[CONFIG.COLUMNS.END_DATE] || event.end_date;
+      var startTimeStr = event[CONFIG.COLUMNS.START_TIME] || event.start_time || '00:00:00';
+      var endTimeStr = event[CONFIG.COLUMNS.END_TIME] || event.end_time || '23:59:59';
+
+      if (!startDateStr || !endDateStr) return true;
+
+      var startDateTime = new Date(startDateStr + 'T' + startTimeStr);
+      var endDateTime = new Date(endDateStr + 'T' + endTimeStr);
+
+      if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) return true;
+
+      // 2 hours before start until 2 hours after end
+      var windowStart = new Date(startDateTime.getTime() - (2 * 60 * 60 * 1000));
+      var windowEnd = new Date(endDateTime.getTime() + (2 * 60 * 60 * 1000));
+
+      var now = new Date();
+      return (now >= windowStart && now <= windowEnd);
+    } catch (e) {
+      Logger.log("EventService.isAttendanceOpen error: " + e.message);
+      return false;
+    }
+  },
+
+  canScanAttendance: function(eventId) {
+    return this.isAttendanceOpen(eventId);
+  },
+
+  publishEvent: function(eventId, updaterId) {
+    try {
+      if (!eventId) return Utils.buildResponse(false, 'Event ID missing');
+      var event = this.getEventById(eventId);
+      if (!event) return Utils.buildResponse(false, 'Event not found');
+
+      var updates = {
+        [CONFIG.COLUMNS.EVENT_STATUS]: 'Published',
+        'event_status': 'Published',
+        [CONFIG.COLUMNS.UPDATED_BY]: updaterId || 'System',
+        [CONFIG.COLUMNS.UPDATED_AT]: new Date().toISOString()
+      };
+
+      var success = DatabaseService.updateRow(CONFIG.SHEETS.EVENTS, CONFIG.ID_COLUMNS.EVENTS || 'event_id', eventId, updates);
+      if (success) {
+        var organizerId = event.organizer || event[CONFIG.COLUMNS.COORDINATOR_ID] || event.created_by;
+        if (organizerId) {
+          var user = UserService.getUserById(organizerId);
+          if (user && (user.email || user.email_address)) {
+            NotificationService.sendEventPublishedEmail(user.email || user.email_address, event.event_name || event['Event Name']);
+          }
+        }
+        try {
+          AuditService.logAction(updaterId || 'System', 'EventService', 'PUBLISH_EVENT', eventId, 'Event', 'Event published', 'Draft', 'Published', 'SUCCESS', updaterId || 'System');
+        } catch(aErr) {}
+        return Utils.buildResponse(true, 'Event published successfully and is now visible to all participants.');
+      }
+      return Utils.buildResponse(false, 'Failed to publish event.');
+    } catch (e) {
+      Logger.log('EventService.publishEvent error: ' + e.message);
+      return Utils.buildResponse(false, 'Publish event error: ' + e.message);
+    }
   }
+
 };

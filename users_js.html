@@ -101,6 +101,14 @@
       const addUserBtn = document.querySelector('button[data-action="add-user"]');
       if (addUserBtn) addUserBtn.addEventListener('click', () => this.openAddUserModal());
 
+      const facForm = document.getElementById('createFacultyForm');
+      if (facForm) {
+        facForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          this.handleCreateFacultySubmit();
+        });
+      }
+
       const exportBtn = document.querySelector('button[data-action="export-users"]');
       if (exportBtn) exportBtn.addEventListener('click', () => App.ExportBuilder.open('users'));
 
@@ -951,6 +959,93 @@
           App.LoadingManager.hide();
           App.UI.showError("Failed to update user role: " + err.message);
         });
+    },
+
+    handleCreateFacultySubmit: function () {
+      const alertBox = document.getElementById('facultyAlertContainer');
+      const alertText = document.getElementById('facultyAlertText');
+      const btnSave = document.getElementById('btnSaveFaculty');
+      if (alertBox) alertBox.classList.add('d-none');
+
+      const name = (document.getElementById('facName')?.value || '').trim();
+      const employeeId = (document.getElementById('facEmployeeId')?.value || '').trim();
+      const departmentId = (document.getElementById('facDepartment')?.value || '').trim();
+      const designation = (document.getElementById('facDesignation')?.value || '').trim();
+      const phone = (document.getElementById('facPhone')?.value || '').trim();
+      const email = (document.getElementById('facEmail')?.value || '').trim();
+      const username = (document.getElementById('facUsername')?.value || '').trim();
+      const password = (document.getElementById('facTempPassword')?.value || '').trim();
+
+      if (!name || !employeeId || !departmentId || !email || !username || !password) {
+        if (alertBox && alertText) {
+          alertText.textContent = 'Please fill in all required fields marked with *';
+          alertBox.classList.remove('d-none');
+        }
+        return;
+      }
+
+      if (phone && (phone.length !== 10 || isNaN(Number(phone)))) {
+        if (alertBox && alertText) {
+          alertText.textContent = 'Phone Number must be a valid 10-digit number.';
+          alertBox.classList.remove('d-none');
+        }
+        return;
+      }
+
+      const token = localStorage.getItem('sessionToken');
+      const payload = {
+        name: name,
+        employeeId: employeeId,
+        departmentId: departmentId,
+        designation: designation,
+        phone: phone,
+        email: email,
+        username: username,
+        password: password
+      };
+
+      if (btnSave) {
+        btnSave.disabled = true;
+        const spinner = btnSave.querySelector('.spinner-border');
+        if (spinner) spinner.classList.remove('d-none');
+      }
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btnSave) {
+            btnSave.disabled = false;
+            const spinner = btnSave.querySelector('.spinner-border');
+            if (spinner) spinner.classList.add('d-none');
+          }
+
+          if (res && res.success) {
+            App.UI.showSuccess('Faculty member created successfully.');
+            const modalEl = document.getElementById('createFacultyModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+              const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+              modal.hide();
+            }
+            document.getElementById('createFacultyForm')?.reset();
+            this.load();
+          } else {
+            if (alertBox && alertText) {
+              alertText.textContent = res ? res.message : 'Failed to create faculty member.';
+              alertBox.classList.remove('d-none');
+            }
+          }
+        })
+        .withFailureHandler((err) => {
+          if (btnSave) {
+            btnSave.disabled = false;
+            const spinner = btnSave.querySelector('.spinner-border');
+            if (spinner) spinner.classList.add('d-none');
+          }
+          if (alertBox && alertText) {
+            alertText.textContent = 'Connection error: ' + (err?.message || 'Unreachable');
+            alertBox.classList.remove('d-none');
+          }
+        })
+        .createFaculty(token, payload);
     },
 
     refresh: function () {

@@ -117,6 +117,13 @@ function getPageContent(page) {
     if (p === 'forgotpassword') return HtmlService.createTemplateFromFile('ForgotPassword').evaluate().getContent();
     if (p === 'completeprofile') return HtmlService.createTemplateFromFile('CompleteProfile').evaluate().getContent();
     if (p === 'dashboard') return HtmlService.createTemplateFromFile('Admin').evaluate().getContent();
+    if (p === 'eventadmin') {
+      try {
+        return HtmlService.createTemplateFromFile('EventAdmin').evaluate().getContent();
+      } catch (e) {
+        return HtmlService.createTemplateFromFile('Admin').evaluate().getContent();
+      }
+    }
     if (p === 'register' || p === 'registration') return HtmlService.createTemplateFromFile('RegistrationForm').evaluate().getContent();
     if (p === 'coordinator') {
       try {
@@ -169,14 +176,14 @@ function include(filename) {
  * Top-level wrappers for Coordinator Terminal Flow (called directly by GAS google.script.run)
  */
 function processParticipant(sessionToken, rollNumber, eventId) {
-  return Api.processParticipant(sessionToken, rollNumber, eventId);
+  return Controller.CoordinatorTerminal.processParticipant(sessionToken, rollNumber, eventId);
 }
 
 function confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData) {
-  return Api.confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData);
+  return Controller.CoordinatorTerminal.confirmMarkParticipation(sessionToken, rollNumber, eventId, additionalData);
 }
 
 function spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) {
-  return Api.spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData);
+  return Controller.CoordinatorTerminal.spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData);
 }
 

@@ -384,6 +384,10 @@ const NotificationService = {
   // ============================================================
 
   sendEmail: function(recipient, subject, body, options) {
+    if ((typeof SKIP_EMAIL !== 'undefined' && SKIP_EMAIL) || (CONFIG && CONFIG.SKIP_EMAIL) || (options && options.skipEmail)) {
+      Logger.log('[EMAIL BYPASS] Skipping email sending to: ' + recipient);
+      return Utils.buildResponse(true, 'Email dispatch skipped (test mode).');
+    }
     try {
       if (typeof GmailApp !== 'undefined') {
         GmailApp.sendEmail(recipient, subject, body, options || {});
@@ -495,6 +499,43 @@ const NotificationService = {
 
   getNotificationHistory: function(userId) {
     return this.getNotificationsByUser(userId);
+  },
+
+  sendEventAdminWelcomeEmail: function(email, eventName, credentials, eventLink, dates, instructions) {
+    if (!email) return Utils.buildResponse(false, 'Email address missing');
+    const subject = 'Event Admin Assigned: ' + (eventName || 'BVC Event');
+    const body = 'Dear Event Admin,\n\n' +
+      'You have been assigned as an Event Admin for the following event:\n' +
+      'Event Name: ' + (eventName || 'N/A') + '\n' +
+      'Event Dates: ' + (dates || 'N/A') + '\n' +
+      'Event Link: ' + (eventLink || 'N/A') + '\n\n' +
+      'Your Login Credentials:\n' +
+      'Username / ID: ' + (credentials.username || credentials.userId || email) + '\n' +
+      'Temporary Password: ' + (credentials.password || 'Contact Admin') + '\n\n' +
+      'Instructions:\n' + (instructions || 'Please log in to complete event draft setup and publish the event.') + '\n\n' +
+      'Best regards,\nBVC Event Management Team';
+    return this.sendEmail(email, subject, body);
+  },
+
+  sendEventApprovedEmail: function(email, eventName) {
+    if (!email) return Utils.buildResponse(false, 'Email address missing');
+    const subject = 'Event Approved: ' + (eventName || 'BVC Event');
+    const body = 'Dear Faculty,\n\nYour event creation request for "' + eventName + '" has been approved by the Administration / HOD. You are now the Event Admin for this event.\n\nBest regards,\nBVC Event Management Team';
+    return this.sendEmail(email, subject, body);
+  },
+
+  sendCoordinatorAssignmentEmail: function(email, eventName, role) {
+    if (!email) return Utils.buildResponse(false, 'Email address missing');
+    const subject = 'Coordinator Assignment: ' + (eventName || 'BVC Event');
+    const body = 'Dear Coordinator,\n\nYou have been assigned as ' + (role || 'Coordinator') + ' for the event "' + eventName + '".\n\nBest regards,\nBVC Event Management Team';
+    return this.sendEmail(email, subject, body);
+  },
+
+  sendEventPublishedEmail: function(email, eventName) {
+    if (!email) return Utils.buildResponse(false, 'Email address missing');
+    const subject = 'Event Published: ' + (eventName || 'BVC Event');
+    const body = 'Hello,\n\nThe event "' + eventName + '" is now officially published and open for registrations.\n\nBest regards,\nBVC Event Management Team';
+    return this.sendEmail(email, subject, body);
   }
 
 };
