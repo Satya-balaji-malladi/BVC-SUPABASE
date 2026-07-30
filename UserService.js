@@ -1268,15 +1268,16 @@ const UserService = {
         }
       }
 
-      // Update users table: ONLY profile_completed = true, online status & timestamps!
+      // Update users table with correct Supabase column names (snake_case)
       var sheetName = this._mustUsersSheet();
-      var updates = {};
-      updates[CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'ProfileCompleted'] = true;
-      updates['profile_completed'] = true;
-      updates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
-      updates[CONFIG.COLUMNS.USER_LAST_LOGIN_TS || 'LastLogin'] = new Date().toISOString();
+      var updates = {
+        'profile_completed': true,
+        'first_login': false,
+        'last_login_timestamp': new Date().toISOString(),
+        'updated_at': new Date().toISOString()
+      };
 
-      var success = DatabaseService.updateRow(sheetName, CONFIG.COLUMNS.USER_ID || 'User ID', userId, updates);
+      var success = DatabaseService.updateRow(sheetName, 'user_id', userId, updates);
       if (!success) {
         return Utils.buildResponse(false, 'Failed to save profile changes to database.');
       }
