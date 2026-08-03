@@ -20,7 +20,7 @@
     const confirmModalEl = document.getElementById('confirmModal');
     const confirmModalSubmitBtn = document.getElementById('confirmModalSubmitBtn');
     const appToastEl = document.getElementById('appToast');
-    
+
     let bsConfirmModal = null;
     let bsAppToast = null;
 
@@ -67,13 +67,14 @@
 
       const navMonitoring = document.getElementById('nav-item-monitoring');
       if (navMonitoring) {
-        if (userRole === 'HOD' || isEventAdmin) {
+        if (isHOD || isEventAdmin) {
           navMonitoring.classList.add('d-none');
         } else {
           navMonitoring.classList.remove('d-none');
         }
       }
 
+      // Hide Students navigation specifically in Event Admin screen
       const navStudents = document.getElementById('nav-item-students');
       if (navStudents) {
         if (isEventAdmin) {
@@ -100,7 +101,7 @@
      */
     function loadPage(pageName) {
       console.log(`Page layout swap requested for destination component: ${pageName}.html`);
-      
+
       // Auto-close sidebar on mobile/tablet viewports
       if (sidebar && sidebar.classList.contains('mobile-open')) {
         sidebar.classList.remove('mobile-open');
@@ -113,21 +114,21 @@
       if (App.State.activeModule && App.Modules[App.State.activeModule] && typeof App.Modules[App.State.activeModule].destroy === 'function') {
         try {
           App.Modules[App.State.activeModule].destroy();
-        } catch(e) {
+        } catch (e) {
           console.error("Failed to destroy module:", App.State.activeModule, e);
         }
       }
-      
+
       showLoader();
-      
+
       google.script.run
-        .withSuccessHandler(function(html) {
+        .withSuccessHandler(function (html) {
           hideLoader();
-          
+
           const container = document.getElementById('pageContainer');
           if (container) {
             container.innerHTML = html;
-            
+
             // Re-evaluate scripts in the injected HTML
             const scripts = container.querySelectorAll('script');
             scripts.forEach(oldScript => {
@@ -137,25 +138,25 @@
               oldScript.parentNode.replaceChild(newScript, oldScript);
             });
           }
-          
+
           setPageTitle(pageName);
           setActiveMenu(pageName);
-          
+
           if (typeof App !== 'undefined' && App.State) {
             App.State.activeModule = pageName.toLowerCase();
           }
-          
+
           // Optionally update the history state for navigation (ignore if it fails in iframe sandbox)
           try {
             if (typeof google !== 'undefined' && google.script && google.script.history && typeof google.script.history.push === 'function') {
-               google.script.history.push(null, { page: pageName.toLowerCase() }, null);
+              google.script.history.push(null, { page: pageName.toLowerCase() }, null);
             }
-          } catch(e) {
+          } catch (e) {
             console.warn("History push ignored in iframe context:", e);
           }
-          
+
         })
-        .withFailureHandler(function(error) {
+        .withFailureHandler(function (error) {
           hideLoader();
           showToast(`Error loading component: ${error.message}`, false);
         })
@@ -179,12 +180,12 @@
     function showToast(message, isInfo = true) {
       const toastText = document.getElementById('toastText');
       const toastIcon = document.getElementById('toastIcon');
-      
+
       if (!toastText || !bsAppToast) return;
-      
+
       toastText.textContent = message;
       toastIcon.className = isInfo ? 'bi bi-info-circle flex-shrink-0 text-primary' : 'bi bi-check-circle flex-shrink-0 text-success';
-      
+
       bsAppToast.show();
     }
 
@@ -208,15 +209,15 @@
       if (confirmModalText) {
         confirmModalText.textContent = message;
       }
-      
+
       if (!bsConfirmModal) return;
-      
+
       const currentSubmitBtn = document.getElementById('confirmModalSubmitBtn');
       if (currentSubmitBtn) {
         // Flush previous event capture patterns by clone substitution assignment
         const newSubmitBtn = currentSubmitBtn.cloneNode(true);
         currentSubmitBtn.parentNode.replaceChild(newSubmitBtn, currentSubmitBtn);
-        
+
         newSubmitBtn.addEventListener('click', () => {
           bsConfirmModal.hide();
           if (typeof onConfirmCallback === 'function') {
@@ -224,7 +225,7 @@
           }
         });
       }
-      
+
       bsConfirmModal.show();
     }
 
@@ -234,7 +235,7 @@
     function logout() {
       console.log('Logout protocol initiated. Dispatched clearing execution handles...');
       showLoader();
-      
+
       if (window.App && window.App.Auth && typeof window.App.Auth.logout === 'function') {
         window.App.Auth.logout();
       } else {
@@ -278,7 +279,7 @@
       const btnTheme = document.getElementById('btnThemeToggle');
       const sunIcon = document.getElementById('themeSunIcon');
       const moonIcon = document.getElementById('themeMoonIcon');
-      
+
       let currentTheme = localStorage.getItem('appTheme') || 'light';
       document.documentElement.setAttribute('data-theme', currentTheme);
       updateThemeIcons(currentTheme);
@@ -307,7 +308,7 @@
       const modalPalette = new bootstrap.Modal(document.getElementById('commandPaletteModal'));
       const txtSearch = document.getElementById('txtCommandSearch');
       const lstResults = document.getElementById('lstCommandResults');
-      
+
       const commands = [
         { name: 'Go to Dashboard', action: () => loadPage('Dashboard'), icon: 'bi-grid-1x2-fill' },
         { name: 'Manage Events', action: () => loadPage('Events'), icon: 'bi-calendar-event-fill' },
@@ -337,7 +338,7 @@
       function renderCommandResults(query) {
         const q = query.toLowerCase().trim();
         const filtered = commands.filter(c => c.name.toLowerCase().includes(q));
-        
+
         if (filtered.length === 0) {
           lstResults.innerHTML = '<div class="p-3 text-muted text-center small">No commands matched query</div>';
           return;
@@ -365,50 +366,60 @@
     // Structural platform execution context init parameters setup on launch
     setNotificationBadgeCount(0); // Pass values > 0 to expose the indicator anchor badge element dynamically
     window.loadPage = loadPage;
-    
+
     // First-Time Login Detection & Setup Handler
     function checkAndPromptFirstLogin() {
       const token = localStorage.getItem('sessionToken');
       if (!token) return;
 
       google.script.run
-        .withSuccessHandler(function(res) {
+        .withSuccessHandler(function (res) {
           if (res && res.success && res.user) {
             if (typeof App !== 'undefined' && App.State) {
               App.State.currentUser = res.user;
             }
-            const isFirstLogin = res.user.first_login === true || 
-                                 res.user.first_login === 'true' || 
-                                 res.user['First Login'] === true || 
-                                 res.user['First Login'] === 'true' || 
-                                 res.user.first_login === 1;
+            const isFirstLogin = res.user.first_login === true ||
+              res.user.first_login === 'true' ||
+              res.user['First Login'] === true ||
+              res.user['First Login'] === 'true' ||
+              res.user.first_login === 1;
 
-            // First-time login prompt is available on demand if requested
-            console.log("User session authenticated:", res.user.username);
+            const uname = res.user.username || res.user.Username || res.user['User ID'] || res.user.user_id || 'User';
+            console.log("User session authenticated:", uname);
           }
         })
         .authenticate(token);
     }
 
-    // Automatically load the Dashboard component when the shell initializes
-    // First, check if there's a specific page requested in the URL
+    // Automatically load the appropriate component when the shell initializes based on userRole and URL
+    const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
+    let defaultPage = 'Dashboard';
+    if (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'EVENTADMIN') {
+      defaultPage = 'EventAdmin';
+    }
+
     if (google && google.script && google.script.url) {
-      google.script.url.getLocation(function(location) {
-        let requestedPage = location.parameter.page || 'Dashboard';
-        
+      google.script.url.getLocation(function (location) {
+        let requestedPage = location.parameter.page || defaultPage;
+
         // Prevent loading login inside the shell
         if (requestedPage.toLowerCase() === 'login' || requestedPage.toLowerCase() === 'forgotpassword') {
-          requestedPage = 'Dashboard';
+          requestedPage = defaultPage;
         }
-        
-        // Capitalize first letter to match component filename
-        requestedPage = requestedPage.charAt(0).toUpperCase() + requestedPage.slice(1).toLowerCase();
+
+        // Standardize component filename casing
+        if (requestedPage.toLowerCase() === 'eventadmin') {
+          requestedPage = 'EventAdmin';
+        } else {
+          requestedPage = requestedPage.charAt(0).toUpperCase() + requestedPage.slice(1).toLowerCase();
+        }
+
         loadPage(requestedPage);
         checkAndPromptFirstLogin();
       });
     } else {
       // Fallback
-      loadPage('Dashboard');
+      loadPage(defaultPage);
       checkAndPromptFirstLogin();
     }
   });

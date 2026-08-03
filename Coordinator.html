@@ -73,6 +73,7 @@
   </script>
   <?!= include('common_css'); ?>
   <?!= include('coordinator_attendance_css'); ?>
+  <?!= include('forms_css'); ?>
   <script>
     // Inject session token from backend template parameter to bypass iframe query limitations
     window.SESSION_TOKEN_FROM_BACKEND = "<?= token ?>";
@@ -81,6 +82,10 @@
 </head>
 
 <body>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <?!= include('forms_modals'); ?>
+  <?!= include('forms_js'); ?>
+  <?!= include('coordinator_attendance_js'); ?>
 
   <!-- App Shell -->
   <div class="coord-app" id="coord-app">
@@ -348,231 +353,7 @@
 
     </main>
 
-    <!-- ===================== SCAN VERIFICATION MODAL ===================== -->
-    <div class="modal fade" id="scanVerificationModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered px-3" style="max-width:440px;">
-        <div class="modal-content border-0" style="border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-          <div class="modal-header border-0 py-3 bg-primary text-white" style="border-radius:20px 20px 0 0;">
-            <h5 class="modal-title fw-bold mb-0"><i class="bi bi-shield-check me-2"></i>Verify Student Profile</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body p-4 text-center">
-            <div class="avatar-circle bg-light text-primary mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle" style="width:70px; height:70px; font-size:2rem;">
-              <i class="bi bi-person-fill"></i>
-            </div>
-            <h4 class="fw-bold text-dark mb-1" id="verif-name">--</h4>
-            <div class="badge bg-secondary mb-3 fs-6" id="verif-roll">--</div>
 
-            <div class="card bg-light border-0 p-3 text-start mb-3" style="border-radius:12px;">
-              <div class="row g-2">
-                <div class="col-6">
-                  <span class="small text-muted d-block">DEPARTMENT / BRANCH</span>
-                  <strong class="text-dark small" id="verif-dept">--</strong>
-                </div>
-                <div class="col-6">
-                  <span class="small text-muted d-block">YEAR OF STUDY</span>
-                  <strong class="text-dark small" id="verif-year">--</strong>
-                </div>
-                <div class="col-12 border-top pt-2 mt-2" id="verif-college-row">
-                  <span class="small text-muted d-block">COLLEGE / INSTITUTION</span>
-                  <strong class="text-dark small" id="verif-college">BVC Engineering College</strong>
-                </div>
-              </div>
-            </div>
-
-            <!-- Dynamic Missing Event Admin Required Fields -->
-            <div id="verif-missing-fields-container" class="text-start mb-3 d-none">
-              <div class="alert alert-warning border-0 small py-2 px-3 mb-2" style="border-radius:10px;">
-                <i class="bi bi-exclamation-triangle-fill me-1"></i><strong>Missing Event Admin Fields:</strong> Complete required details below before marking attendance.
-              </div>
-              <div id="verif-missing-fields-inputs" class="row g-2"></div>
-            </div>
-
-            <div class="d-flex gap-2">
-              <button type="button" class="btn btn-light w-50 fw-bold py-2" style="border-radius:12px;" data-bs-dismiss="modal">Cancel</button>
-              <button type="button" id="btn-confirm-attendance-verif" class="btn btn-success w-50 fw-bold py-2" style="border-radius:12px;">Confirm &amp; Mark</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== TOAST NOTIFICATION ===================== -->
-    <div class="coord-toast-stack" id="coord-toast-stack" aria-live="assertive" aria-atomic="true"></div>
-
-  </div><!-- /coord-app -->
-
-  <!-- ===================== SPOT REGISTRATION MODAL ===================== -->
-  <div class="modal fade" id="spotRegistrationModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
-    aria-labelledby="spotRegistrationModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered px-3" style="max-width:480px;">
-      <div class="modal-content border-0" style="border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-        <div class="modal-header border-0 py-3"
-          style="background:linear-gradient(135deg,#2563EB,#1D4ED8);border-radius:20px 20px 0 0;">
-          <h5 class="modal-title fw-bold text-white" id="spotRegistrationModalLabel">
-            <i class="bi bi-person-plus-fill me-2"></i>Spot Enrollment
-          </h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-            aria-label="Close spot enrollment modal" id="btn-close-spot-modal"></button>
-        </div>
-        <div class="modal-body p-4">
-
-          <!-- Open Event View -->
-          <div id="spot-open-event-view" class="d-none">
-            <div class="alert border-0 small mb-3"
-              style="border-radius:12px;background:rgba(37,99,235,0.08);color:#1D4ED8;">
-              <i class="bi bi-info-circle-fill me-2"></i><strong>Open Event Check-in</strong>: Add student to
-              attendance?
-            </div>
-            <p class="small text-muted mb-4">ID <strong id="spot-open-roll-display" class="text-dark"></strong> is not
-              registered. Click <strong>Add to Attendance</strong> to mark their attendance.</p>
-            <div class="d-flex gap-2">
-              <button type="button" class="btn btn-light w-50 fw-bold" data-bs-dismiss="modal"
-                style="border-radius:12px;padding:12px;">Cancel</button>
-              <button type="button" id="btn-confirm-spot-open" class="btn btn-primary w-50 fw-bold"
-                style="border-radius:12px;padding:12px;">Add to Attendance</button>
-            </div>
-          </div>
-
-          <!-- Fixed Event Form View -->
-          <div id="spot-fixed-event-view" class="d-none">
-            <div class="alert border-0 small mb-3"
-              style="border-radius:12px;background:rgba(245,158,11,0.1);color:#B45309;">
-              <i class="bi bi-exclamation-triangle-fill me-2"></i>ID <strong id="spot-fixed-roll-display"></strong> is
-              not registered. Do you want to spot register them?
-            </div>
-
-            <form id="spot-registration-form" onsubmit="return false;">
-              <input type="hidden" id="spot-roll-input">
-
-              <!-- Student Type Dropdown -->
-              <div class="mb-3">
-                <label for="spot-student-type-select" class="form-label small fw-bold text-secondary">Student Type</label>
-                <select class="form-select fw-bold text-primary" id="spot-student-type-select" style="border-radius:10px;padding:10px;">
-                  <option value="BVC" selected>BVC STUDENT</option>
-                  <option value="OTHER">OTHER COLLEGE STUDENT</option>
-                </select>
-              </div>
-
-              <div class="mb-3">
-                <label for="spot-name-input" class="form-label small fw-bold text-secondary">Student Full Name</label>
-                <input type="text" class="form-control" id="spot-name-input" placeholder="e.g. Satya Balaji" required
-                  style="border-radius:10px;padding:10px;">
-              </div>
-
-              <div class="row g-2 mb-3">
-                <div class="col-6">
-                  <label for="spot-email-input" class="form-label small fw-bold text-secondary">Email Address</label>
-                  <input type="email" class="form-control" id="spot-email-input" placeholder="student@gmail.com"
-                    style="border-radius:10px;padding:10px;">
-                </div>
-                <div class="col-6">
-                  <label for="spot-phone-input" class="form-label small fw-bold text-secondary">Phone Number</label>
-                  <input type="tel" class="form-control" id="spot-phone-input" placeholder="9876543210"
-                    style="border-radius:10px;padding:10px;">
-                </div>
-              </div>
-
-              <div class="mb-3" id="spot-college-container">
-                <label for="spot-college-input" class="form-label small fw-bold text-secondary">College Name</label>
-                <input class="form-control" list="college-datalist" id="spot-college-input"
-                  placeholder="Type to search college..." required style="border-radius:10px;padding:10px;">
-              </div>
-                <datalist id="college-datalist">
-                  <option value="ABR College of Engineering and Technology">
-                  <option value="Adarsh College of Engineering">
-                  <option value="Aditya College of Engineering">
-                  <option value="Aditya College of Engineering and Technology">
-                  <option value="Aditya Engineering College">
-                  <option value="Aditya Engineering College for Women">
-                  <option value="Anil Neerukonda Institute of Technology and Sciences">
-                  <option value="Andhra University College of Engineering">
-                  <option value="ANU College of Engineering and Technology">
-                  <option value="Annamacharya Institute of Technology and Sciences, Rajampet">
-                  <option value="Annamacharya Institute of Technology and Sciences, Tirupati">
-                  <option value="A.K.R.G. College of Engineering and Technology">
-                  <option value="Bapatla Engineering College">
-                  <option value="BITS Vizag">
-                  <option value="Bonam Venkata Chalamayya Engineering College">
-                  <option value="BVC Institute of Technology and Science">
-                  <option value="Chadalawada Ramanamma Engineering College">
-                  <option value="Chalapathi Institute of Engineering and Technology">
-                  <option value="Chaitanya Institute of Engineering and Technology">
-                  <option value="Dadi Institute of Engineering and Technology">
-                  <option value="Dr. K.V. Subba Reddy Institute of Technology">
-                  <option value="Dhanekula Institute of Engineering and Technology">
-                  <option value="D.M.S.S.V.H. College of Engineering">
-                  <option value="DNR College of Engineering and Technology">
-                  <option value="DVR & Dr. HS MIC College of Technology">
-                  <option value="Eluru College of Engineering and Technology">
-                  <option value="Guntur Engineering College">
-                  <option value="GMR Institute of Technology">
-                  <option value="Gayatri Vidya Parishad College of Engineering">
-                  <option value="Gayatri Vidya Parishad College of Engineering for Women">
-                  <option value="JNTUA College of Engineering, Anantapur">
-                  <option value="JNTUK University College of Engineering, Kakinada">
-                  <option value="KL College of Engineering">
-                  <option value="Lakireddy Bali Reddy College of Engineering">
-                  <option value="Lendi Institute of Engineering and Technology">
-                  <option value="NRI Institute of Technology">
-                  <option value="PACE Institute of Technology and Sciences">
-                  <option value="Pragati Engineering College">
-                  <option value="Prasad V. Potluri Siddhartha Institute of Technology">
-                  <option value="RVR & JC College of Engineering">
-                  <option value="Sasi Institute of Technology and Engineering">
-                  <option value="SRKR Engineering College">
-                  <option value="SRM University AP">
-                  <option value="Sri Venkateswara College of Engineering">
-                  <option value="Vasireddy Venkatadri Institute of Technology">
-                  <option value="Vignan's Institute of Information Technology">
-                  <option value="Vignan's Lara Institute of Technology and Science">
-                  <option value="YSR Engineering College of Yogi Vemana University">
-                </datalist>
-              </div>
-              <div class="row g-2 mb-3">
-                <div class="col-6">
-                  <label for="spot-dept-select" class="form-label small fw-bold text-secondary">Branch</label>
-                  <select class="form-select" id="spot-dept-select" style="border-radius:10px;padding:10px;">
-                    <option value="CSE" selected>CSE</option>
-                    <option value="CSE-AIML">CSE (AI & ML)</option>
-                    <option value="CSE-DS">CSE (Data Science)</option>
-                    <option value="ECE">ECE</option>
-                    <option value="EEE">EEE</option>
-                    <option value="MECH">MECH</option>
-                    <option value="CIVIL">CIVIL</option>
-                    <option value="IT">IT</option>
-                    <option value="OTHERS">Others</option>
-                  </select>
-                </div>
-                <div class="col-6">
-                  <label for="spot-year-select" class="form-label small fw-bold text-secondary">Year of Study</label>
-                  <select class="form-select" id="spot-year-select" style="border-radius:10px;padding:10px;">
-                    <option value="1" selected>1st Year</option>
-                    <option value="2">2nd Year</option>
-                    <option value="3">3rd Year</option>
-                    <option value="4">4th Year</option>
-                  </select>
-                </div>
-              </div>
-              <div class="mb-3 d-none" id="spot-dept-other-container">
-                <label for="spot-dept-other-input" class="form-label small fw-bold text-secondary">Specify
-                  Branch</label>
-                <input type="text" class="form-control" id="spot-dept-other-input"
-                  placeholder="e.g. Artificial Intelligence" style="border-radius:10px;padding:10px;">
-              </div>
-              <div class="d-flex gap-2 mt-4">
-                <button type="button" class="btn btn-light w-50 fw-bold" data-bs-dismiss="modal"
-                  style="border-radius:12px;padding:12px;">Cancel</button>
-                <button type="submit" id="btn-confirm-spot-reg" class="btn btn-primary w-50 fw-bold"
-                  style="border-radius:12px;padding:12px;">Register &amp; Mark</button>
-              </div>
-            </form>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- Floating Camera Debug Panel Trigger (Visible only if DEBUG_MODE is active) -->
   <div id="camera-debug-trigger-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;">
@@ -670,8 +451,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-  <?!= include('coordinator_attendance_js'); ?>
+
 </body>
 
 </html>

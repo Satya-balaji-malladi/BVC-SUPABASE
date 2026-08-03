@@ -91,6 +91,63 @@ const AnalyticsService = {
     return Number(((present / total) * 100).toFixed(2));
   },
 
+  /**
+   * Generates single-event scoped analytics graphs & metric breakdowns.
+   * Scoped strictly to the selected eventId.
+   */
+  getSingleEventAnalytics: function (sessionToken, eventId) {
+    return SessionService.withSession(sessionToken, function (userId) {
+      try {
+        if (!eventId) return Utils.buildResponse(false, 'Target Event ID required.');
+
+        var attendanceLogs = DatabaseService.findByColumn(CONFIG.TABLES.ATTENDANCE, 'event_id', eventId, { strict: true }) || [];
+        var allStudents = DatabaseService.selectAll(CONFIG.TABLES.STUDENTS) || [];
+
+        var studentMap = {};
+        allStudents.forEach(function (s) {
+          var r = String(s.roll_number || s['Roll Number'] || '').toUpperCase().trim();
+          if (r) studentMap[r] = s;
+        });
+
+        var deptWise = {};
+        var yearWise = {};
+        var hourlyWise = {};
+        var collegeWise = {};
+
+        attendanceLogs.forEach(function (att) {
+          var roll = String(att.roll_number || att['Roll Number'] || '').toUpperCase().trim();
+          var sObj = studentMap[roll] || {};
+
+          var dept = sObj.department_id || sObj['Department ID'] || 'CSE';
+          deptWise[dept] = (deptWise[dept] || 0) + 1;
+
+          var year = 'Year ' + (sObj.year || sObj.Year || 1);
+          yearWise[year] = (yearWise[year] || 0) + 1;
+
+          var college = sObj.college || sObj.College || 'BVC';
+          collegeWise[college] = (collegeWise[college] || 0) + 1;
+
+          var dt = new Date(att.attendance_timestamp || att.created_at);
+          var hr = !isNaN(dt.getTime()) ? dt.getHours() + ':00' : 'Unknown';
+          hourlyWise[hr] = (hourlyWise[hr] || 0) + 1;
+        });
+
+        return Utils.buildResponse(true, 'Single event analytics retrieved.', {
+          eventId: eventId,
+          totalPresent: attendanceLogs.length,
+          deptWise: deptWise,
+          yearWise: yearWise,
+          collegeWise: collegeWise,
+          hourlyWise: hourlyWise
+        });
+
+      } catch (e) {
+        Logger.log('[ERROR][AnalyticsService.getSingleEventAnalytics] ' + (e.message || e));
+        return Utils.buildResponse(false, 'Failed to fetch single event analytics: ' + (e.message || e));
+      }
+    });
+  },
+
   getAnalyticsSummary: function(userId) {
     try {
       const cacheKey = this._getAnalyticsCacheKey(userId, 'summary');

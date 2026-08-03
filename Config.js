@@ -54,7 +54,16 @@ const CONFIG = {
     STUDENTS: "Students",
     OTHER_COLLEGE_STUDENTS: "OtherCollegeStudents",
     SYSTEM_HEALTH_LOGS: "SystemHealthLogs",
-    USERS: "Users"
+    USERS: "Users",
+    FACULTY: "Faculty",
+    ROLES: "roles",
+    PERMISSIONS: "permissions",
+    DEPARTMENT_HODS: "department_hods",
+    EVENT_ASSIGNMENTS: "event_assignments",
+    AUDIT_LOGS: "audit_logs",
+    NOTIFICATIONS: "notifications",
+    FACULTY: "faculty",
+    GUEST_COORDINATORS: "guest_coordinators"
   },
 
   /**
@@ -237,8 +246,10 @@ const CONFIG = {
     SESSIONS: 'Session ID',
     SETTINGS: 'Setting ID',
     STUDENTS: "Student ID",
+    GUEST_COORDINATORS: "id",
     SYSTEM_HEALTH_LOGS: 'Log ID',
-    USERS: 'User ID'
+    USERS: 'User ID',
+    FACULTY: 'Faculty ID'
   },
 
   /** @type {Object.<string, {prefix: string, digits: number}>} */
@@ -256,6 +267,7 @@ const CONFIG = {
     EVENT_PARTICIPANTS: { prefix: 'PAR', digits: 5 },
     EVENT_SESSIONS: { prefix: 'SLT', digits: 6 },
     EVENTS: { prefix: 'EVT', digits: 4 },
+    FACULTY: { prefix: 'FAC', digits: 5 },
     GENERATED_REPORTS: { prefix: 'RPT', digits: 6 },
     LMS_INTEGRATIONS: { prefix: 'MAP', digits: 6 },
     NOTIFICATION_TEMPLATES: { prefix: 'TPL', digits: 3 },
@@ -264,7 +276,8 @@ const CONFIG = {
     SETTINGS: { prefix: 'SET', digits: 3 },
     SYSTEM_HEALTH_LOGS: { prefix: 'HMT', digits: 6 },
     USERS: { prefix: 'USR', digits: 4 },
-    STUDENTS: { prefix: 'STU', digits: 5 }
+    STUDENTS: { prefix: 'STU', digits: 5 },
+    GUEST_COORDINATORS: { prefix: 'GCO', digits: 5 }
   },
 
   REQUIRED_FIELDS: {
@@ -378,10 +391,10 @@ const CONFIG = {
 
   SECURITY: {
     SESSION_TIMEOUT_MINUTES: 480,
-    PASSWORD_HASH_ALGO: 'SHA-256',
+    PASSWORD_HASH_ALGO: 'PLAIN',
     MAX_LOGIN_ATTEMPTS: 15,
     MAX_OTP_ATTEMPTS: 10,
-    PASSWORD_MIN_LENGTH: 8,
+    PASSWORD_MIN_LENGTH: 1,
     ALLOW_MULTIPLE_SESSIONS: false,
     OTP_EXPIRY_MINUTES: 10,
     SESSION_CACHE_TTL_SECONDS: 300,
@@ -486,6 +499,16 @@ CONFIG.MESSAGES.LOGOUT_FAILED = CONFIG.MESSAGES.LOGOUT_FAILED || 'Logout failed.
 CONFIG.MESSAGES.AUTH_SUCCESS = CONFIG.MESSAGES.AUTH_SUCCESS || 'Authentication successful.';
 CONFIG.MESSAGES.SESSION_INVALID = CONFIG.MESSAGES.SESSION_INVALID || 'Session is invalid.';
 CONFIG.MESSAGES.USER_NOT_FOUND_SESSION = CONFIG.MESSAGES.USER_NOT_FOUND_SESSION || 'User not found for session.';
+
+CONFIG.EVENT_STATUS = CONFIG.EVENT_STATUS || {
+  UPCOMING: 'Upcoming',
+  ACTIVE: 'Active',
+  ONGOING: 'Ongoing',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  STOPPED: 'Stopped',
+  DRAFT: 'Draft'
+};
 
 CONFIG.MESSAGES.USER_NOT_FOUND = CONFIG.MESSAGES.USER_NOT_FOUND || 'User not found.';
 CONFIG.MESSAGES.USER_RECORD_MISSING = CONFIG.MESSAGES.USER_RECORD_MISSING || 'User record missing.';

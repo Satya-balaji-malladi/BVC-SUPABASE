@@ -8,12 +8,12 @@
     settingsData: {},
     auditLogs: [],
     filteredAudits: [],
-    
+
     // Pagination for Audits
     currentAuditPage: 1,
     auditsPerPage: 15,
 
-    init: function() {
+    init: function () {
       console.log('Settings module init');
       this.bindEvents();
       this.loadSettings();
@@ -21,7 +21,7 @@
       this.loadDepartments();
     },
 
-    bindEvents: function() {
+    bindEvents: function () {
       // General Settings form
       const genForm = document.getElementById('generalSettingsForm');
       if (genForm) {
@@ -133,7 +133,7 @@
       }
     },
 
-    enforceRoleVisibility: function() {
+    enforceRoleVisibility: function () {
       const user = (App.State && App.State.currentUser) || App.Auth.currentUser || {};
       const rawRole = String(user.role || user.Role || localStorage.getItem('userRole') || 'Coordinator').toUpperCase().trim();
       const isSuperAdmin = (rawRole === 'SUPER ADMIN' || rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN');
@@ -168,7 +168,7 @@
       }
     },
 
-    loadSettings: function() {
+    loadSettings: function () {
       App.LoadingManager.show();
       App.API._call('getSettings')
         .then(res => {
@@ -182,7 +182,7 @@
           if (document.getElementById('setPagination')) document.getElementById('setPagination').value = d.pagination || '10';
           if (document.getElementById('setTheme')) document.getElementById('setTheme').value = d.theme || 'light';
           if (document.getElementById('setLanguage')) document.getElementById('setLanguage').value = d.language || 'en';
-          
+
           if (document.getElementById('setNotificationsEnabled')) {
             document.getElementById('setNotificationsEnabled').checked = d.notificationsEnabled !== false;
           }
@@ -212,7 +212,7 @@
         });
     },
 
-    saveDepartmentStructure: function() {
+    saveDepartmentStructure: function () {
       const payload = {
         hodDeptName: document.getElementById('hodDeptName')?.value || '',
         hodDeptCode: document.getElementById('hodDeptCode')?.value || '',
@@ -234,7 +234,7 @@
         });
     },
 
-    saveGeneralSettings: function() {
+    saveGeneralSettings: function () {
       const form = document.getElementById('generalSettingsForm');
       if (!form.checkValidity()) {
         form.classList.add('was-validated');
@@ -253,7 +253,7 @@
       this.executeSave(payload);
     },
 
-    saveRulesSettings: function() {
+    saveRulesSettings: function () {
       const form = document.getElementById('attendanceRulesForm');
       if (!form.checkValidity()) {
         form.classList.add('was-validated');
@@ -268,7 +268,7 @@
       this.executeSave(payload);
     },
 
-    executeSave: function(payload) {
+    executeSave: function (payload) {
       App.LoadingManager.show();
       App.API._call('saveSettings', payload)
         .then(res => {
@@ -287,7 +287,7 @@
         });
     },
 
-    handleWipeAttendance: function() {
+    handleWipeAttendance: function () {
       if (confirm("WARNING: Are you sure you want to CLEAR all attendance check-in records? This action cannot be undone and will erase all scan logs!")) {
         App.LoadingManager.show();
         App.API._call('clearAttendanceLogs')
@@ -306,7 +306,7 @@
       }
     },
 
-    handleResetSystem: function() {
+    handleResetSystem: function () {
       if (confirm("CRITICAL WARNING: You are about to RESET the entire system! This will delete all attendance logs, participant lists, and scheduled events. Do you want to proceed?")) {
         if (confirm("DOUBLE CONFIRMATION REQUIRED: This will return the application to an empty state. Type 'OK' in the next window if you are absolutely certain.")) {
           const verify = prompt("Type 'RESET' to finalize clean system reset:");
@@ -331,7 +331,7 @@
       }
     },
 
-    loadAuditLogs: function() {
+    loadAuditLogs: function () {
       const tbody = document.getElementById('auditLogsTableBody');
       if (tbody) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-secondary me-2"></div>Fetching audit logs trail...</td></tr>';
@@ -357,7 +357,7 @@
         });
     },
 
-    filterAuditLogs: function(keyword) {
+    filterAuditLogs: function (keyword) {
       if (!keyword) {
         this.filteredAudits = [...this.auditLogs];
       } else {
@@ -377,7 +377,7 @@
       this.renderAuditTable();
     },
 
-    renderAuditTable: function() {
+    renderAuditTable: function () {
       const tbody = document.getElementById('auditLogsTableBody');
       if (!tbody) return;
 
@@ -416,7 +416,7 @@
       this.renderAuditPagination(Math.ceil(total / this.auditsPerPage));
     },
 
-    renderAuditPagination: function(totalPages) {
+    renderAuditPagination: function (totalPages) {
       const nav = document.getElementById('auditPagination');
       if (!nav) return;
 
@@ -456,7 +456,7 @@
       });
     },
 
-    exportAuditCSV: function() {
+    exportAuditCSV: function () {
       if (this.filteredAudits.length === 0) {
         App.UI.showInfo("No logs to export.");
         return;
@@ -490,10 +490,10 @@
       App.UI.showSuccess("Audit logs exported to CSV.");
     },
 
-    exportBackupData: function() {
+    exportBackupData: function () {
       // Direct CSV fallback downloader for backup
       App.LoadingManager.show();
-      
+
       // Pull Events list for backup
       App.API._call('getAllEvents')
         .then(events => {
@@ -507,7 +507,7 @@
           let csv = "\uFEFF"; // UTF-8 BOM
           csv += '"Events System Database Backup"\r\n';
           csv += headers.join(",") + "\r\n";
-          
+
           events.forEach(e => {
             csv += [
               e.event_id || e['Event ID'],
@@ -536,12 +536,17 @@
         });
     },
 
-    loadDepartments: function() {
+    loadDepartments: function () {
       const tbody = document.getElementById('departmentsTableBody');
       if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading departments...</td></tr>';
 
       App.API.getAllDepartments()
         .then(depts => {
+          console.log("=== DEPARTMENTS RAW RESPONSE ===", depts);
+          console.log("=== FIRST DEPARTMENT ===",
+            Array.isArray(depts) ? depts[0] :
+              (depts?.data?.departments?.[0] || depts?.data?.[0] || depts?.departments?.[0])
+          );
           let deptsArray = [];
           if (Array.isArray(depts)) {
             deptsArray = depts;
@@ -561,7 +566,7 @@
         });
     },
 
-    renderDepartments: function() {
+    renderDepartments: function () {
       const tbody = document.getElementById('departmentsTableBody');
       if (!tbody) return;
       tbody.innerHTML = '';
@@ -598,7 +603,7 @@
       });
     },
 
-    openDeptModal: function(mode, id) {
+    openDeptModal: function (mode, id) {
       const form = document.getElementById('departmentForm');
       if (!form) return;
       form.reset();
@@ -635,7 +640,7 @@
       }
     },
 
-    saveDepartment: function() {
+    saveDepartment: function () {
       console.log("[DEPT-05] form data collection started");
       const form = document.getElementById('departmentForm');
       if (!form) return;
@@ -659,7 +664,7 @@
       };
 
       console.log("[DEPT-07] calling App.API.createDepartment with payload:", JSON.stringify(deptData));
-      
+
       // Button Loading State Feedback UI
       const saveBtn = document.getElementById('btnSaveDept');
       let originalBtnText = "Save Department";
@@ -684,7 +689,7 @@
           App.UI.showError(res.message || "Failed to save department.");
           return;
         }
-        
+
         console.log("[DEPT-15] frontend success handler displaying UI toast");
         const modalEl = document.getElementById('departmentModal');
         if (modalEl) {
@@ -697,7 +702,7 @@
           document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
           document.body.classList.remove('modal-open');
         }
-        
+
         var isReactivated = res && res.message && res.message.indexOf("reactivated") !== -1;
         var msg = (res && res.message) ? res.message : (mode === 'add' ? "Department created and HOD credentials dispatched!" : "Department updated.");
         if (isReactivated) {
@@ -716,7 +721,7 @@
       });
     },
 
-    deleteDepartment: function(id) {
+    deleteDepartment: function (id) {
       if (!confirm("Are you sure you want to delete this department?")) return;
 
       App.LoadingManager.show();
@@ -732,7 +737,7 @@
         });
     },
 
-    refresh: function() {
+    refresh: function () {
       this.loadSettings();
       if (document.getElementById('audit-panel').classList.contains('show')) {
         this.loadAuditLogs();
@@ -742,7 +747,7 @@
       }
     },
 
-    destroy: function() {
+    destroy: function () {
       // cleanup
     }
   };

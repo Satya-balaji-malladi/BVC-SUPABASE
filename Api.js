@@ -19,6 +19,25 @@ function ping() {
 }
 
 // ==========================================
+// Faculty API
+// ==========================================
+function getFacultyMembers(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyMembers(sessionToken) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
+function getFacultyByDepartment(sessionToken, departmentId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyByDepartment(sessionToken, departmentId) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
+// ==========================================
 // 1. Authentication API
 // ==========================================
 
@@ -62,6 +81,170 @@ function authenticate(sessionToken) {
 }
 
 /**
+ * Retrieves events assigned to the logged in user.
+ * @param {string} sessionToken
+ */
+function getUserAssignedEvents(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Auth.getUserAssignedEvents(sessionToken) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Resolves effective role for selected event.
+ * @param {string} sessionToken
+ * @param {string} eventId
+ */
+function resolveEffectiveRole(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Auth.resolveEffectiveRole(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Creates a new Super Admin account (Super Admin only).
+ * @param {string} sessionToken
+ * @param {object} payload
+ */
+function createSuperAdmin(sessionToken, payload) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.User.createSuperAdmin(sessionToken, payload) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Fetches Cross Department Participation analytics report for HOD.
+ * @param {string} sessionToken
+ * @param {object} filters
+ */
+function getHodCrossDeptReport(sessionToken, filters) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Hod.getCrossDepartmentReport(sessionToken, filters) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Retrieves Event Admin dashboard metrics and details for selected event.
+ * @param {string} sessionToken
+ * @param {string} eventId
+ */
+function getEventAdminDashboard(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.getDashboard(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Assigns or creates inline coordinator for event.
+ * @param {string} sessionToken
+ * @param {string} eventId
+ * @param {object} payload
+ */
+function assignEventCoordinator(sessionToken, eventId, payload) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.assignCoordinator(sessionToken, eventId, payload) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Removes assignment from event.
+ * @param {string} sessionToken
+ * @param {string} assignmentId
+ * @param {string} remarks
+ */
+function removeEventAssignment(sessionToken, assignmentId, remarks) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.removeAssignment(sessionToken, assignmentId, remarks) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Single event scoped report endpoint.
+ */
+function getSingleEventReport(sessionToken, eventId, statusFilter) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.getSingleEventReport(sessionToken, eventId, statusFilter) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Single event scoped analytics endpoint.
+ */
+function getSingleEventAnalytics(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.EventAdmin.getSingleEventAnalytics(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+/**
+ * Restores an existing authenticated session.
+ * Used by Login page for automatic login after refresh/reopen.
+ *
+ * @param {string} sessionToken Existing session token.
+ * @returns {object} Session restoration result with Admin HTML.
+ */
+function restoreSession(sessionToken) {
+  try {
+    if (!sessionToken) {
+      return {
+        success: false,
+        message: 'Session token missing.'
+      };
+    }
+
+    // Validate existing session using the current authentication layer
+    var authResult = Controller.Auth.authenticate(sessionToken);
+
+    if (!authResult || !authResult.success) {
+      return {
+        success: false,
+        message: (authResult && authResult.message)
+          ? authResult.message
+          : 'Session invalid or expired.'
+      };
+    }
+
+    // Return the existing Admin shell.
+    var html = HtmlService
+      .createTemplateFromFile('Admin')
+      .evaluate()
+      .getContent();
+
+    return {
+      success: true,
+      message: 'Session restored successfully.',
+      user: authResult.user || null,
+      html: html
+    };
+
+  } catch (e) {
+    console.error('restoreSession error:', e);
+
+    return {
+      success: false,
+      message: e.message || 'Unable to restore session.'
+    };
+  }
+}
+
+/**
  * Completes the first-time profile completion onboarding details.
  * @param {string} sessionToken - Active session token.
  * @param {object} payload - { phone, alternatePhone, profilePhoto }
@@ -69,7 +252,7 @@ function authenticate(sessionToken) {
  */
 function completeProfile(sessionToken, payload) {
   try {
-    return SessionService.authorize(sessionToken, { action: 'completeProfile' }, function(userId) {
+    return SessionService.authorize(sessionToken, { action: 'completeProfile' }, function (userId) {
       return JSON.parse(JSON.stringify(UserService.completeUserProfile(userId, payload) || {}));
     });
   } catch (e) {
@@ -107,7 +290,7 @@ function forgotPassword(sessionToken, employeeId) {
       return { success: false, message: "No registered staff found with Employee ID: " + cleanEmpId };
     }
     const userId = String(user[CONFIG.COLUMNS.USER_ID]).trim();
-    
+
     // Sync email column if alias mismatch exists
     const trueEmailAttr = CONFIG.COLUMNS.USER_EMAIL || "Email Address";
     if (user[trueEmailAttr] && (!user["Email"] || user["Email"] === "")) {
@@ -703,7 +886,7 @@ function getAllEnrichedParticipants(sessionToken) {
     const res = Controller.Participant.getAllEnrichedParticipants(sessionToken);
     if (Array.isArray(res)) return JSON.parse(JSON.stringify(res));
     if (res && res.success === false) return [];
-    
+
     // Extract values if response was converted to key-value map
     const arr = [];
     for (var k in res) {
@@ -947,11 +1130,12 @@ function validateCoordinatorSession(sessionToken) {
  * @param {number|string} year - Year.
  * @param {string} section - Section.
  * @param {string} college - College name.
+ * @param {string} targetEventId - Target Event ID.
  * @returns {object} Response containing status.
  */
-function registerSpotStudentAndMark(sessionToken, rollNumber, name, department, year, section, college) {
+function registerSpotStudentAndMark(sessionToken, rollNumber, name, department, year, section, college, targetEventId) {
   try {
-    return Controller.CoordinatorTerminal.registerSpotStudentAndMarkAttendance(sessionToken, rollNumber, name, department, year, section, college);
+    return Controller.CoordinatorTerminal.registerSpotStudentAndMarkAttendance(sessionToken, rollNumber, name, department, year, section, college, targetEventId);
   } catch (error) {
     return Utils.buildResponse(false, "Failed to register spot student and mark attendance: " + error.message);
   }
@@ -1365,11 +1549,11 @@ function runCoordinatorTerminalDiagnostic() {
   Logger.log("=== RUNNING COORDINATOR TERMINAL DIAGNOSTIC ===");
   try {
     const sessions = DatabaseService.readAllRows("SESSIONS") || [];
-    const activeSession = sessions.find(s => { 
+    const activeSession = sessions.find(s => {
       const statusCol = CONFIG.COLUMNS.SESSION_STATUS || 'Session Status';
-      return String(s[statusCol]) === 'Active'; 
+      return String(s[statusCol]) === 'Active';
     });
-    
+
     let token = "";
     if (activeSession) {
       const tokenCol = CONFIG.COLUMNS.SESSION_TOKEN || 'Session Token';
@@ -1377,7 +1561,7 @@ function runCoordinatorTerminalDiagnostic() {
       Logger.log("Found active session token: " + token);
     } else {
       const users = DatabaseService.readAllRows("USERS") || [];
-      const coordUser = users.find(u => { 
+      const coordUser = users.find(u => {
         const role = u['Role'] || u.role || '';
         return String(role).toUpperCase() === 'COORDINATOR';
       });
@@ -1386,7 +1570,7 @@ function runCoordinatorTerminalDiagnostic() {
         return;
       }
       Logger.log("Found coordinator user: " + coordUser['User ID'] + " (" + coordUser['Username'] + ")");
-      
+
       const assignments = DatabaseService.readAllRows("EVENT_COORDINATORS") || [];
       const hasAssign = assignments.some(a => {
         return String(a['User ID']).toUpperCase() === String(coordUser['User ID']).toUpperCase() && String(a['Assignment Status']) === 'Active';
@@ -1401,14 +1585,14 @@ function runCoordinatorTerminalDiagnostic() {
         const eventId = events[0]['Event ID'];
         CoordinatorService.assignCoordinator(eventId, coordUser['User ID'], 'Coordinator', 'System', 'Diagnostic Seed');
       }
-      
+
       Logger.log("Creating active session for diagnostic...");
       const sessionData = AuthService._createSession(coordUser);
       const tokenCol = CONFIG.COLUMNS.SESSION_TOKEN || 'Session Token';
       token = sessionData.token[tokenCol];
       Logger.log("Created test session token: " + token);
     }
-    
+
     Logger.log("Executing getCoordinatorTerminalData(token)...");
     const res = getCoordinatorTerminalData(token);
     Logger.log("Execution finished successfully!");
@@ -1473,36 +1657,7 @@ function submitEventRegistration(payload) {
  * @param {string} sessionToken - Token.
  * @returns {object} Response object.
  */
-function restoreSession(sessionToken) {
-  try {
-    const userContext = SessionService.getUserContext(sessionToken);
-    if (!userContext || !userContext.userId || !userContext.active) {
-      return { success: false, message: 'Session invalid or expired.' };
-    }
-    
-    // Check role authorization for the admin dashboard shell
-    const allowedRoles = [CONFIG.ROLES.SUPER_ADMIN, CONFIG.ROLES.ADMIN, CONFIG.ROLES.HOD];
-    if (!allowedRoles.includes(userContext.role.toUpperCase()) && userContext.role.toUpperCase() !== 'SUPER ADMIN') {
-      return { success: false, message: 'Unauthorized role.' };
-    }
-    
-    // Render the dashboard shell HTML
-    const shellHtml = HtmlService.createTemplateFromFile('Index').evaluate().getContent();
-    
-    // Fetch full user object
-    const userRecords = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID || 'User ID', userContext.userId) || [];
-    const fullUser = userRecords.length > 0 ? userRecords[0] : {};
-    
-    return {
-      success: true,
-      message: 'Session restored.',
-      user: fullUser,
-      html: shellHtml
-    };
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
+
 
 /**
  * Marks attendance for an event (standard path).
@@ -1731,5 +1886,24 @@ function spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) {
     return JSON.parse(JSON.stringify(Controller.CoordinatorTerminal.spotRegisterParticipant(sessionToken, rollNumber, eventId, spotData) || { success: false }));
   } catch (e) {
     return { success: false, message: e.message };
+  }
+}
+
+// ==========================================
+// Faculty Management API Wrappers
+// ==========================================
+function createFaculty(sessionToken, facultyData) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.createFaculty(sessionToken, facultyData) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function getFacultyListForUser(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyListForUser(sessionToken) || []));
+  } catch (e) {
+    return [];
   }
 }
