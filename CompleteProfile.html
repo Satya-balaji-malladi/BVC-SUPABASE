@@ -116,7 +116,7 @@
   <main class="main-container">
     <div class="onboard-card">
       <div class="card-banner">
-        <img src="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=150&q=80" alt="BVC Emblem Logo" class="college-logo rounded mb-3">
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQlFZ_2u0RaNZlfgwlsn7JNBCW34KxzENz6uT3fX7IuA&s=10" alt="BVC Engineering College Official Logo" class="college-logo rounded mb-3" loading="lazy" style="object-fit:contain; max-width:80px; height:auto;">
         <h4 class="fw-bold mb-1" style="color: var(--primary-color);">BVC Engineering College</h4>
         <p class="text-muted small mb-0">Set up your staff account profile credentials to complete your login</p>
       </div>
@@ -129,75 +129,51 @@
 
         <form id="onboardForm" novalidate>
           
-          <h6 class="fw-bold mb-3 border-bottom pb-2 text-primary"><i class="bi bi-person-lines-fill me-2"></i>Account Details (Read Only)</h6>
+          <h6 class="fw-bold mb-3 border-bottom pb-2 text-primary"><i class="bi bi-person-badge me-2"></i>Profile Completion (<span id="roleLabel">User Profile</span>)</h6>
           
-          <div class="row g-3 mb-4">
+          <div class="row g-3 mb-4" id="roleFieldsContainer">
+            <!-- Dynamic fields injected via JS based on role -->
             <div class="col-md-6">
-              <label class="form-label">Full Name</label>
-              <span id="dispName" class="read-only-badge">Loading...</span>
+              <label for="profFullName" class="form-label">Full Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="profFullName" placeholder="Enter Full Name" required>
             </div>
             <div class="col-md-6">
-              <label class="form-label">Official Email</label>
-              <span id="dispEmail" class="read-only-badge">Loading...</span>
+              <label for="profEmail" class="form-label">Email Address <span class="text-danger">*</span></label>
+              <input type="email" class="form-control" id="profEmail" placeholder="Enter Email" required>
             </div>
             <div class="col-md-6">
-              <label class="form-label">Role</label>
-              <span id="dispRole" class="read-only-badge">Loading...</span>
+              <label for="profPhone" class="form-label">Phone Number <span class="text-danger">*</span></label>
+              <input type="tel" class="form-control" id="profPhone" placeholder="Enter 10-digit Phone" pattern="[0-9]{10}" required>
             </div>
             <div class="col-md-6">
-              <label class="form-label">Department</label>
-              <span id="dispDept" class="read-only-badge">Loading...</span>
-            </div>
-            <div class="col-md-12">
-              <label class="form-label">User ID / Employee ID</label>
-              <span id="dispIds" class="read-only-badge">Loading...</span>
-            </div>
-          </div>
-
-          <h6 class="fw-bold mb-3 border-bottom pb-2 text-primary"><i class="bi bi-gear-fill me-2"></i>Complete Profile Configuration</h6>
-
-          <div class="row g-3 mb-4">
-            <div class="col-md-6">
-              <label for="mobileNumber" class="form-label">Mobile Number <span class="text-danger">*</span></label>
-              <div class="input-group has-validation">
-                <span class="input-group-text bg-white text-muted"><i class="bi bi-telephone"></i></span>
-                <input 
-                  type="tel" 
-                  class="form-control" 
-                  id="mobileNumber" 
-                  placeholder="Enter 10-digit mobile" 
-                  pattern="[0-9]{10}"
-                  required
-                >
-                <div class="invalid-feedback">Please enter a valid 10-digit mobile number.</div>
-              </div>
+              <label for="profDept" class="form-label">Department <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="profDept" placeholder="e.g. CSE, ECE" required>
             </div>
 
-            <div class="col-md-6">
-              <label for="altMobile" class="form-label">Alternate Mobile (Optional)</label>
-              <div class="input-group">
-                <span class="input-group-text bg-white text-muted"><i class="bi bi-telephone"></i></span>
-                <input 
-                  type="tel" 
-                  class="form-control" 
-                  id="altMobile" 
-                  placeholder="Enter alternate mobile" 
-                  pattern="[0-9]{10}"
-                >
-              </div>
+            <!-- Role specific fields -->
+            <div class="col-md-6 d-none" id="groupEmpId">
+              <label for="profEmpId" class="form-label" id="labelEmpId">Employee ID <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="profEmpId" placeholder="Enter ID">
             </div>
 
-            <div class="col-md-12">
-              <label for="profilePhoto" class="form-label">Profile Photo URL (Optional)</label>
-              <div class="input-group">
-                <span class="input-group-text bg-white text-muted"><i class="bi bi-image"></i></span>
-                <input 
-                  type="url" 
-                  class="form-control" 
-                  id="profilePhoto" 
-                  placeholder="e.g. https://example.com/photo.jpg"
-                >
-              </div>
+            <div class="col-md-6 d-none" id="groupDesignation">
+              <label for="profDesignation" class="form-label">Designation <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="profDesignation" placeholder="e.g. Associate Professor">
+            </div>
+
+            <div class="col-md-6 d-none" id="groupRollNumber">
+              <label for="profRollNumber" class="form-label">Roll Number <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="profRollNumber" placeholder="e.g. 22A91A0501">
+            </div>
+
+            <div class="col-md-6 d-none" id="groupBranch">
+              <label for="profBranch" class="form-label" id="labelBranch">Branch</label>
+              <input type="text" class="form-control" id="profBranch" placeholder="e.g. CSE">
+            </div>
+
+            <div class="col-md-6 d-none" id="groupGuestId">
+              <label for="profGuestId" class="form-label">Guest ID (Optional)</label>
+              <input type="text" class="form-control" id="profGuestId" placeholder="Enter Guest ID">
             </div>
           </div>
 
@@ -214,6 +190,8 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   
   <script>
+    let currentUser = null;
+
     document.addEventListener('DOMContentLoaded', () => {
       const sessionToken = localStorage.getItem('sessionToken');
       if (!sessionToken) {
@@ -221,7 +199,7 @@
         return;
       }
 
-      // Fetch user profile info to pre-fill details
+      // Fetch user profile info
       google.script.run
         .withSuccessHandler(onUserLoaded)
         .withFailureHandler(onApiFailure)
@@ -237,20 +215,54 @@
         return;
       }
 
-      const u = res.user;
-      
-      const firstName = u.first_name || u['First Name'] || '';
-      const lastName = u.last_name || u['Last Name'] || '';
-      const fullName = (firstName + ' ' + lastName).trim() || u.Username || 'Staff Member';
+      currentUser = res.user;
+      const role = currentUser.role || currentUser.Role || 'User';
+      document.getElementById('roleLabel').textContent = role;
 
-      document.getElementById('dispName').textContent = fullName;
-      document.getElementById('dispEmail').textContent = u.email || u['Email Address'] || 'N/A';
-      document.getElementById('dispRole').textContent = u.role || u['Role'] || 'Coordinator';
-      document.getElementById('dispDept').textContent = u.department || u['Department'] || 'None';
+      // Populate pre-existing values
+      const firstName = currentUser.first_name || currentUser['First Name'] || '';
+      const lastName = currentUser.last_name || currentUser['Last Name'] || '';
+      const fullName = (firstName + ' ' + lastName).trim() || currentUser.username || '';
       
-      const userId = u.user_id || u['User ID'] || 'N/A';
-      const empId = u.employee_id || u['Employee ID'] || 'N/A';
-      document.getElementById('dispIds').textContent = `User ID: ${userId} | Employee ID: ${empId}`;
+      document.getElementById('profFullName').value = fullName;
+      document.getElementById('profEmail').value = currentUser.email || currentUser.email_address || currentUser['Email Address'] || '';
+      document.getElementById('profPhone').value = currentUser.phone || currentUser.phone_number || currentUser['Phone Number'] || '';
+      document.getElementById('profDept').value = currentUser.department || currentUser['Department'] || '';
+
+      // Adjust visibility according to role requirements
+      const normalizedRole = String(role).toLowerCase();
+
+      if (normalizedRole.includes('faculty')) {
+        document.getElementById('groupEmpId').classList.remove('d-none');
+        document.getElementById('labelEmpId').innerHTML = 'Faculty ID <span class="text-danger">*</span>';
+        document.getElementById('profEmpId').required = true;
+        document.getElementById('profEmpId').value = currentUser.employee_id || currentUser['Employee ID'] || '';
+      } else if (normalizedRole.includes('hod')) {
+        document.getElementById('groupEmpId').classList.remove('d-none');
+        document.getElementById('labelEmpId').innerHTML = 'Employee ID <span class="text-danger">*</span>';
+        document.getElementById('profEmpId').required = true;
+        document.getElementById('profEmpId').value = currentUser.employee_id || currentUser['Employee ID'] || '';
+        
+        document.getElementById('groupDesignation').classList.remove('d-none');
+        document.getElementById('profDesignation').required = true;
+        document.getElementById('profDesignation').value = currentUser.title_designation || 'Head of Department';
+      } else if (normalizedRole.includes('student coordinator') || normalizedRole.includes('studentcoordinator')) {
+        document.getElementById('groupRollNumber').classList.remove('d-none');
+        document.getElementById('profRollNumber').required = true;
+        document.getElementById('profRollNumber').value = currentUser.roll_number || '';
+
+        document.getElementById('groupBranch').classList.remove('d-none');
+        document.getElementById('labelBranch').innerHTML = 'Branch <span class="text-danger">*</span>';
+        document.getElementById('profBranch').required = true;
+        document.getElementById('profBranch').value = currentUser.branch || '';
+      } else if (normalizedRole.includes('guest coordinator') || normalizedRole.includes('guestcoordinator')) {
+        document.getElementById('groupGuestId').classList.remove('d-none');
+        document.getElementById('profGuestId').value = currentUser.guest_id || '';
+
+        document.getElementById('groupBranch').classList.remove('d-none');
+        document.getElementById('labelBranch').textContent = 'Branch (Optional)';
+        document.getElementById('profBranch').value = currentUser.branch || '';
+      }
     }
 
     function handleFormSubmit(e) {
@@ -270,9 +282,16 @@
       setLoading(true);
 
       const payload = {
-        phone: document.getElementById('mobileNumber').value.trim(),
-        alternatePhone: document.getElementById('altMobile').value.trim(),
-        profilePhoto: document.getElementById('profilePhoto').value.trim()
+        name: document.getElementById('profFullName').value.trim(),
+        email: document.getElementById('profEmail').value.trim(),
+        phone: document.getElementById('profPhone').value.trim(),
+        department: document.getElementById('profDept').value.trim(),
+        employeeId: document.getElementById('profEmpId').value.trim(),
+        facultyId: document.getElementById('profEmpId').value.trim(),
+        designation: document.getElementById('profDesignation').value.trim(),
+        rollNumber: document.getElementById('profRollNumber').value.trim(),
+        branch: document.getElementById('profBranch').value.trim(),
+        guestId: document.getElementById('profGuestId').value.trim()
       };
 
       const sessionToken = localStorage.getItem('sessionToken');
@@ -281,10 +300,8 @@
         .withSuccessHandler((res) => {
           setLoading(false);
           if (res && res.success) {
-            // Save state updates
             localStorage.setItem('lastActivePage', 'dashboard');
             
-            // Redirect to dashboard page
             google.script.run
               .withSuccessHandler(function(html) {
                 if (google.script.history && google.script.history.replace) {

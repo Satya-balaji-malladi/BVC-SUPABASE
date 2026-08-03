@@ -1,0 +1,82 @@
+# Complete Local Database Snapshot (`database_snapshot/`) — Walkthrough
+
+I have constructed a **complete, isolated local database snapshot** of the BVC Event Attendance System inside the `database_snapshot/` folder at the root of your project.
+
+---
+
+## 🔒 Isolation & Safety Audit
+
+- **Zero modifications to existing code:** No project files, configurations, build scripts, or Apps Script references were altered.
+- **Standalone reference:** The entire `database_snapshot/` directory is 100% standalone and read-only.
+- **Zero runtime impact:** Deleting the `database_snapshot/` directory at any point will have zero effect on the application's runtime or deployment.
+
+---
+
+## 📁 Created Files Summary (17 Files Total)
+
+### 🛠️ Modular Executable SQL Files (10 Files)
+
+| File | Purpose |
+|---|---|
+| [01_schema.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/01_schema.sql) | Extensions (`uuid-ossp`, `pgcrypto`), schema setup, PostgREST reload notifications, and cascade drops |
+| [02_tables.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/02_tables.sql) | Complete DDL definitions for **all 24 discovered database entities** |
+| [03_constraints.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/03_constraints.sql) | Primary Keys, Foreign Keys, Unique constraints, and Check constraints |
+| [04_indexes.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/04_indexes.sql) | B-tree performance indexes for roll numbers, FKs, session tokens, and timestamps |
+| [05_functions.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/05_functions.sql) | Stored procedures, timestamp updater function, and attendance statistics routines |
+| [06_triggers.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/06_triggers.sql) | Automatic `updated_at` timestamp triggers |
+| [07_views.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/07_views.sql) | Analytical reporting views (`v_event_summary`, `v_faculty_details`, etc.) |
+| [08_rls_policies.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/08_rls_policies.sql) | Supabase Row Level Security (RLS) policies |
+| [09_seed_data.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/09_seed_data.sql) | Clean `INSERT ... ON CONFLICT DO NOTHING` statements for roles, departments, superadmin, and settings |
+| [10_complete_database.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/10_complete_database.sql) | **Master single-file executable SQL script** combining 01 through 09 to recreate the complete database from scratch |
+
+---
+
+### 📚 Comprehensive Documentation Files (7 Files)
+
+| Documentation File | Description |
+|---|---|
+| [DATABASE_DOCUMENTATION.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/DATABASE_DOCUMENTATION.md) | Architectural overview, folder layout, and environment execution guide |
+| [DATA_DICTIONARY.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/DATA_DICTIONARY.md) | Field-by-field dictionary matrix for all 24 entities |
+| [ER_DIAGRAM.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/ER_DIAGRAM.md) | Mermaid Entity-Relationship diagram visualising entities and foreign key links |
+| [DATABASE_VALIDATION.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/DATABASE_VALIDATION.md) | Audit report covering column type alignments, foreign key integrity, and index coverage |
+| [DATABASE_STATISTICS.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/DATABASE_STATISTICS.md) | Metrics on total tables, columns, indexes, foreign keys, and seed record counts |
+| [QUERY_REFERENCE.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/QUERY_REFERENCE.md) | Direct mapping between 20 JavaScript database service files and database tables |
+| [TABLE_RELATIONSHIPS.md](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/TABLE_RELATIONSHIPS.md) | Registry of 1:1, 1:N, and M:N table relationships and deletion rules |
+
+---
+
+## 📊 Summary of Discovered Database Entities (24 Tables)
+
+1. `departments` – Academic & Administrative Departments
+2. `students` – BVC Enrolled Students
+3. `other_college_students` – External Non-BVC College Participants
+4. `roles` – System RBAC Roles
+5. `users` – User Accounts, Admins, Coordinators, HODs
+6. `faculty` – Faculty Master Roster
+7. `guest_coordinators` – External Guest Coordinator Profiles
+8. `department_hods` – HOD Assignment Junction
+9. `events` – Event Master Registry
+10. `event_templates` – Event Blueprint Configurations
+11. `event_coordinators` – Legacy Event Coordinator Assignments
+12. `event_assignments` – Enterprise Role Assignment Junction
+13. `event_participants` – Participant Registrations
+14. `attendance` – Scanned Attendance Records
+15. `attendance_corrections` – Attendance Correction Requests
+16. `sessions` – Active User Session Tokens
+17. `generated_reports` – Report Artifact Logs
+18. `settings` – System Settings Key-Value Store
+19. `audit_logs` – Security & Operation Audit Trail
+20. `notifications` – In-App Notifications
+21. `diagnostics` – Backend Diagnostic Logs
+22. `user_permissions` – Granular User Permission Overrides
+23. `export_templates` – User Saved Export Templates
+24. `test_history` – Test Center Execution Metric History
+
+---
+
+## 🚀 How to Use
+
+If you ever need to set up a brand-new Supabase PostgreSQL database:
+1. Open the SQL Editor on your Supabase dashboard.
+2. Copy and paste the contents of [10_complete_database.sql](file:///c:/Users/DELL/Desktop/BVC-Event-Attendance-System-Supabase/database_snapshot/10_complete_database.sql).
+3. Execute the script to generate the entire schema, tables, constraints, indexes, triggers, views, RLS policies, and core seed data.

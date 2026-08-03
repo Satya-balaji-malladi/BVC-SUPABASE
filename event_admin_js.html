@@ -1,0 +1,129 @@
+<script>
+/**
+ * event_admin_js.html
+ * Phase 5 Event Admin Client Controller
+ */
+(function() {
+  window.App = window.App || {};
+  App.EventAdmin = {
+    selectedEventId: null,
+
+    init: function() {
+      this.selectedEventId = localStorage.getItem('selectedEventId');
+      this.bindEvents();
+      this.loadDashboard();
+    },
+
+    bindEvents: function() {
+      const btnAssign = document.getElementById('btnEaAssignCoord');
+      if (btnAssign) {
+        btnAssign.addEventListener('click', () => this.promptAssignCoordinator());
+      }
+    },
+
+    loadDashboard: function() {
+      const token = localStorage.getItem('sessionToken');
+      const eventId = this.selectedEventId;
+
+      if (!token || !eventId) return;
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (!res || !res.success || !res.data) {
+            App.UI.showError(res ? res.message : 'Failed to load Event Admin dashboard.');
+            return;
+          }
+
+          const d = res.data;
+          const ev = d.event || {};
+          const cards = d.cards || {};
+
+          // Update Event Header
+          if (document.getElementById('eaEventName')) document.getElementById('eaEventName').textContent = ev.eventName || 'Event';
+          if (document.getElementById('eaEventStatus')) document.getElementById('eaEventStatus').textContent = ev.status || 'Active';
+          if (document.getElementById('eaEventVenue')) document.getElementById('eaEventVenue').textContent = ev.venue || 'N/A';
+          if (document.getElementById('eaEventTime')) document.getElementById('eaEventTime').textContent = `${ev.startDate} (${ev.startTime})`;
+
+          // Update Metric Cards
+          if (document.getElementById('eaCardPresent')) document.getElementById('eaCardPresent').textContent = cards.present || 0;
+          if (document.getElementById('eaCardAbsent')) document.getElementById('eaCardAbsent').textContent = cards.absent || 0;
+          if (document.getElementById('eaCardRegistered')) document.getElementById('eaCardRegistered').textContent = cards.registered || 0;
+          if (document.getElementById('eaCardPercentage')) document.getElementById('eaCardPercentage').textContent = `${cards.attendancePercentage || 0}%`;
+          if (document.getElementById('eaCardSpot')) document.getElementById('eaCardSpot').textContent = cards.spotRegistrations || 0;
+          if (document.getElementById('eaCardCoordinators')) document.getElementById('eaCardCoordinators').textContent = cards.coordinatorCount || 0;
+          if (document.getElementById('eaCardPending')) document.getElementById('eaCardPending').textContent = cards.pendingRegistrations || 0;
+
+          // Render Coordinators Roster
+          this.renderCoordinators(d.coordinators || []);
+        })
+        .withFailureHandler((err) => {
+          App.UI.showError('Connection error: ' + (err?.message || 'Unreachable'));
+        })
+        .getEventAdminDashboard(token, eventId);
+    },
+
+    renderCoordinators: function(coordinators) {
+      const tbody = document.getElementById('eaCoordTableBody');
+      if (!tbody) return;
+
+      if (!coordinators || coordinators.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No coordinators assigned to this event yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = coordinators.map(c => `
+        <tr>
+          <td class="fw-bold font-monospace text-primary">${App.Utils.escapeHtml(c.userId)}</td>
+          <td><span class="badge bg-secondary">${App.Utils.escapeHtml(c.role)}</span></td>
+          <td><span class="badge bg-info text-dark">${App.Utils.escapeHtml(c.coordinatorType)}</span></td>
+          <td><span class="badge bg-success">${App.Utils.escapeHtml(c.status)}</span></td>
+          <td class="small text-muted">${new Date(c.assignedAt).toLocaleDateString()}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="App.EventAdmin.removeCoord('${c.assignmentId}')">
+              <i class="bi bi-trash-fill me-1"></i>Remove
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    },
+
+    promptAssignCoordinator: function() {
+      const username = prompt('Enter new or existing Coordinator Username:');
+      if (!username) return;
+
+      const password = prompt('Enter Password (if creating new coordinator account, otherwise leave blank):');
+      const coordType = prompt('Enter Coordinator Type (Faculty / Student / Guest):', 'Faculty') || 'Faculty';
+
+      const token = localStorage.getItem('sessionToken');
+      const eventId = this.selectedEventId;
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (res && res.success) {
+            App.UI.showSuccess('Coordinator assigned successfully.');
+            this.loadDashboard();
+          } else {
+            App.UI.showError(res ? res.message : 'Failed to assign coordinator.');
+          }
+        })
+        .assignEventCoordinator(token, eventId, { username: username, password: password, coordinatorType: coordType });
+    },
+
+    removeCoord: function(assignmentId) {
+      if (!confirm('Are you sure you want to remove this coordinator assignment?')) return;
+
+      const token = localStorage.getItem('sessionToken');
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (res && res.success) {
+            App.UI.showSuccess('Assignment removed.');
+            this.loadDashboard();
+          } else {
+            App.UI.showError(res ? res.message : 'Failed to remove assignment.');
+          }
+        })
+        .removeEventAssignment(token, assignmentId, 'Removed by Event Admin');
+    }
+  };
+})();
+</script>

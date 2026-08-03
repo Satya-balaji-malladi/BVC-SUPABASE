@@ -4,16 +4,16 @@
 
     // Existing element selections...
     const loginForm = document.getElementById('loginForm');
-    
+
     // Check if session token exists in localStorage for auto-login / recovery
     const sessionToken = localStorage.getItem('sessionToken');
     const userRole = localStorage.getItem('userRole');
-    
+
     if (sessionToken && userRole) {
       const sessionLoadingContainer = document.getElementById('sessionLoadingContainer');
       if (sessionLoadingContainer) sessionLoadingContainer.classList.remove('d-none');
       if (loginForm) loginForm.classList.add('d-none');
-      
+
       if (userRole === 'COORDINATOR') {
         google.script.run
           .withSuccessHandler((res) => {
@@ -29,11 +29,11 @@
                   btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_blank" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
                 } else {
                   google.script.run
-                    .withSuccessHandler(function(scriptUrl) {
+                    .withSuccessHandler(function (scriptUrl) {
                       const coordUrl = scriptUrl + '?page=coordinator&token=' + encodeURIComponent(sessionToken);
                       btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
                     })
-                    .withFailureHandler(function(err) {
+                    .withFailureHandler(function (err) {
                       const fallbackUrl = window.APP_SCRIPT_URL + '?page=coordinator&token=' + encodeURIComponent(sessionToken);
                       btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${fallbackUrl}" target="_top" class="btn btn-success w-100 py-2.5 fw-bold text-uppercase"><i class="bi bi-camera-video me-1"></i> Open Scanner Terminal</a>`;
                     })
@@ -59,9 +59,9 @@
           .withSuccessHandler((res) => {
             if (res && res.success) {
               console.log('Session restored successfully. Loading Dashboard...');
-              if (google.script.history && google.script.history.replace) {
-                google.script.history.replace(null, { page: 'dashboard' }, null);
-              }
+              /*if (google.script.history && google.script.history.replace) {
+   google.script.history.replace(null, { page: 'dashboard' }, null);
+ }*/
               document.open();
               document.write(res.html);
               document.close();
@@ -94,7 +94,7 @@
     const alertMessage = document.getElementById('alertMessage');
     const alertIcon = document.getElementById('alertIcon');
     const alertText = document.getElementById('alertText');
-    
+
     // NEW: Selection for Forgot Password link
     const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 
@@ -104,14 +104,14 @@
     if (forgotPasswordLink) {
       forgotPasswordLink.addEventListener('click', function (event) {
         event.preventDefault();
-        
+
         // Temporarily disable the link to prevent multiple clicks
         forgotPasswordLink.style.pointerEvents = 'none';
         forgotPasswordLink.classList.add('text-muted');
-        
+
         // Use Vanilla SPA Architecture to bypass Chrome Sandbox navigation blocks!
         google.script.run
-          .withSuccessHandler(function(html) {
+          .withSuccessHandler(function (html) {
             if (google.script.history && google.script.history.push) {
               google.script.history.push(null, { page: 'forgotpassword' }, null);
             }
@@ -119,7 +119,7 @@
             document.write(html);
             document.close();
           })
-          .withFailureHandler(function(error) {
+          .withFailureHandler(function (error) {
             console.error('Failed to load Forgot Password view:', error);
             forgotPasswordLink.style.pointerEvents = 'auto';
             forgotPasswordLink.classList.remove('text-muted');
@@ -136,7 +136,7 @@
     togglePasswordBtn.addEventListener('click', function () {
       const isPassword = password.getAttribute('type') === 'password';
       password.setAttribute('type', isPassword ? 'text' : 'password');
-      
+
       togglePasswordIcon.classList.toggle('bi-eye');
       togglePasswordIcon.classList.toggle('bi-eye-slash');
       togglePasswordBtn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
@@ -157,12 +157,12 @@
 
       if (isIdValid && isPasswordValid) {
         setLoading(true);
-        
+
         const loginData = {
           employeeId: employeeId.value.trim(),
           password: password.value
         };
-        
+
         login(loginData);
       }
     });
@@ -181,7 +181,7 @@
       password.disabled = isLoading;
       togglePasswordBtn.disabled = isLoading;
       if (forgotPasswordLink) forgotPasswordLink.style.pointerEvents = isLoading ? 'none' : 'auto';
-      
+
       if (isLoading) {
         btnText.textContent = 'Authenticating...';
         btnSpinner.classList.remove('d-none');
@@ -194,7 +194,7 @@
     function showAlert(message, statusType = 'danger') {
       alertText.textContent = message;
       alertMessage.classList.remove('alert-danger', 'alert-success');
-      
+
       if (statusType === 'success') {
         alertMessage.classList.add('alert-success');
         alertIcon.className = 'bi bi-check-circle-fill flex-shrink-0';
@@ -217,153 +217,161 @@
         .login(loginData);
     }
 
-  function handleLoginSuccess(response) {
+    function handleLoginSuccess(response) {
 
-  console.log("========== LOGIN RESPONSE ==========");
-  console.log(response);
-  console.log("response.success =", response?.success);
-  console.log("response.message =", response?.message);
-  console.log("response.user =", response?.user);
-  console.log("response.data =", response?.data);
-  console.log("response.token =", response?.token);
-  console.log("===================================");
+      console.log("========== LOGIN RESPONSE ==========");
+      console.log(response);
+      console.log("response.success =", response?.success);
+      console.log("response.message =", response?.message);
+      console.log("response.user =", response?.user);
+      console.log("response.data =", response?.data);
+      console.log("response.token =", response?.token);
+      console.log("===================================");
 
-  setLoading(false);
+      setLoading(false);
 
-  if (!(response && response.success)) {
-    const errorMsg = response?.message || "Invalid Employee ID or Password.";
-    showAlert(errorMsg, "danger");
-    return;
-  }
+      if (!(response && response.success)) {
+        const errorMsg = response?.message || "Invalid Employee ID or Password.";
+        showAlert(errorMsg, "danger");
+        return;
+      }
 
-  showAlert("Login Successful. Loading Dashboard...", "success");
+      showAlert("Login Successful. Loading Dashboard...", "success");
 
-  // ==========================
-  // Detect User
-  // ==========================
-  const user = response.user || response.data?.user || {};
+      // ==========================
+      // Detect User
+      // ==========================
+      const user = response.user || response.data?.user || {};
 
-  const role = String(
-    user.Role ||
-    user.role ||
-    user.ROLE ||
-    ""
-  ).trim().toUpperCase();
+      const role = String(
+        user.Role ||
+        user.role ||
+        user.ROLE ||
+        ""
+      ).trim().toUpperCase();
 
-  console.log("Detected Role:", role);
+      console.log("Detected Role:", role);
+      console.log("Current User:", user);
 
-  // ==========================
-  // Extract Session Token
-  // ==========================
+      // ==========================
+      // Extract Session Token
+      // ==========================
 
-  let actualToken =
-      response.token?.["Session Token"] ||
-      response.token?.sessionToken ||
-      response.token?.token ||
+      let actualToken =
+        response.token?.["Session Token"] ||
+        response.token?.sessionToken ||
+        response.token?.token ||
 
-      response.data?.token?.["Session Token"] ||
-      response.data?.token?.sessionToken ||
-      response.data?.token?.token ||
+        response.data?.token?.["Session Token"] ||
+        response.data?.token?.sessionToken ||
+        response.data?.token?.token ||
 
-      (typeof response.token === "string" ? response.token : null) ||
-      (typeof response.data?.token === "string" ? response.data.token : null);
+        (typeof response.token === "string" ? response.token : null) ||
+        (typeof response.data?.token === "string" ? response.data.token : null);
 
-  console.log("Extracted Token:", actualToken);
+      console.log("Extracted Token:", actualToken);
 
-  if (!actualToken) {
+      if (!actualToken) {
 
-      console.error("NO SESSION TOKEN FOUND");
-      console.log("Complete Response:");
-      console.log(JSON.stringify(response));
+        console.error("NO SESSION TOKEN FOUND");
+        console.log("Complete Response:");
+        console.log(JSON.stringify(response));
 
-      showAlert(
+        showAlert(
           "Login succeeded but session token was not returned.",
           "danger"
-      );
+        );
 
-      return;
-  }
+        return;
+      }
 
-  // ==========================
-  // Save Token
-  // ==========================
+      // ==========================
+      // Save Token
+      // ==========================
 
-  localStorage.setItem("sessionToken", actualToken);
-  localStorage.setItem("userRole", role);
+      localStorage.setItem("sessionToken", actualToken);
+      localStorage.setItem("userRole", role);
 
-  // Fire warmup ping to keep Apps Script runtime warm (avoids cold start on next request)
-  try { if (window.App && App.API && App.API.warmup) App.API.warmup(); } catch(e) {}
+      // Fire warmup ping to keep Apps Script runtime warm (avoids cold start on next request)
+      try { if (window.App && App.API && App.API.warmup) App.API.warmup(); } catch (e) { }
 
 
-  // Verify immediately
+      // Verify immediately
 
-  if (localStorage.getItem("sessionToken") !== actualToken) {
+      if (localStorage.getItem("sessionToken") !== actualToken) {
 
-      console.error("Failed to save session token.");
+        console.error("Failed to save session token.");
 
-      showAlert(
+        showAlert(
           "Unable to save login session.",
           "danger"
-      );
+        );
 
-      return;
-  }
+        return;
+      }
 
-  // ==========================
-  // Decide Target Page
-  // ==========================
+      // ==========================
+      // Decide Target Page
+      // ==========================
 
-  // ==========================
-  // Navigate to Target Page
-  // ==========================
+      // ==========================
+      // Navigate to Target Page
+      // ==========================
 
-  if (role === 'COORDINATOR') {
-    loginForm.classList.add('d-none');
-    const redirectContainer = document.getElementById('coordinatorRedirectContainer');
-    const btnOpen = document.getElementById('btnOpenCoordinator');
-    const portalUrl = window.COORDINATOR_PORTAL_URL || 'https://satya-balaji-malladi.github.io/BVC-SUPABASE/';
-    const coordUrl = portalUrl + (portalUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(actualToken);
+      if (role === 'COORDINATOR') {
+        loginForm.classList.add('d-none');
+        const redirectContainer = document.getElementById('coordinatorRedirectContainer');
+        const btnOpen = document.getElementById('btnOpenCoordinator');
+        const portalUrl = window.COORDINATOR_PORTAL_URL || 'https://satya-balaji-malladi.github.io/BVC-SUPABASE/';
+        const coordUrl = portalUrl + (portalUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(actualToken);
 
-    if (redirectContainer && btnOpen) {
-      redirectContainer.classList.remove('d-none');
-      btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-3 fw-bold text-uppercase fs-6 shadow-sm"><i class="bi bi-camera-video me-2"></i> Open Scanner Terminal</a>`;
-    } else {
-      window.open(coordUrl, '_top');
-    }
-    return;
-  } else {
-    const targetPage = 'dashboard';
-    // Admin / Super Admin: load the full dashboard shell via document.write
-    google.script.run
-      .withSuccessHandler(function(html) {
+        if (redirectContainer && btnOpen) {
+          redirectContainer.classList.remove('d-none');
+          btnOpen.outerHTML = `<a id="btnOpenCoordinator" href="${coordUrl}" target="_top" class="btn btn-success w-100 py-3 fw-bold text-uppercase fs-6 shadow-sm"><i class="bi bi-camera-video me-2"></i> Open Scanner Terminal</a>`;
+        } else {
+          window.open(coordUrl, '_top');
+        }
+        return;
+      } else {
+        let targetPage = 'dashboard';
+        const isProfileCompleted = (user.profile_completed === true || user.profile_completed === 'true' || user.ProfileCompleted === true || user.ProfileCompleted === 'true');
+        if (!isProfileCompleted) {
+          targetPage = 'completeprofile';
+        } else if (role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'EVENTADMIN') {
+          targetPage = 'eventadmin';
+        }
 
-          console.log('Application shell loaded.');
+        // Admin / Event Admin / HOD / Super Admin: load the app shell via document.write
+        google.script.run
+          .withSuccessHandler(function (html) {
 
-          if (google.script.history && google.script.history.replace) {
+            console.log('Application shell loaded for target:', targetPage);
+
+            if (google.script.history && google.script.history.replace) {
               google.script.history.replace(
-                  null,
-                  { page: targetPage },
-                  null
+                null,
+                { page: targetPage },
+                null
               );
-          }
+            }
 
-          document.open();
-          document.write(html);
-          document.close();
+            document.open();
+            document.write(html);
+            document.close();
 
-      })
-      .withFailureHandler(function(error) {
+          })
+          .withFailureHandler(function (error) {
 
-          console.error(error);
-          showAlert(
+            console.error(error);
+            showAlert(
               'Failed to load application shell.',
               'danger'
-          );
+            );
 
-      })
-      .getPageContent(targetPage);
-  }
-}
+          })
+          .getPageContent(targetPage);
+      }
+    }
     function handleLoginFailure(error) {
       console.error('System level pipeline failure caught:', error);
       setLoading(false); // ALWAYS stop loading on exception

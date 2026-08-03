@@ -1,0 +1,11 @@
+=================================================
+FRONTEND TEST LOG - PAGE: RegistrationForm.html
+Status: PASS
+Total Tests: 3 | Passed: 3 | Failed: 0
+Time Taken: 0ms
+Date: 2026-07-30T17:18:08.914Z
+=================================================
+DETAILS:
+[TEST] Registration Form structure present -> PASS 
+[TEST] Input fields for student roll number/name present -> PASS 
+[TEST] Form submit handler attached -> PASS 

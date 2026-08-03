@@ -1,0 +1,10 @@
+=================================================
+FRONTEND WORKFLOW LOG: Coordinator_Terminal_Workflow
+Status: PASS
+Date: 2026-07-30T17:18:08.921Z
+=================================================
+STEPS:
+1. [PASS] Initialize Terminal: Loaded scanner view and camera permissions trigger
+2. [PASS] Simulate Barcode / QR Scan: Decoded student roll number and marked present
+3. [PASS] Manual Roll Entry: Entered roll number manually and submitted
+4. [PASS] Duplicate Check: Prevented double-scanning with alert toast

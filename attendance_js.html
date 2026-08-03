@@ -314,23 +314,7 @@ App.Modules.attendance = {
           <td>${App.Utils.formatDateTime(a.attendance_time)}</td>
           <td><span class="badge ${a.status === 'Present' ? 'bg-success' : 'bg-danger'}">${App.Utils.escapeHtml(a.status)}</span></td>
           <td class="text-end">
-            <button class="btn btn-sm btn-outline-danger" onclick="App.Modules.attendance.deleteRecord('${App.Utils.escapeHtml(a.attendance_id)}')"><i class="bi bi-trash"></i></button>
-          </td>
-        </tr>
-      `;
-    });
-          <td>${App.Utils.escapeHtml(student.student_name || 'Unknown')}</td>
-          <td>${App.Utils.escapeHtml(student.department || '-')}</td>
-          <td>${(() => {
-            if (!a.attendance_time) return '-';
-            const d = new Date(a.attendance_time);
-            return isNaN(d.getTime()) ? App.Utils.escapeHtml(a.attendance_time) : d.toLocaleString();
-          })()}</td>
-          <td><span class="badge bg-success">${App.Utils.escapeHtml(a.status)}</span></td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-danger" data-action="delete-attendance" data-id="${App.Utils.escapeHtml(a.attendance_id)}">
-              <i class="bi bi-trash"></i>
-            </button>
+            <button class="btn btn-sm btn-outline-danger" data-action="delete-attendance" data-id="${App.Utils.escapeHtml(a.attendance_id)}"><i class="bi bi-trash"></i></button>
           </td>
         </tr>
       `;

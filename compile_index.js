@@ -20,6 +20,27 @@ if (indexHtml.includes("<?!= include('coordinator_attendance_css'); ?>")) {
   console.log("✓ Inlined coordinator_attendance_css");
 }
 
+// Replace forms_css
+if (indexHtml.includes("<?!= include('forms_css'); ?>")) {
+  const formsCss = fs.readFileSync(path.join(srcDir, 'forms_css.html'), 'utf8');
+  indexHtml = indexHtml.replace("<?!= include('forms_css'); ?>", formsCss);
+  console.log("✓ Inlined forms_css");
+}
+
+// Replace forms_modals
+if (indexHtml.includes("<?!= include('forms_modals'); ?>")) {
+  const formsModals = fs.readFileSync(path.join(srcDir, 'forms_modals.html'), 'utf8');
+  indexHtml = indexHtml.replace("<?!= include('forms_modals'); ?>", formsModals);
+  console.log("✓ Inlined forms_modals");
+}
+
+// Replace forms_js
+if (indexHtml.includes("<?!= include('forms_js'); ?>")) {
+  const formsJs = fs.readFileSync(path.join(srcDir, 'forms_js.html'), 'utf8');
+  indexHtml = indexHtml.replace("<?!= include('forms_js'); ?>", formsJs);
+  console.log("✓ Inlined forms_js");
+}
+
 // Replace coordinator_attendance_js
 if (indexHtml.includes("<?!= include('coordinator_attendance_js'); ?>")) {
   const coordJs = fs.readFileSync(path.join(srcDir, 'coordinator_attendance_js.html'), 'utf8');

@@ -33,62 +33,44 @@ const AuthService = {
   },
 
   _verifyPassword: function(user, password) {
-  try {
+    try {
+      if (!user || !CONFIG.COLUMNS) {
+        return false;
+      }
 
-    if (!user || !CONFIG.COLUMNS) {
-      return false;
-    }
+      var hashCol = CONFIG.COLUMNS.USER_PASSWORD_HASH;
+      if (!hashCol || !user[hashCol]) {
+        return false;
+      }
 
-    var hashCol = CONFIG.COLUMNS.USER_PASSWORD_HASH;
-    var saltCol = CONFIG.COLUMNS.USER_SALT;
+      var storedPassword = String(user[hashCol]).trim();
+      var inputPassword = String(password || "").trim();
 
-    if (!hashCol || !user[hashCol]) {
-      return false;
-    }
-
-    var storedHash = String(user[hashCol]).trim();
-    var inputPassword = String(password || "").trim();
-
-    // Direct plain-text match check (for un-hashed stored passwords)
-    if (storedHash === inputPassword) {
-      return true;
-    }
-
-    var storedSalt = "";
-    if (saltCol && user[saltCol]) {
-      storedSalt = String(user[saltCol]).trim();
-    }
-
-    // Hash comparison for hashed passwords
-    var calculatedHash = this._hashPassword(password, storedSalt);
-
-    Logger.log("===== VERIFY PASSWORD DEBUG =====");
-    Logger.log("Entered Password : " + inputPassword);
-    Logger.log("Stored Password  : " + storedHash);
-    Logger.log("Calculated Hash  : " + calculatedHash);
-    Logger.log("Hash Match       : " + (storedHash === calculatedHash));
-
-    if (storedHash === calculatedHash) {
-      return true;
-    }
-
-    // Fallback migration check: support the legacy password + ":" + salt format
-    if (storedSalt && storedSalt !== "" && storedSalt.toUpperCase() !== "N/A") {
-      var legacyHash = Utils.hashString(String(password).trim() + ":" + storedSalt);
-      Logger.log("Legacy Calculated Hash: " + legacyHash);
-      Logger.log("Legacy Hash Match     : " + (storedHash === legacyHash));
-      if (storedHash === legacyHash) {
+      // Direct plain text password verification for project requirements
+      if (storedPassword === inputPassword) {
         return true;
       }
+
+      // Hash comparison fallback in case hashed passwords exist
+      var saltCol = CONFIG.COLUMNS.USER_SALT;
+      var storedSalt = (saltCol && user[saltCol]) ? String(user[saltCol]).trim() : "";
+      var calculatedHash = this._hashPassword(password, storedSalt);
+
+      if (storedPassword === calculatedHash) {
+        return true;
+      }
+
+      if (storedSalt && storedSalt !== "" && storedSalt.toUpperCase() !== "N/A") {
+        var legacyHash = Utils.hashString(String(password).trim() + ":" + storedSalt);
+        if (storedPassword === legacyHash) return true;
+      }
+
+      return false;
+    } catch (e) {
+      Logger.log("AuthService._verifyPassword error: " + e);
+      return false;
     }
-
-    return false;
-
-  } catch (e) {
-    Logger.log("AuthService._verifyPassword error: " + e);
-    return false;
-  }
-},
+  },
  _hashPassword: function(password, salt) {
   try {
 
@@ -200,16 +182,21 @@ const AuthService = {
       return Utils.buildResponse(false, validationResult.errors.join(' '));
     }
 
-    var employeeId = loginData.employeeId;
+    var identifier = String(loginData.employeeId || loginData.employee_id || loginData.usernameOrEmail || loginData.username || loginData.email || '').trim();
     var password = loginData.password;
 
-    var user = DatabaseService.findOne(
-    CONFIG.SHEETS.USERS,
-    CONFIG.COLUMNS.USER_EMPLOYEE_ID,
-    employeeId
-);
+    var user = null;
+    if (identifier) {
+      user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'employee_id', identifier);
+      if (!user) {
+        user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_USERNAME || 'username', identifier);
+      }
+      if (!user) {
+        user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMAIL_ADDRESS || 'email_address', identifier);
+      }
+    }
 
-Logger.log("Employee ID: " + employeeId);
+Logger.log("Identifier: " + identifier);
 Logger.log("User Found:");
 Logger.log(JSON.stringify(user));
 

@@ -430,48 +430,50 @@ window.App = {
   Router: {
     navigate: function(pageName) {
       if (!pageName || pageName === 'logout') return;
-      if (!App.Session.hasPermission(pageName)) {
-        App.UI.showError('Access Denied');
-        return;
-      }
-      
-      // Delegate to Index page loadPage if available
-      if (typeof loadPage === 'function') {
-        loadPage(pageName);
-        App.State.activeModule = pageName;
-        // Persist current page so it survives a browser refresh
-        try { localStorage.setItem('lastActivePage', pageName); } catch(e) {}
-        return;
-      }
-      
-      // Cleanup previous module
-      if (App.State.activeModule && App.Modules[App.State.activeModule] && typeof App.Modules[App.State.activeModule].destroy === 'function') {
-        App.Modules[App.State.activeModule].destroy();
-      }
+    const pageNameLower = String(pageName || '').toLowerCase();
 
-      const emptyEl = document.getElementById('module-empty');
-      if (emptyEl) emptyEl.classList.add('d-none');
-      
-      document.querySelectorAll('.app-module').forEach(el => el.classList.add('d-none'));
-      
-      const targetModule = document.getElementById(`module-${pageName}`);
-      if (targetModule) {
-        targetModule.classList.remove('d-none');
-        App.State.activeModule = pageName;
-        // Persist current page so it survives a browser refresh
-        try { localStorage.setItem('lastActivePage', pageName); } catch(e) {}
-        const mod = App.Modules[pageName];
-        if (mod) {
-          if (typeof mod.init === 'function') mod.init();
-        } else {
-          console.error('[ROUTER] Module JS not registered for:', pageName, '| App.Modules keys:', Object.keys(App.Modules));
-          App.Logger.warn(`Module ${pageName} logic not found.`);
-        }
-      } else {
-        console.error('[ROUTER] DOM element not found: #module-' + pageName);
-        App.ErrorHandler.handle(new Error(`Template module-${pageName} missing.`));
-      }
+    if (!App.Session.hasPermission(pageName)) {
+      App.UI.showError('Access Denied');
+      return;
     }
+      
+    // Delegate to Index page loadPage if available
+    if (typeof loadPage === 'function') {
+      loadPage(pageName);
+      App.State.activeModule = pageNameLower;
+      // Persist current page so it survives a browser refresh
+      try { localStorage.setItem('lastActivePage', pageNameLower); } catch(e) {}
+      return;
+    }
+      
+    // Cleanup previous module
+    if (App.State.activeModule && App.Modules[App.State.activeModule] && typeof App.Modules[App.State.activeModule].destroy === 'function') {
+      App.Modules[App.State.activeModule].destroy();
+    }
+
+    const emptyEl = document.getElementById('module-empty');
+    if (emptyEl) emptyEl.classList.add('d-none');
+      
+    document.querySelectorAll('.app-module').forEach(el => el.classList.add('d-none'));
+      
+    const targetModule = document.getElementById(`module-${pageNameLower}`);
+    if (targetModule) {
+      targetModule.classList.remove('d-none');
+      App.State.activeModule = pageNameLower;
+      // Persist current page so it survives a browser refresh
+      try { localStorage.setItem('lastActivePage', pageNameLower); } catch(e) {}
+      const mod = App.Modules[pageNameLower];
+      if (mod) {
+        if (typeof mod.init === 'function') mod.init();
+      } else {
+        console.error('[ROUTER] Module JS not registered for:', pageNameLower, '| App.Modules keys:', Object.keys(App.Modules));
+        App.Logger.warn(`Module ${pageNameLower} logic not found.`);
+      }
+    } else {
+      console.error('[ROUTER] DOM element not found: #module-' + pageNameLower);
+      App.ErrorHandler.handle(new Error(`Template module-${pageNameLower} missing.`));
+    }
+  }
   },
 
   // UI Components Architecture (Interfaces only, as requested)

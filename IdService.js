@@ -140,9 +140,17 @@ const IdService = {
     return this._generateNextIdWithLock('AUDITLOGS');
   },
 
-  // Existing method kept for compatibility with earlier IdService.js
-  generateStudentId: function() {
-    return this._generateNextIdWithLock('STUDENTS');
+  generateFacultyId: function() {
+    try {
+      return this._generateNextIdWithLock('FACULTY');
+    } catch(e) {
+      return 'FAC_' + Date.now();
+    }
+  },
+
+  generateId: function(prefix, sheetName) {
+    var p = prefix || 'ID_';
+    return p + Date.now();
   }
 };
 

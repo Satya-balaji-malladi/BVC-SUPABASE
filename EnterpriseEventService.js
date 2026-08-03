@@ -119,15 +119,29 @@ const EnterpriseEventService = {
       const event = EventService.getEventById(eventId);
       if (!event) return Utils.buildResponse(false, "Event not found.");
 
+      const organizerId = event.organizer || event[CONFIG.COLUMNS.COORDINATOR_ID] || event.created_by;
+
       const success = DatabaseService.updateRow(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID, eventId, {
-        [CONFIG.COLUMNS.EVENT_STATUS]: 'Configuration',
+        [CONFIG.COLUMNS.EVENT_STATUS]: 'Draft',
+        approval_status: 'Approved',
+        approved_by: approverId,
+        approved_at: new Date().toISOString(),
         [CONFIG.COLUMNS.UPDATED_BY]: approverId,
         [CONFIG.COLUMNS.UPDATED_AT]: new Date().toISOString()
       });
 
       if (success) {
-        AuditService.logAction(approverId, 'EnterpriseEventService', 'APPROVE_EVENT', eventId, 'Event', 'Event approved by manager', 'Pending Approval', 'Configuration', 'SUCCESS', approverId);
-        return Utils.buildResponse(true, "Event approved. It is now in Configuration state.");
+        // Auto-assign creator as Event Admin if not already assigned
+        if (organizerId) {
+          CoordinatorService.assignCoordinator(eventId, organizerId, 'Event Admin', approverId || 'System', 'Approved by Admin/HOD');
+          var user = UserService.getUserById(organizerId);
+          if (user && (user.email || user.email_address)) {
+            NotificationService.sendEventApprovedEmail(user.email || user.email_address, event.event_name || event['Event Name']);
+          }
+        }
+
+        AuditService.logAction(approverId, 'EnterpriseEventService', 'APPROVE_EVENT', eventId, 'Event', 'Event approved by admin/HOD', 'Pending Approval', 'Approved', 'SUCCESS', approverId);
+        return Utils.buildResponse(true, "Event approved successfully. Assigned Faculty is now Event Admin.");
       }
       return Utils.buildResponse(false, "Failed to update status.");
     } catch (e) {

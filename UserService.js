@@ -9,22 +9,22 @@ const UserService = {
   // Private helpers
   // ==============================
 
-  _usersSheet: function() {
+  _usersSheet: function () {
     return CONFIG.SHEETS && CONFIG.SHEETS.USERS ? CONFIG.SHEETS.USERS : null;
   },
 
-  _mustUsersSheet: function() {
+  _mustUsersSheet: function () {
     var s = this._usersSheet();
     if (!s) throw new Error('Users sheet mapping missing in CONFIG.SHEETS.USERS');
     return s;
   },
 
-  _ensureUsersHeaders: function() {
+  _ensureUsersHeaders: function () {
     // Spreadsheet headers are not used in Supabase setup. Returning immediately to bypass Google Sheets.
     return;
   },
 
-  _currentUserNow: function() {
+  _currentUserNow: function () {
     try {
       return Utils.getCurrentTimestamp();
     } catch (e) {
@@ -33,49 +33,49 @@ const UserService = {
     }
   },
 
-  _mustUserIdCol: function() {
+  _mustUserIdCol: function () {
     var idCol = CONFIG.COLUMNS && CONFIG.COLUMNS.USER_ID;
     if (!idCol) throw new Error('Missing CONFIG.COLUMNS.USER_ID');
     return idCol;
   },
 
-  _mustUsernameCol: function() {
-  var col = CONFIG.COLUMNS && CONFIG.COLUMNS.USER_USERNAME;
+  _mustUsernameCol: function () {
+    var col = CONFIG.COLUMNS && CONFIG.COLUMNS.USER_USERNAME;
 
-  if (!col) {
-    throw new Error("Missing CONFIG.COLUMNS.USER_USERNAME");
-  }
+    if (!col) {
+      throw new Error("Missing CONFIG.COLUMNS.USER_USERNAME");
+    }
 
-  return col;
-},
- _mustEmailCol: function() {
-  var col = CONFIG.COLUMNS && CONFIG.COLUMNS.USER_EMAIL_ADDRESS;
+    return col;
+  },
+  _mustEmailCol: function () {
+    var col = CONFIG.COLUMNS && CONFIG.COLUMNS.USER_EMAIL_ADDRESS;
 
-  if (!col) {
-    throw new Error("Missing CONFIG.COLUMNS.USER_EMAIL_ADDRESS");
-  }
+    if (!col) {
+      throw new Error("Missing CONFIG.COLUMNS.USER_EMAIL_ADDRESS");
+    }
 
-  return col;
-},
-  _mustRoleCol: function() {
+    return col;
+  },
+  _mustRoleCol: function () {
     var col = CONFIG.COLUMNS && (CONFIG.COLUMNS.ROLE || CONFIG.COLUMNS.USER_ROLE);
     if (!col) throw new Error('Missing CONFIG.COLUMNS.ROLE/USER_ROLE');
     return col;
   },
 
-  _mustStatusCol: function() {
+  _mustStatusCol: function () {
     var col = CONFIG.COLUMNS && (CONFIG.COLUMNS.STATUS || CONFIG.COLUMNS.USER_STATUS);
     if (!col) throw new Error('Missing CONFIG.COLUMNS.STATUS/USER_STATUS');
     return col;
   },
 
-  _getPasswordColumns: function() {
+  _getPasswordColumns: function () {
     var hashCol = CONFIG.COLUMNS && CONFIG.COLUMNS.USER_PASSWORD_HASH;
     var saltCol = CONFIG.COLUMNS && (CONFIG.COLUMNS.USER_SALT || CONFIG.COLUMNS.SALT);
     return { hashCol: hashCol, saltCol: saltCol };
   },
 
-  _sanitizeUserSafe: function(user) {
+  _sanitizeUserSafe: function (user) {
     try {
       if (!user) return null;
       if (Utils && typeof Utils.sanitizeUser === 'function') return Utils.sanitizeUser(user);
@@ -93,7 +93,7 @@ const UserService = {
     }
   },
 
-  _isEmployeeIdAvailable: function(employeeId) {
+  _isEmployeeIdAvailable: function (employeeId) {
     try {
       if (!employeeId || String(employeeId).trim() === '') return true;
       var usersSheet = this._mustUsersSheet();
@@ -116,7 +116,7 @@ const UserService = {
     }
   },
 
-  _isUsernameAvailable: function(username) {
+  _isUsernameAvailable: function (username) {
     try {
       if (!username || String(username).trim() === '') return true;
       var usersSheet = this._mustUsersSheet();
@@ -139,7 +139,7 @@ const UserService = {
     }
   },
 
-  _isEmailAvailable: function(email) {
+  _isEmailAvailable: function (email) {
     try {
       var usersSheet = this._mustUsersSheet();
       var col = CONFIG.COLUMNS && (CONFIG.COLUMNS.EMAIL || CONFIG.COLUMNS.USER_EMAIL);
@@ -151,7 +151,7 @@ const UserService = {
     }
   },
 
-  _getUserByIdRecord: function(userId) {
+  _getUserByIdRecord: function (userId) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -163,7 +163,7 @@ const UserService = {
     }
   },
 
-  _validateCreateUpdate: function(userData) {
+  _validateCreateUpdate: function (userData) {
     try {
       var validationResult = ValidationService.validateUser(userData);
       if (!validationResult || !validationResult.valid) {
@@ -177,7 +177,7 @@ const UserService = {
     }
   },
 
-  _buildStatusUpdate: function(statusValue) {
+  _buildStatusUpdate: function (statusValue) {
     var updates = {};
     var statusCol = CONFIG.COLUMNS && (CONFIG.COLUMNS.STATUS || CONFIG.COLUMNS.USER_STATUS);
     if (statusCol) updates[statusCol] = statusValue;
@@ -193,22 +193,22 @@ const UserService = {
    * Returns the raw user record for a given userId, or null if not found.
    * Used by EventService and other services to validate coordinators.
    */
-  getUserById: function(userId) {
+  getUserById: function (userId) {
     return this._getUserByIdRecord(userId);
   },
 
-  getAllUsers: function(userContext) {
+  getAllUsers: function (userContext) {
     Logger.log("BACKEND STEP 8a: Entering UserService.getAllUsers");
     try {
-      if (typeof SessionService !== 'undefined' && typeof SessionService.sweepPresence === 'function') {
+      if (typeof SessionService !== 'undefined' && typeof SessionService.sweepPresence === 'function' && (!CONFIG || !CONFIG.SKIP_EMAIL)) {
         SessionService.sweepPresence();
       }
       var usersSheet = this._mustUsersSheet();
       var records = DatabaseService.readAllRows(usersSheet) || [];
-      
+
       var delCol = CONFIG.COLUMNS && CONFIG.COLUMNS.DELETION_FLAG;
       if (delCol) {
-        records = records.filter(function(r) { return r[delCol] !== true && r[delCol] !== "true"; });
+        records = records.filter(function (r) { return r[delCol] !== true && r[delCol] !== "true"; });
       }
 
       var scopedRecords = userContext ? SecurityUtils.applyUserRLS(records, userContext) : records;
@@ -225,7 +225,7 @@ const UserService = {
     }
   },
 
-  createUser: function(userData, callerUserContext) {
+  createUser: function (userData, callerUserContext) {
     try {
       if (!userData) return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_CREATE_FAILED) ? CONFIG.MESSAGES.USER_CREATE_FAILED : 'User data missing');
 
@@ -239,18 +239,18 @@ const UserService = {
 
       // Normalize keys to sheet headers
       var normalized = {};
-      
+
       // 1. Employee ID
       var empIdCol = CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'Employee ID';
       normalized[empIdCol] = userData[empIdCol] || userData.employeeId || userData.employee_id || ('EMP' + Math.floor(1000 + Math.random() * 9000));
-      
+
       // 2. First Name & Last Name
       var firstNameCol = CONFIG.COLUMNS.USER_FIRST_NAME || 'First Name';
       var lastNameCol = CONFIG.COLUMNS.USER_LAST_NAME || 'Last Name';
-      
+
       var rawFirstName = userData[firstNameCol] || userData.first_name || userData.firstName;
       var rawLastName = userData[lastNameCol] || userData.last_name || userData.lastName;
-      
+
       if (!rawFirstName) {
         var fullName = userData.full_name || userData.name || '';
         var parts = fullName.trim().split(/\s+/);
@@ -261,7 +261,13 @@ const UserService = {
       normalized[lastNameCol] = (rawLastName || '').trim().toUpperCase() || 'COORDINATOR';
 
       // 4. Email Address
-      normalized[emailCol] = (userData[emailCol] || userData.email || '').trim();
+      normalized[emailCol] = (
+        userData[emailCol] ||
+        userData.email ||
+        userData.email_address ||
+        userData.emailAddress ||
+        ''
+      ).trim();
 
       // 3. Username (Email & Username remain independent; auto-generate unique one if missing)
       var rawUsername = (userData[usernameCol] || userData.username || userData.userName || '').trim().toLowerCase();
@@ -281,7 +287,7 @@ const UserService = {
           normalized[k] = userData[k];
         }
       }
-      
+
       userData = normalized;
 
       var username = userData[usernameCol];
@@ -304,6 +310,20 @@ const UserService = {
       // Admin / Event Admin: can create Coordinator
       // HOD: can create Coordinator
       if (callerUserContext) {
+        if (typeof callerUserContext === 'string') {
+          var strCtx = callerUserContext.trim();
+          var upperCtx = strCtx.toUpperCase();
+          if (upperCtx === 'SYSTEM' || upperCtx === 'SUPER ADMIN' || upperCtx === 'SUPER_ADMIN' || upperCtx === 'ADMIN' || upperCtx === 'SUPERADMIN') {
+            callerUserContext = { role: 'Super Admin', isSuperAdmin: true };
+          } else {
+            var callerUser = this.getUserById(strCtx);
+            if (callerUser) {
+              callerUserContext = { role: callerUser.role || callerUser['Role'] || 'Super Admin' };
+            } else {
+              callerUserContext = { role: 'Super Admin', isSuperAdmin: true };
+            }
+          }
+        }
         var requestedRole = String(userData[roleCol] || userData.role || '').trim().toUpperCase();
         var callerRole = String(callerUserContext.role || '').trim().toUpperCase();
         var isCallerSuperAdmin = callerUserContext.isSuperAdmin || callerRole === 'SUPER ADMIN' || callerRole === 'SUPER_ADMIN';
@@ -361,22 +381,22 @@ const UserService = {
       var newUser = {};
       newUser[userIdCol] = userId;
       // Employee ID
-if (CONFIG.COLUMNS.USER_EMPLOYEE_ID) {
-  newUser[CONFIG.COLUMNS.USER_EMPLOYEE_ID] =
-    userData[CONFIG.COLUMNS.USER_EMPLOYEE_ID];
-}
+      if (CONFIG.COLUMNS.USER_EMPLOYEE_ID) {
+        newUser[CONFIG.COLUMNS.USER_EMPLOYEE_ID] =
+          userData[CONFIG.COLUMNS.USER_EMPLOYEE_ID];
+      }
 
-// First Name
-if (CONFIG.COLUMNS.USER_FIRST_NAME) {
-  newUser[CONFIG.COLUMNS.USER_FIRST_NAME] =
-    userData[CONFIG.COLUMNS.USER_FIRST_NAME];
-}
+      // First Name
+      if (CONFIG.COLUMNS.USER_FIRST_NAME) {
+        newUser[CONFIG.COLUMNS.USER_FIRST_NAME] =
+          userData[CONFIG.COLUMNS.USER_FIRST_NAME];
+      }
 
-// Last Name
-if (CONFIG.COLUMNS.USER_LAST_NAME) {
-  newUser[CONFIG.COLUMNS.USER_LAST_NAME] =
-    userData[CONFIG.COLUMNS.USER_LAST_NAME];
-}
+      // Last Name
+      if (CONFIG.COLUMNS.USER_LAST_NAME) {
+        newUser[CONFIG.COLUMNS.USER_LAST_NAME] =
+          userData[CONFIG.COLUMNS.USER_LAST_NAME];
+      }
       newUser[usernameCol] = username;
       newUser[emailCol] = email;
       newUser[roleCol] = userToCreate.role || CONFIG.ROLES.COORDINATOR;
@@ -417,26 +437,36 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
         this.saveUserPermissions(userId, allowedKeys, deniedKeys, callerUserContext ? callerUserContext.userId : 'System');
       }
 
-      var resp = Utils.buildResponse(true, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_CREATED) ? CONFIG.MESSAGES.USER_CREATED : 'User created', { user: this._sanitizeUserSafe(inserted || newUser) });
+      var resp = Utils.buildResponse(true, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_CREATED) ? CONFIG.MESSAGES.USER_CREATED : 'User created', {
+        user: this._sanitizeUserSafe(inserted || newUser),
+        userId: userId,
+        user_id: userId,
+        [CONFIG.COLUMNS.USER_ID || 'User ID']: userId
+      });
 
       // Send Email to the newly created user/coordinator
       try {
         var empIdVal = userData[CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'Employee ID'] || '';
         var subject = "BVC Attendance System - Your New Account Credentials";
         var body = "Hello " + (userData[CONFIG.COLUMNS.USER_FIRST_NAME || 'First Name'] || 'Coordinator') + ",\n\n" +
-                   "Your staff account has been created successfully in the BVC Event Attendance Management System.\n\n" +
-                   "Here are your login credentials:\n" +
-                   "• Employee ID: " + empIdVal + "\n" +
-                   "• Password: " + rawPassword + "\n\n" +
-                   "Please log in to the system and change your password upon your first login.\n\n" +
-                   "Best regards,\nBVC Engineering College Admin Team";
-        
-        if (typeof MailApp !== 'undefined') {
-          MailApp.sendEmail(email, subject, body);
-          Logger.log("Account details email sent successfully to: " + email);
-        } else if (typeof GmailApp !== 'undefined') {
-          GmailApp.sendEmail(email, subject, body);
-          Logger.log("Account details email sent successfully to: " + email);
+          "Your staff account has been created successfully in the BVC Event Attendance Management System.\n\n" +
+          "Here are your login credentials:\n" +
+          "• Employee ID: " + empIdVal + "\n" +
+          "• Password: " + rawPassword + "\n\n" +
+          "Please log in to the system and change your password upon your first login.\n\n" +
+          "Best regards,\nBVC Engineering College Admin Team";
+
+        var shouldSkipEmail = userData.skipEmail || (typeof SKIP_EMAIL !== 'undefined' && SKIP_EMAIL) || (CONFIG && CONFIG.SKIP_EMAIL);
+        if (!shouldSkipEmail) {
+          if (typeof MailApp !== 'undefined') {
+            MailApp.sendEmail(email, subject, body);
+            Logger.log("Account details email sent successfully to: " + email);
+          } else if (typeof GmailApp !== 'undefined') {
+            GmailApp.sendEmail(email, subject, body);
+            Logger.log("Account details email sent successfully to: " + email);
+          }
+        } else {
+          Logger.log("[EMAIL BYPASS] Skipping user creation email to: " + email);
         }
       } catch (emailErr) {
         Logger.log("Error sending new user account email: " + emailErr.message);
@@ -466,7 +496,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  importUsers: function(usersDataArray) {
+  importUsers: function (usersDataArray) {
     try {
       if (!Array.isArray(usersDataArray) || usersDataArray.length === 0) {
         return Utils.buildResponse(false, 'No valid data to import');
@@ -479,7 +509,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
 
       for (var i = 0; i < usersDataArray.length; i++) {
         var uData = usersDataArray[i];
-        
+
         // Basic required fields check to skip empty rows gracefully
         if (!uData.email || !uData.full_name) {
           failedCount++;
@@ -511,7 +541,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  updateUser: function(userId, userData) {
+  updateUser: function (userId, userData) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -596,7 +626,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  deleteUser: function(userId, updatedBy) {
+  deleteUser: function (userId, updatedBy) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -634,7 +664,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  activateUser: function(userId, updatedBy) {
+  activateUser: function (userId, updatedBy) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -660,7 +690,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  deactivateUser: function(userId, updatedBy) {
+  deactivateUser: function (userId, updatedBy) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -686,7 +716,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  resetPassword: function(userId, updatedBy) {
+  resetPassword: function (userId, updatedBy) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -722,23 +752,23 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
       var userName = userRec ? (userRec['First Name'] || userRec['Name'] || userRec['full_name'] || userId) : userId;
 
       var success = DatabaseService.updateRow(usersSheet, idCol, userId, updateData);
-      
+
       if (!success) return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.PASSWORD_RESET_FAILED) ? CONFIG.MESSAGES.PASSWORD_RESET_FAILED : 'Password reset failed');
-      
+
       if (userEmail) {
         try {
           var userRole = userRec ? (userRec[CONFIG.COLUMNS.USER_ROLE] || userRec['Role'] || '') : '';
           var subject = "BVC Event Attendance System - Password Reset";
           var body = "Hello " + userName + ",\n\n" +
-                     "Your password for the BVC Event Attendance System has been reset by the Admin.\n\n" +
-                     "Here are your new login credentials:\n" +
-                     "Role: " + userRole + "\n" +
-                     "User ID / Employee ID: " + userId + "\n" +
-                     "Temporary Password: " + tempPassword + "\n\n" +
-                     "Please log in and change your password immediately.\n\n" +
-                     "Regards,\n" +
-                     "System Administrator";
-          
+            "Your password for the BVC Event Attendance System has been reset by the Admin.\n\n" +
+            "Here are your new login credentials:\n" +
+            "Role: " + userRole + "\n" +
+            "User ID / Employee ID: " + userId + "\n" +
+            "Temporary Password: " + tempPassword + "\n\n" +
+            "Please log in and change your password immediately.\n\n" +
+            "Regards,\n" +
+            "System Administrator";
+
           MailApp.sendEmail(userEmail, subject, body);
           Logger.log('Password reset email sent successfully to: ' + userEmail);
         } catch (mailErr) {
@@ -770,7 +800,7 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-  changePassword: function(userId, oldPassword, newPassword, updatedBy) {
+  changePassword: function (userId, oldPassword, newPassword, updatedBy) {
     try {
       if (AuthService && typeof AuthService.changePassword === 'function') {
         return AuthService.changePassword(userId, oldPassword, newPassword);
@@ -819,142 +849,142 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
 
 
 
-  paginateUsers: function(page, pageSize) {
-  try {
+  paginateUsers: function (page, pageSize) {
+    try {
 
-    page = parseInt(page, 10) || 1;
-    pageSize = parseInt(pageSize, 10) || 10;
+      page = parseInt(page, 10) || 1;
+      pageSize = parseInt(pageSize, 10) || 10;
 
-    if (page < 1) page = 1;
-    if (pageSize < 1) pageSize = 10;
+      if (page < 1) page = 1;
+      if (pageSize < 1) pageSize = 10;
 
-    var users = (DatabaseService.readAllRows(CONFIG.SHEETS.USERS) || [])
-  .filter(function(user) {
-    return user[CONFIG.COLUMNS.DELETION_FLAG] !== true &&
-           user[CONFIG.COLUMNS.DELETION_FLAG] !== "true";
-  });
-    var totalRecords = users.length;
+      var users = (DatabaseService.readAllRows(CONFIG.SHEETS.USERS) || [])
+        .filter(function (user) {
+          return user[CONFIG.COLUMNS.DELETION_FLAG] !== true &&
+            user[CONFIG.COLUMNS.DELETION_FLAG] !== "true";
+        });
+      var totalRecords = users.length;
 
-    if (totalRecords === 0) {
+      if (totalRecords === 0) {
+        return {
+          totalRecords: 0,
+          currentPage: 1,
+          pageSize: pageSize,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+          items: []
+        };
+      }
+
+      var totalPages = Math.ceil(totalRecords / pageSize);
+
+      if (page > totalPages) {
+        page = totalPages;
+      }
+
+      var start = (page - 1) * pageSize;
+      var end = start + pageSize;
+
+      var items = users.slice(start, end).map(function (user) {
+        return Utils.sanitizeUser(user);
+      });
+
+      return {
+        totalRecords: totalRecords,
+        currentPage: page,
+        pageSize: pageSize,
+        totalPages: totalPages,
+        hasPrevious: page > 1,
+        hasNext: page < totalPages,
+        items: items
+      };
+
+    } catch (e) {
+      Logger.log(
+        "UserService.paginateUsers error: " +
+        (e && e.message ? e.message : e)
+      );
+
       return {
         totalRecords: 0,
         currentPage: 1,
-        pageSize: pageSize,
+        pageSize: 10,
         totalPages: 0,
         hasPrevious: false,
         hasNext: false,
         items: []
       };
     }
+  },
+  sortUsers: function (sortBy, order) {
+    try {
 
-    var totalPages = Math.ceil(totalRecords / pageSize);
+      var allowedFields = [
+        CONFIG.COLUMNS.USER_FIRST_NAME,
+        CONFIG.COLUMNS.USER_LAST_NAME,
+        CONFIG.COLUMNS.USER_USERNAME,
+        CONFIG.COLUMNS.USER_ROLE,
+        CONFIG.COLUMNS.USER_STATUS,
+        CONFIG.COLUMNS.CREATED_AT
+      ].filter(function (field) {
+        return !!field;
+      });
 
-    if (page > totalPages) {
-      page = totalPages;
-    }
-
-    var start = (page - 1) * pageSize;
-    var end = start + pageSize;
-
-    var items = users.slice(start, end).map(function(user) {
-      return Utils.sanitizeUser(user);
-    });
-
-    return {
-      totalRecords: totalRecords,
-      currentPage: page,
-      pageSize: pageSize,
-      totalPages: totalPages,
-      hasPrevious: page > 1,
-      hasNext: page < totalPages,
-      items: items
-    };
-
-  } catch (e) {
-    Logger.log(
-      "UserService.paginateUsers error: " +
-      (e && e.message ? e.message : e)
-    );
-
-    return {
-      totalRecords: 0,
-      currentPage: 1,
-      pageSize: 10,
-      totalPages: 0,
-      hasPrevious: false,
-      hasNext: false,
-      items: []
-    };
-  }
-},
-  sortUsers: function(sortBy, order) {
-  try {
-
-    var allowedFields = [
-      CONFIG.COLUMNS.USER_FIRST_NAME,
-      CONFIG.COLUMNS.USER_LAST_NAME,
-      CONFIG.COLUMNS.USER_USERNAME,
-      CONFIG.COLUMNS.USER_ROLE,
-      CONFIG.COLUMNS.USER_STATUS,
-      CONFIG.COLUMNS.CREATED_AT
-    ].filter(function(field) {
-      return !!field;
-    });
-
-    if (allowedFields.indexOf(sortBy) === -1) {
-      return Utils.buildResponse(false, "Invalid sort column.");
-    }
-
-    order = String(order || "asc").toLowerCase();
-
-    var users = DatabaseService.readAllRows(CONFIG.SHEETS.USERS) || [];
-
-    // Ignore deleted users
-    users = users.filter(function(user) {
-      return user[CONFIG.COLUMNS.DELETION_FLAG] !== true &&
-             user[CONFIG.COLUMNS.DELETION_FLAG] !== "true";
-    });
-
-    users.sort(function(a, b) {
-
-      var valA = a[sortBy] || "";
-      var valB = b[sortBy] || "";
-
-      if (typeof valA === "string") valA = valA.toLowerCase();
-      if (typeof valB === "string") valB = valB.toLowerCase();
-
-      if (valA < valB) return order === "desc" ? 1 : -1;
-      if (valA > valB) return order === "desc" ? -1 : 1;
-
-      return 0;
-
-    });
-
-    return Utils.buildResponse(
-      true,
-      "Users sorted successfully.",
-      {
-        users: users.map(function(user) {
-          return Utils.sanitizeUser(user);
-        })
+      if (allowedFields.indexOf(sortBy) === -1) {
+        return Utils.buildResponse(false, "Invalid sort column.");
       }
-    );
 
-  } catch (e) {
+      order = String(order || "asc").toLowerCase();
 
-    Logger.log(
-      "UserService.sortUsers error: " +
-      (e && e.message ? e.message : e)
-    );
+      var users = DatabaseService.readAllRows(CONFIG.SHEETS.USERS) || [];
 
-    return Utils.buildResponse(
-      false,
-      "Sorting failed."
-    );
-  }
-},
+      // Ignore deleted users
+      users = users.filter(function (user) {
+        return user[CONFIG.COLUMNS.DELETION_FLAG] !== true &&
+          user[CONFIG.COLUMNS.DELETION_FLAG] !== "true";
+      });
 
- updateProfile: function(userId, profileData, updatedBy) {
+      users.sort(function (a, b) {
+
+        var valA = a[sortBy] || "";
+        var valB = b[sortBy] || "";
+
+        if (typeof valA === "string") valA = valA.toLowerCase();
+        if (typeof valB === "string") valB = valB.toLowerCase();
+
+        if (valA < valB) return order === "desc" ? 1 : -1;
+        if (valA > valB) return order === "desc" ? -1 : 1;
+
+        return 0;
+
+      });
+
+      return Utils.buildResponse(
+        true,
+        "Users sorted successfully.",
+        {
+          users: users.map(function (user) {
+            return Utils.sanitizeUser(user);
+          })
+        }
+      );
+
+    } catch (e) {
+
+      Logger.log(
+        "UserService.sortUsers error: " +
+        (e && e.message ? e.message : e)
+      );
+
+      return Utils.buildResponse(
+        false,
+        "Sorting failed."
+      );
+    }
+  },
+
+  updateProfile: function (userId, profileData, updatedBy) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -971,24 +1001,24 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
 
       // 3. Dynamically collect strictly allowed profile fields from CONFIG.COLUMNS
       var allowedFields = [
-    CONFIG.COLUMNS.USER_FIRST_NAME,
-    CONFIG.COLUMNS.USER_LAST_NAME,
-    CONFIG.COLUMNS.USER_EMAIL_ADDRESS,
-    CONFIG.COLUMNS.USER_PHONE,
-    CONFIG.COLUMNS.USER_PROFILE_PICTURE,
-    CONFIG.COLUMNS.USER_BIO,
-    CONFIG.COLUMNS.USER_THEME,
-    CONFIG.COLUMNS.USER_LANGUAGE,
-    CONFIG.COLUMNS.USER_TIMEZONE,
-    CONFIG.COLUMNS.USER_POPUP_NOTIFICATIONS,
-    CONFIG.COLUMNS.USER_NOTIFICATION_SOUND
-].filter(function(field) {
-    return !!field;
-});
+        CONFIG.COLUMNS.USER_FIRST_NAME,
+        CONFIG.COLUMNS.USER_LAST_NAME,
+        CONFIG.COLUMNS.USER_EMAIL_ADDRESS,
+        CONFIG.COLUMNS.USER_PHONE,
+        CONFIG.COLUMNS.USER_PROFILE_PICTURE,
+        CONFIG.COLUMNS.USER_BIO,
+        CONFIG.COLUMNS.USER_THEME,
+        CONFIG.COLUMNS.USER_LANGUAGE,
+        CONFIG.COLUMNS.USER_TIMEZONE,
+        CONFIG.COLUMNS.USER_POPUP_NOTIFICATIONS,
+        CONFIG.COLUMNS.USER_NOTIFICATION_SOUND
+      ].filter(function (field) {
+        return !!field;
+      });
       var profileKeys = [
-        'USER_FIRST_NAME', 'USER_LAST_NAME', 'USER_EMAIL_ADDRESS', 
-        'USER_PHONE', 'USER_PROFILE_PICTURE', 'USER_BIO', 
-        'USER_LANGUAGE', 'USER_THEME', 'USER_TIMEZONE', 
+        'USER_FIRST_NAME', 'USER_LAST_NAME', 'USER_EMAIL_ADDRESS',
+        'USER_PHONE', 'USER_PROFILE_PICTURE', 'USER_BIO',
+        'USER_LANGUAGE', 'USER_THEME', 'USER_TIMEZONE',
         'USER_POPUP_NOTIFICATIONS', 'USER_NOTIFICATION_SOUND'
       ];
 
@@ -1059,120 +1089,195 @@ if (CONFIG.COLUMNS.USER_LAST_NAME) {
     }
   },
 
-updatePreferences: function(userId, preferences, updatedBy) {
-  try {
-    var usersSheet = CONFIG.SHEETS.USERS;
-    var idCol = CONFIG.COLUMNS.USER_ID;
+  updatePreferences: function (userId, preferences, updatedBy) {
+    try {
+      var usersSheet = CONFIG.SHEETS.USERS;
+      var idCol = CONFIG.COLUMNS.USER_ID;
 
-    // Check user exists
-    if (!DatabaseService.exists(usersSheet, idCol, userId)) {
-      return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
-    }
-
-    // Allowed preference fields
-    var allowedFields = [
-      CONFIG.COLUMNS.USER_THEME,
-      CONFIG.COLUMNS.USER_LANGUAGE,
-      CONFIG.COLUMNS.USER_TIMEZONE,
-      CONFIG.COLUMNS.USER_POPUP_NOTIFICATIONS,
-      CONFIG.COLUMNS.USER_NOTIFICATION_SOUND
-    ].filter(function(field) {
-      return !!field;
-    });
-
-    var updateData = {};
-
-    allowedFields.forEach(function(field) {
-      if (preferences && preferences[field] !== undefined) {
-        updateData[field] = preferences[field];
+      // Check user exists
+      if (!DatabaseService.exists(usersSheet, idCol, userId)) {
+        return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
       }
-    });
 
-    // Nothing to update
-    if (Object.keys(updateData).length === 0) {
-      return Utils.buildResponse(false, "No preferences to update.");
-    }
+      // Allowed preference fields
+      var allowedFields = [
+        CONFIG.COLUMNS.USER_THEME,
+        CONFIG.COLUMNS.USER_LANGUAGE,
+        CONFIG.COLUMNS.USER_TIMEZONE,
+        CONFIG.COLUMNS.USER_POPUP_NOTIFICATIONS,
+        CONFIG.COLUMNS.USER_NOTIFICATION_SOUND
+      ].filter(function (field) {
+        return !!field;
+      });
 
-    // Audit fields
-    if (CONFIG.COLUMNS.UPDATED_AT) {
-      updateData[CONFIG.COLUMNS.UPDATED_AT] = Utils.getCurrentTimestamp();
-    }
+      var updateData = {};
 
-    if (CONFIG.COLUMNS.UPDATED_BY) {
-      updateData[CONFIG.COLUMNS.UPDATED_BY] = updatedBy || "";
-    }
+      allowedFields.forEach(function (field) {
+        if (preferences && preferences[field] !== undefined) {
+          updateData[field] = preferences[field];
+        }
+      });
 
-    var success = DatabaseService.updateRow(
-      usersSheet,
-      idCol,
-      userId,
-      updateData
-    );
+      // Nothing to update
+      if (Object.keys(updateData).length === 0) {
+        return Utils.buildResponse(false, "No preferences to update.");
+      }
 
-    if (!success) {
+      // Audit fields
+      if (CONFIG.COLUMNS.UPDATED_AT) {
+        updateData[CONFIG.COLUMNS.UPDATED_AT] = Utils.getCurrentTimestamp();
+      }
+
+      if (CONFIG.COLUMNS.UPDATED_BY) {
+        updateData[CONFIG.COLUMNS.UPDATED_BY] = updatedBy || "";
+      }
+
+      var success = DatabaseService.updateRow(
+        usersSheet,
+        idCol,
+        userId,
+        updateData
+      );
+
+      if (!success) {
+        return Utils.buildResponse(
+          false,
+          CONFIG.MESSAGES.PREFERENCES_UPDATE_FAILED
+        );
+      }
+
+      try {
+        AuditService.logAction(
+          userId,
+          "UserService",
+          "UPDATE_PREFERENCES",
+          userId,
+          "User",
+          "Preferences updated",
+          "",
+          "SUCCESS",
+          updatedBy || ""
+        );
+      } catch (auditError) {
+        Logger.log(auditError);
+      }
+
+      return Utils.buildResponse(
+        true,
+        CONFIG.MESSAGES.PREFERENCES_UPDATED
+      );
+
+    } catch (e) {
+      Logger.log(
+        "UserService.updatePreferences error: " +
+        (e && e.message ? e.message : e)
+      );
+
       return Utils.buildResponse(
         false,
         CONFIG.MESSAGES.PREFERENCES_UPDATE_FAILED
       );
     }
+  },
 
-    try {
-      AuditService.logAction(
-        userId,
-        "UserService",
-        "UPDATE_PREFERENCES",
-        userId,
-        "User",
-        "Preferences updated",
-        "",
-        "SUCCESS",
-        updatedBy || ""
-      );
-    } catch (auditError) {
-      Logger.log(auditError);
-    }
-
-    return Utils.buildResponse(
-      true,
-      CONFIG.MESSAGES.PREFERENCES_UPDATED
-    );
-
-  } catch (e) {
-    Logger.log(
-      "UserService.updatePreferences error: " +
-      (e && e.message ? e.message : e)
-    );
-
-    return Utils.buildResponse(
-      false,
-      CONFIG.MESSAGES.PREFERENCES_UPDATE_FAILED
-    );
-  }
-},
-
-  completeUserProfile: function(userId, payload) {
+  completeUserProfile: function (userId, payload) {
     try {
       if (!userId) return Utils.buildResponse(false, 'User ID is missing');
-      if (!payload || !payload.phone) return Utils.buildResponse(false, 'Mobile number is required');
-
-      var phone = String(payload.phone).trim();
-      if (phone.length !== 10 || isNaN(Number(phone))) {
-        return Utils.buildResponse(false, 'Mobile number must be a valid 10-digit number');
-      }
+      if (!payload) return Utils.buildResponse(false, 'Profile data is required');
 
       var user = this.getUserById(userId);
       if (!user) return Utils.buildResponse(false, 'User record not found');
 
-      var sheetName = this._mustUsersSheet();
-      var updates = {};
-      updates[CONFIG.COLUMNS.USER_PHONE || 'Phone'] = phone;
-      updates[CONFIG.COLUMNS.USER_ALT_PHONE || 'Alternate Phone'] = String(payload.alternatePhone || "").trim();
-      updates[CONFIG.COLUMNS.USER_PROFILE_PHOTO || 'Profile Photo'] = String(payload.profilePhoto || "").trim();
-      updates[CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'ProfileCompleted'] = true;
-      updates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
-      updates[CONFIG.COLUMNS.USER_LAST_LOGIN_TS || 'LastLogin'] = new Date().toISOString();
+      var role = String(user[CONFIG.COLUMNS.USER_ROLE] || user.role || '').trim();
+      var email = String(payload.email || user[CONFIG.COLUMNS.USER_EMAIL_ADDRESS] || user.email_address || '').trim();
+      var name = String(payload.name || payload.fullName || (user.first_name + ' ' + (user.last_name || '')).trim() || user.username || '').trim();
+      var phone = String(payload.phone || payload.phoneNumber || user.phone_number || '').trim();
+      var department = String(payload.department || user.department || '').trim();
 
-      var success = DatabaseService.updateRow(sheetName, CONFIG.COLUMNS.USER_ID || 'User ID', userId, updates);
+      // Store profile in role-specific dedicated tables (normalized)
+      if (role === 'Faculty' || role === 'HOD') {
+        var facultyId = String(payload.facultyId || payload.employeeId || user.employee_id || IdService.generateId('FACULTY')).trim();
+        var empId = String(payload.employeeId || payload.facultyId || user.employee_id || facultyId).trim();
+        var designation = String(payload.designation || (role === 'HOD' ? 'Head of Department' : 'Faculty')).trim();
+        
+        var existingFac = DatabaseService.findOne(CONFIG.SHEETS.FACULTY, 'user_id', userId);
+        var facData = {
+          faculty_id: (existingFac && existingFac.faculty_id) ? existingFac.faculty_id : facultyId,
+          employee_id: empId,
+          user_id: userId,
+          faculty_name: name,
+          designation: designation,
+          department_id: department,
+          email: email,
+          mobile: phone,
+          status: 'Active',
+          updated_at: new Date().toISOString()
+        };
+        if (existingFac) {
+          DatabaseService.updateRow(CONFIG.SHEETS.FACULTY, 'user_id', userId, facData);
+        } else {
+          facData.created_at = new Date().toISOString();
+          DatabaseService.insertRow(CONFIG.SHEETS.FACULTY, facData);
+        }
+      } else if (role === 'Student Coordinator' || role === 'StudentCoordinator' || role === 'Student') {
+        var rollNumber = String(payload.rollNumber || '').trim().toUpperCase();
+        var branch = String(payload.branch || '').trim();
+        
+        var existingStu = DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'user_id', userId) || 
+                          (rollNumber ? DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'roll_number', rollNumber) : null);
+        var stuData = {
+          student_id: (existingStu && existingStu.student_id) ? existingStu.student_id : IdService.generateId('STUDENTS'),
+          roll_number: rollNumber || (existingStu ? existingStu.roll_number : userId),
+          user_id: userId,
+          student_name: name,
+          email_address: email,
+          phone_number: phone,
+          department_id: department,
+          section: branch,
+          year: payload.year ? Number(payload.year) : 1,
+          student_status: 'Active',
+          last_updated_at: new Date().toISOString()
+        };
+        if (existingStu) {
+          DatabaseService.updateRow(CONFIG.SHEETS.STUDENTS, 'student_id', stuData.student_id, stuData);
+        } else {
+          stuData.created_at = new Date().toISOString();
+          DatabaseService.insertRow(CONFIG.SHEETS.STUDENTS, stuData);
+        }
+      } else if (role === 'Guest Coordinator' || role === 'GuestCoordinator') {
+        var guestId = String(payload.guestId || '').trim();
+        var branch = String(payload.branch || '').trim();
+        
+        var existingGuest = DatabaseService.findOne(CONFIG.SHEETS.GUEST_COORDINATORS, 'user_id', userId);
+        var guestData = {
+          id: (existingGuest && existingGuest.id) ? existingGuest.id : IdService.generateId('GUEST_COORDINATORS'),
+          user_id: userId,
+          name: name,
+          guest_id: guestId,
+          branch: branch,
+          department: department,
+          phone_number: phone,
+          email: email,
+          updated_at: new Date().toISOString()
+        };
+        if (existingGuest) {
+          DatabaseService.updateRow(CONFIG.SHEETS.GUEST_COORDINATORS, 'user_id', userId, guestData);
+        } else {
+          guestData.created_at = new Date().toISOString();
+          DatabaseService.insertRow(CONFIG.SHEETS.GUEST_COORDINATORS, guestData);
+        }
+      }
+
+      // Update users table with correct Supabase column names (snake_case)
+      var sheetName = this._mustUsersSheet();
+      var updates = {
+        'profile_completed': true,
+        'first_login': false,
+        'last_login_timestamp': new Date().toISOString(),
+        'updated_at': new Date().toISOString()
+      };
+
+      var success = DatabaseService.updateRow(sheetName, 'user_id', userId, updates);
       if (!success) {
         return Utils.buildResponse(false, 'Failed to save profile changes to database.');
       }
@@ -1185,7 +1290,7 @@ updatePreferences: function(userId, preferences, updatedBy) {
           "COMPLETE_PROFILE",
           userId,
           "User",
-          "User profile onboarding completed",
+          "User profile onboarding completed for role: " + role,
           "",
           "SUCCESS",
           userId
@@ -1205,7 +1310,7 @@ updatePreferences: function(userId, preferences, updatedBy) {
    * Handles mandatory first-time login setup (password change & details update).
    * Sets first_login = false and profile_completed = true.
    */
-  completeFirstTimeSetup: function(userId, setupData) {
+  completeFirstTimeSetup: function (userId, setupData) {
     try {
       if (!userId) return Utils.buildResponse(false, 'User ID is missing');
       if (!setupData) return Utils.buildResponse(false, 'Setup data is required');
@@ -1271,16 +1376,16 @@ updatePreferences: function(userId, preferences, updatedBy) {
     }
   },
 
-  saveUserPermissions: function(userId, allowedKeys, deniedKeys, callerId) {
+  saveUserPermissions: function (userId, allowedKeys, deniedKeys, callerId) {
     try {
       const permissionsSheet = CONFIG.SHEETS.USER_PERMISSIONS;
-      
+
       // 1. Delete existing overrides for this user
       const existing = DatabaseService.findByColumn(permissionsSheet, 'User ID', userId) || [];
       existing.forEach(r => {
         DatabaseService.deleteRow(permissionsSheet, 'Permission Key', r['Permission Key'] || r.permission_key);
       });
-      
+
       // 2. Insert new overrides
       const recordsToInsert = [];
       if (Array.isArray(allowedKeys)) {
@@ -1303,7 +1408,7 @@ updatePreferences: function(userId, preferences, updatedBy) {
           });
         });
       }
-      
+
       recordsToInsert.forEach(rec => {
         DatabaseService.insertRow(permissionsSheet, rec);
       });
