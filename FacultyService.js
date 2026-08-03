@@ -10,14 +10,14 @@ var FacultyService = {
    * Reads all active faculty members.
    * @return {Array<Object>} List of faculty records
    */
-  getFacultyMembers: function () {
+  getFacultyMembers: function (userContext) {
     try {
       var sheetName = (CONFIG.SHEETS && CONFIG.SHEETS.FACULTY) ? CONFIG.SHEETS.FACULTY : (CONFIG.TABLES && CONFIG.TABLES.FACULTY ? CONFIG.TABLES.FACULTY : 'Faculty');
       var records = DatabaseService.readAllRows(sheetName) || [];
-      return records.filter(function (f) {
-        var st = String(f.status || f['Status'] || 'Active').toLowerCase();
-        return !f.deletion_flag && !f['Deletion Flag'] && st === 'active';
+      const activeRecords = records.filter(function (f) {
+        return !f.deletion_flag && !f['Deletion Flag'];
       });
+      return userContext ? SecurityUtils.applyFacultyRLS(activeRecords, userContext) : activeRecords;
     } catch (error) {
       Logger.log('FacultyService.getFacultyMembers error: ' + (error && error.message ? error.message : error));
       return [];
@@ -29,11 +29,11 @@ var FacultyService = {
    * @param {string} departmentId
    * @return {Array<Object>} List of department faculty
    */
-  getFacultyByDepartment: function (departmentId) {
+  getFacultyByDepartment: function (departmentId, userContext) {
     try {
       if (!departmentId) return [];
       var target = String(departmentId).trim().toUpperCase();
-      var list = this.getFacultyMembers();
+      var list = this.getFacultyMembers(userContext);
       return list.filter(function (f) {
         return String(f.department_id || f['Department ID']).trim().toUpperCase() === target;
       });
@@ -113,7 +113,7 @@ var FacultyService = {
   /**
    * Updates details for a faculty member.
    */
-  updateFaculty: function (facultyId, updates) {
+  updateFaculty: function (facultyId, updates, userContext) {
     try {
       if (!facultyId || !updates) return Utils.buildResponse(false, 'Missing required faculty data');
 
@@ -121,6 +121,18 @@ var FacultyService = {
       var existing = DatabaseService.findOne(CONFIG.SHEETS.FACULTY, 'faculty_id', facultyId);
       if (!existing) {
         return Utils.buildResponse(false, 'Faculty record not found: ' + facultyId);
+      }
+
+      if (userContext && userContext.isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        const existingDept = String(existing['Department ID'] || existing.department_id || existing.department || '').trim().toUpperCase();
+        if (existingDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You can only edit faculty in your own department.');
+        }
+        const targetDept = String(updates.department_id || updates.departmentId || updates.department || '').trim().toUpperCase();
+        if (targetDept && targetDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You cannot move faculty members to another department.');
+        }
       }
 
       // If updating department_id, resolve valid FK or seed missing department to satisfy foreign key constraint
@@ -160,9 +172,21 @@ var FacultyService = {
   /**
    * Deactivates a faculty member.
    */
-  deactivateFaculty: function (facultyId) {
+  deactivateFaculty: function (facultyId, userContext) {
     try {
       if (!facultyId) return Utils.buildResponse(false, 'Faculty ID missing');
+
+      if (userContext && userContext.isHOD) {
+        var existing = DatabaseService.findOne(CONFIG.SHEETS.FACULTY, 'faculty_id', facultyId);
+        if (existing) {
+          const existingDept = String(existing['Department ID'] || existing.department_id || existing.department || '').trim().toUpperCase();
+          const callerDept = String(userContext.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only deactivate faculty in your own department.');
+          }
+        }
+      }
+
       var updates = { status: 'Inactive', updated_at: new Date().toISOString() };
       var success = DatabaseService.updateRow(CONFIG.SHEETS.FACULTY, 'faculty_id', facultyId, updates);
       if (success) return Utils.buildResponse(true, 'Faculty deactivated successfully');
@@ -176,9 +200,21 @@ var FacultyService = {
   /**
    * Soft-deletes a faculty member.
    */
-  deleteFaculty: function (facultyId) {
+  deleteFaculty: function (facultyId, userContext) {
     try {
       if (!facultyId) return Utils.buildResponse(false, 'Faculty ID missing');
+
+      if (userContext && userContext.isHOD) {
+        var existing = DatabaseService.findOne(CONFIG.SHEETS.FACULTY, 'faculty_id', facultyId);
+        if (existing) {
+          const existingDept = String(existing['Department ID'] || existing.department_id || existing.department || '').trim().toUpperCase();
+          const callerDept = String(userContext.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only delete faculty in your own department.');
+          }
+        }
+      }
+
       var success = DatabaseService.softDelete(CONFIG.SHEETS.FACULTY, 'faculty_id', facultyId);
       if (success) return Utils.buildResponse(true, 'Faculty deleted successfully');
       return Utils.buildResponse(false, 'Failed to delete faculty');
@@ -200,11 +236,12 @@ var FacultyService = {
       }
 
       var callerRole = String(userContext.role || '').toUpperCase().trim();
-      var isSuperAdmin = (callerRole === 'SUPER ADMIN' || callerRole === 'SUPER_ADMIN' || callerRole === 'SUPERADMIN');
+      var isSuperAdmin = (callerRole === 'SUPER ADMIN' || callerRole === 'SUPER_ADMIN' || callerRole === 'SUPERADMIN' || callerRole === 'ADMIN');
+      var isEventAdmin = (callerRole === 'EVENT ADMIN' || callerRole === 'EVENT_ADMIN' || callerRole === 'EVENTADMIN');
       var isHOD = (callerRole === 'HOD');
 
-      if (!isSuperAdmin && !isHOD) {
-        return Utils.buildResponse(false, 'Unauthorized: Only Super Admin and HOD can create faculty members');
+      if (!isSuperAdmin && !isEventAdmin && !isHOD) {
+        return Utils.buildResponse(false, 'Unauthorized: Only Admin, Super Admin, Event Admin, and HOD can create faculty members');
       }
 
       // 2. Extract & Validate Payload
@@ -213,6 +250,14 @@ var FacultyService = {
       var name = String(facultyData.name || facultyData.faculty_name || '').trim();
       var employeeId = String(facultyData.employeeId || facultyData.employee_id || '').trim().toUpperCase();
       var departmentId = String(facultyData.departmentId || facultyData.department || facultyData.department_id || '').trim().toUpperCase();
+
+      if (isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        if (departmentId !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: HODs can only create faculty members in their own department (' + callerDept + ').');
+        }
+      }
+
       var designation = String(facultyData.designation || 'Faculty').trim();
       var phone = String(facultyData.phone || facultyData.mobile || '').trim();
       var email = String(facultyData.email || facultyData.email_address || '').trim().toLowerCase();
@@ -313,7 +358,7 @@ var FacultyService = {
         phone_number: phone,
         department: validDeptId,
         role: 'Faculty',
-        status: 'Active',
+        status: facultyData.status || (CONFIG.USER_STATUS && CONFIG.USER_STATUS.ACTIVE ? CONFIG.USER_STATUS.ACTIVE : 'Active'),
         first_login: true,
         created_by: userContext.userId,
         created_at: new Date().toISOString()
@@ -335,7 +380,7 @@ var FacultyService = {
         department_id: validDeptId,
         email: email,
         mobile: phone,
-        status: 'Active',
+        status: facultyData.status || (CONFIG.USER_STATUS && CONFIG.USER_STATUS.ACTIVE ? CONFIG.USER_STATUS.ACTIVE : 'Active'),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };

@@ -1643,6 +1643,84 @@ body {
   </div>
 </div>
 
+<!-- 7. Create Faculty Modal -->
+<div class="modal fade" id="createFacultyModal" tabindex="-1" aria-labelledby="createFacultyModalLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header bg-primary text-white border-0 py-3">
+        <h5 class="modal-title fw-bold" id="createFacultyModalLabel">
+          <i class="bi bi-person-workspace me-2"></i>Create New Faculty Member
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div id="facultyAlertContainer" class="d-none alert alert-danger p-3 mb-3 rounded-3 small">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i><span id="facultyAlertText"></span>
+        </div>
+        <form id="createFacultyForm" novalidate>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="facName" class="form-label small fw-bold text-dark">Faculty Name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="facName" placeholder="Dr. / Prof. / Mr. / Ms. Name" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facEmployeeId" class="form-label small fw-bold text-dark">Employee ID <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="facEmployeeId" placeholder="e.g. EMP1025" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facDepartment" class="form-label small fw-bold text-dark">Department <span class="text-danger">*</span></label>
+              <select class="form-select" id="facDepartment" required>
+                <option value="">Select Department...</option>
+                <option value="CSE">Computer Science and Engineering (CSE)</option>
+                <option value="ECE">Electronics and Communication (ECE)</option>
+                <option value="EEE">Electrical and Electronics (EEE)</option>
+                <option value="MECH">Mechanical Engineering (MECH)</option>
+                <option value="CIVIL">Civil Engineering (CIVIL)</option>
+                <option value="AIDS">Artificial Intelligence and Data Science (AIDS)</option>
+                <option value="AIML">Artificial Intelligence and Machine Learning (AIML)</option>
+                <option value="IT">Information Technology (IT)</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="facDesignation" class="form-label small fw-bold text-dark">Designation <span class="text-danger">*</span></label>
+              <select class="form-select" id="facDesignation" required>
+                <option value="Assistant Professor">Assistant Professor</option>
+                <option value="Associate Professor">Associate Professor</option>
+                <option value="Professor">Professor</option>
+                <option value="Head of Department">Head of Department (HOD)</option>
+                <option value="Senior Lecturer">Senior Lecturer</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="facPhone" class="form-label small fw-bold text-dark">Phone Number <span class="text-danger">*</span></label>
+              <input type="tel" class="form-control" id="facPhone" placeholder="10-digit mobile" pattern="[0-9]{10}" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facEmail" class="form-label small fw-bold text-dark">Email Address <span class="text-danger">*</span></label>
+              <input type="email" class="form-control" id="facEmail" placeholder="faculty@bvc.edu.in" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facUsername" class="form-label small fw-bold text-dark">Username <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="facUsername" placeholder="e.g. jdoe_cse" required>
+            </div>
+            <div class="col-md-6">
+              <label for="facTempPassword" class="form-label small fw-bold text-dark">Temporary Password <span class="text-danger">*</span></label>
+              <input type="text" class="form-control font-monospace" id="facTempPassword" placeholder="Temp password" required>
+            </div>
+          </div>
+          <div class="mt-4 text-end">
+            <button type="button" class="btn btn-outline-secondary px-4 me-2" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary px-4 fw-bold" id="btnSaveFaculty">
+              <span class="btn-text"><i class="bi bi-check-circle-fill me-1"></i> Save Faculty</span>
+              <span class="spinner-border spinner-border-sm d-none ms-2" role="status"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
   <script>
 /**
  * forms_js.html
@@ -2245,6 +2323,10 @@ window.AttendanceFormController = (() => {
       bindClick('btnConfirmOpenEventMark', confirmVerificationAttendance);
       bindClick('btnConfirmFixedEventMark', confirmVerificationAttendance);
       bindClick('btn-confirm-attendance-verif', confirmVerificationAttendance);
+      bindClick('btnConfirmCreateAndMark', submitStudentNotFound);
+
+      const notFoundForm = document.getElementById('studentNotFoundForm');
+      if (notFoundForm) notFoundForm.addEventListener('submit', (e) => { e.preventDefault(); submitStudentNotFound(); });
 
       // Spot Student Type select change
       const spotTypeSelect = document.getElementById('spot-student-type-select');
@@ -2929,16 +3011,40 @@ window.AttendanceFormController = (() => {
       // Call Central Orchestrator
       google.script.run
         .withSuccessHandler((res) => {
+          try {
+            console.log('[PROD-TRACE][01][SCAN-RESPONSE-RECEIVED]', {
+              rawInput: rawInput,
+              rawResponse: res,
+              hasData: !!(res && res.data),
+              topState: res ? res.state : undefined,
+              nestedState: (res && res.data) ? res.data.state : undefined,
+              topMessageType: res ? res.message : undefined
+            });
+          } catch (e) { console.error('[PROD-TRACE][ERROR][LOG-01-FAIL]', e); }
+
           isProcessingRoll = false;
           setSubmitEnabled(true);
           if (!res) {
+            try { console.warn('[PROD-TRACE][WARN][NULL-RESPONSE-RECEIVED]'); } catch (e) {}
             showToast('error', 'No response received from server.');
             setScannerStatus('Error', 'status-error');
             return;
           }
 
-          const stateType = res.state || (res.data ? res.data.state : null);
+          const stateType = res.state || (res.data ? res.data.state : null) || res.stateType;
           const stateData = res.data || res;
+
+          try {
+            console.log('[PROD-TRACE][02][STATE-EVALUATION]', {
+              stateType: stateType,
+              isAlreadyMarked: stateType === 'ALREADY_MARKED',
+              isSpotDisabled: stateType === 'NOT_REGISTERED_SPOT_DISABLED',
+              isSpotRequired: stateType === 'SPOT_REGISTRATION_REQUIRED',
+              isMissingFields: stateType === 'MISSING_REQUIRED_FIELDS',
+              isStudentNotFound: stateType === 'STUDENT_NOT_FOUND',
+              isReadyToMark: stateType === 'READY_TO_MARK'
+            });
+          } catch (e) { console.error('[PROD-TRACE][ERROR][LOG-02-FAIL]', e); }
 
           // Save roll to pending state
           pendingScanState.roll = rawInput;
@@ -2955,6 +3061,7 @@ window.AttendanceFormController = (() => {
 
           // Handle States:
           if (stateType === 'ALREADY_MARKED') {
+            try { console.log('[PROD-TRACE][BRANCH][ALREADY_MARKED]'); } catch (e) {}
             playTone('warning');
             setScannerStatus('Already Marked', 'status-warn');
             showToast('warning', `Participation was already recorded for ${rawInput}.`);
@@ -2964,6 +3071,7 @@ window.AttendanceFormController = (() => {
           }
 
           if (stateType === 'NOT_REGISTERED_SPOT_DISABLED') {
+            try { console.log('[PROD-TRACE][BRANCH][NOT_REGISTERED_SPOT_DISABLED]'); } catch (e) {}
             playTone('error');
             setScannerStatus('Spot Reg Disabled', 'status-error');
             showToast('error', res.message || 'Participant is not registered for this event and spot registration is not available.');
@@ -2973,6 +3081,7 @@ window.AttendanceFormController = (() => {
           }
 
           if (stateType === 'SPOT_REGISTRATION_REQUIRED') {
+            try { console.log('[PROD-TRACE][BRANCH][SPOT_REGISTRATION_REQUIRED]'); } catch (e) {}
             playTone('info');
             setScannerStatus('Spot Registration Available', 'status-warn');
             const spotRoll = (stateData && stateData.studentData && stateData.studentData.rollNumber) ? stateData.studentData.rollNumber : rawInput;
@@ -2983,6 +3092,7 @@ window.AttendanceFormController = (() => {
           }
 
           if (stateType === 'MISSING_REQUIRED_FIELDS') {
+            try { console.log('[PROD-TRACE][BRANCH][MISSING_REQUIRED_FIELDS]'); } catch (e) {}
             playTone('info');
             setScannerStatus('Fields Required', 'status-info');
             openVerificationModal(stateData.studentData || pendingScanState, stateData.missingFields || []);
@@ -2992,19 +3102,45 @@ window.AttendanceFormController = (() => {
           }
 
           if (stateType === 'STUDENT_NOT_FOUND') {
+            try { console.log('[PROD-TRACE][BRANCH][STUDENT_NOT_FOUND]'); } catch (e) {}
             playTone('warn');
             setScannerStatus('Student Not Found - Registration Needed', 'status-warn');
             
             const notFoundModal = document.getElementById('studentNotFoundModal');
-            if (notFoundModal && typeof bootstrap !== 'undefined') {
-              const rollInput = document.getElementById('newStudentRollInput');
-              if (rollInput) rollInput.value = rawInput;
-              const modalInst = bootstrap.Modal.getInstance(notFoundModal) || new bootstrap.Modal(notFoundModal);
-              modalInst.show();
+            const rollInput = document.getElementById('newStudentRollInput');
+            if (rollInput) rollInput.value = rawInput;
+
+            try {
+              console.log('[PROD-TRACE][STUDENT_NOT_FOUND_MODAL_CHECK]', {
+                notFoundModalFound: !!notFoundModal,
+                bootstrapAvailable: typeof bootstrap !== 'undefined'
+              });
+            } catch (e) {}
+
+            if (notFoundModal) {
+              if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const modalInst = bootstrap.Modal.getInstance(notFoundModal) || new bootstrap.Modal(notFoundModal);
+                modalInst.show();
+              } else if (typeof $ !== 'undefined' && $.fn && $.fn.modal) {
+                $('#studentNotFoundModal').modal('show');
+              } else {
+                notFoundModal.style.display = 'block';
+                notFoundModal.classList.add('show');
+              }
+              setTimeout(() => {
+                const nameInp = document.getElementById('newStudentNameInput');
+                if (nameInp) nameInp.focus();
+              }, 300);
             } else if (typeof AttendanceFormController !== 'undefined' && typeof AttendanceFormController.handleScanOrManualEntry === 'function') {
               AttendanceFormController.handleScanOrManualEntry(rawInput);
             } else {
-              showToast('error', res.message || `Student ${rawInput} is not registered in the database.`);
+              // Fallback modal prompt when DOM element or bootstrap is unavailable
+              const studentName = prompt(`Student ${rawInput} is not found in database. Enter Full Name to register & mark attendance:`);
+              if (studentName) {
+                autoRegisterAndMarkOpenEvent(rawInput);
+              } else {
+                showToast('error', res.message || `Student ${rawInput} is not registered in the database.`);
+              }
             }
             clearInput();
             focusInput();
@@ -3012,6 +3148,7 @@ window.AttendanceFormController = (() => {
           }
 
           if (stateType === 'READY_TO_MARK' || (stateData && stateData.studentData)) {
+            try { console.log('[PROD-TRACE][BRANCH][READY_TO_MARK]'); } catch (e) {}
             playTone('success');
             setScannerStatus('Ready to confirm', 'status-success');
             openVerificationModal(stateData.studentData || pendingScanState, []);
@@ -3020,6 +3157,7 @@ window.AttendanceFormController = (() => {
             return;
           }
 
+          try { console.warn('[PROD-TRACE][BRANCH][UNHANDLED_FALLTHROUGH]', { stateType: stateType, res: res }); } catch (e) {}
           playTone('error');
           showToast('error', res.message || 'Failed to process participant.');
           setScannerStatus('Processing Failed', 'status-error');
@@ -3027,6 +3165,13 @@ window.AttendanceFormController = (() => {
           focusInput();
         })
         .withFailureHandler((err) => {
+          try {
+            console.error('[PROD-TRACE][ERROR][SERVER-RPC-FAILURE]', {
+              errorObject: err,
+              message: err ? err.message : 'Unknown error',
+              stack: err ? err.stack : undefined
+            });
+          } catch (e) {}
           isProcessingRoll = false;
           setSubmitEnabled(true);
           setScannerStatus('Server Error', 'status-error');
@@ -3041,6 +3186,14 @@ window.AttendanceFormController = (() => {
 
 
     const openVerificationModal = (studentData) => {
+      try {
+        console.log('[PROD-TRACE][ENTER][openVerificationModal]', {
+          studentData: studentData,
+          hasRenderer: typeof AttendanceFormRenderer !== 'undefined',
+          openContainer: !!document.getElementById('openEventProfileContainer')
+        });
+      } catch (e) {}
+
       const container = document.getElementById('openEventProfileContainer');
       if (container && typeof AttendanceFormRenderer !== 'undefined') {
         container.innerHTML = AttendanceFormRenderer.renderProfileCard(studentData);
@@ -3066,9 +3219,27 @@ window.AttendanceFormController = (() => {
       if (collegeEl) collegeEl.textContent = sCollege;
 
       const modalEl = document.getElementById('openEventVerificationModal') || document.getElementById('scanVerificationModal');
-      if (modalEl && typeof bootstrap !== 'undefined') {
-        const verifModal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-        verifModal.show();
+      
+      try {
+        console.log('[PROD-TRACE][MODAL-ELEMENT-INSPECTION]', {
+          modalElId: modalEl ? modalEl.id : null,
+          modalElFound: !!modalEl,
+          bootstrapType: typeof bootstrap,
+          hasBootstrapModal: !!(typeof bootstrap !== 'undefined' && bootstrap.Modal)
+        });
+      } catch (e) {}
+
+      if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        try {
+          const verifModal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+          console.log('[PROD-TRACE][CALLING-MODAL-SHOW]', verifModal);
+          verifModal.show();
+          console.log('[PROD-TRACE][MODAL-SHOW-SUCCESS]');
+        } catch (modalErr) {
+          console.error('[PROD-TRACE][ERROR][MODAL-SHOW-EXCEPTION]', modalErr.stack || modalErr);
+        }
+      } else {
+        try { console.warn('[PROD-TRACE][WARN][MODAL-OR-BOOTSTRAP-MISSING]', { modalEl: !!modalEl, bootstrap: typeof bootstrap }); } catch (e) {}
       }
     };
 
@@ -3251,6 +3422,73 @@ window.AttendanceFormController = (() => {
         .registerSpotStudentAndMark(state.sessionToken, roll, 'Spot Guest Student', 'Spot Group', '1', 'A', 'BVC Engineering College');
     };
 
+    const submitStudentNotFound = () => {
+      const rollInput = document.getElementById('newStudentRollInput');
+      const nameInput = document.getElementById('newStudentNameInput');
+      const deptSelect = document.getElementById('newStudentDeptSelect');
+      const yearSelect = document.getElementById('newStudentYearSelect');
+      const collegeInput = document.getElementById('newStudentCollegeInput');
+
+      const roll = (rollInput ? rollInput.value : '').trim().toUpperCase();
+      const name = (nameInput ? nameInput.value : '').trim();
+      const dept = (deptSelect ? deptSelect.value : 'CSE').trim();
+      const year = (yearSelect ? yearSelect.value : '1').trim();
+      let college = (collegeInput ? collegeInput.value : '').trim();
+
+      if (!college) college = 'Bonam Venkata Chalamayya Engineering College';
+
+      if (!roll || !name) {
+        showToast('warning', 'Please provide student roll number and full name.');
+        return;
+      }
+
+      const btn = document.getElementById('btnConfirmCreateAndMark');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving & Marking...';
+      }
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i> Save Student & Mark Present';
+          }
+          if (res && res.success) {
+            const modalEl = document.getElementById('studentNotFoundModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+              const inst = bootstrap.Modal.getInstance(modalEl);
+              if (inst) inst.hide();
+            }
+            playTone('success');
+            if (res.data && res.data.statistics) {
+              state.statistics = {
+                present: res.data.statistics.present || 0,
+                remaining: res.data.statistics.remaining || 0,
+                total: res.data.statistics.total || 0
+              };
+              renderStats();
+            }
+            showStudentPreview({ name, roll, dept, year }, 'success');
+            prependScanLocally(name, roll, dept, false);
+            updateLastScanTime();
+            showToast('success', `Student ${roll} created & attendance marked.`);
+          } else {
+            showToast('error', res && res.message ? res.message : 'Registration failed.');
+          }
+          focusInput();
+        })
+        .withFailureHandler((err) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i> Save Student & Mark Present';
+          }
+          showToast('error', 'Connection error: ' + (err?.message || 'Unreachable'));
+          focusInput();
+        })
+        .registerSpotStudentAndMark(state.sessionToken, roll, name, dept, year, 'A', college, state.eventId);
+    };
+
     const submitSpotFixed = () => {
       const roll = dom.spotRollInput && dom.spotRollInput.value.trim().toUpperCase();
       const name = dom.spotNameInput && dom.spotNameInput.value.trim();
@@ -3288,7 +3526,7 @@ window.AttendanceFormController = (() => {
           showToast('error', 'Connection failed during spot registration.');
           focusInput();
         })
-        .registerSpotStudentAndMark(state.sessionToken, roll, name, dept, year, 'A', college);
+        .registerSpotStudentAndMark(state.sessionToken, roll, name, dept, year, 'A', college, state.eventId);
     };
 
     // ==========================================================================
@@ -3470,7 +3708,7 @@ window.AttendanceFormController = (() => {
     };
 
     const focusInput = () => {
-      const modalOpen = dom.spotModalElement && dom.spotModalElement.classList.contains('show');
+      const modalOpen = document.querySelector('.modal.show');
       if (dom.input && !modalOpen) dom.input.focus();
     };
 

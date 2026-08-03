@@ -211,8 +211,55 @@ function runRegressionTestSuite(summaryOnly) {
   // ==========================================================
   function testSecurityRegression() {
     try {
-      var pass = true;
-      recordResult(pass, "REGRESSION: Security & RLS Policy Enforcement", "", "SecurityUtils.js");
+      var cseHOD = { userId: "TST_HOD_CSE", role: 'HOD', isHOD: true, department: 'CSE', isSuperAdmin: false };
+      var eceHOD = { userId: "TST_HOD_ECE", role: 'HOD', isHOD: true, department: 'ECE', isSuperAdmin: false };
+
+      // Sample mock datasets
+      var mockStudents = [
+        { 'Roll Number': 'S01', 'Department ID': 'CSE', 'Student Status': 'Active' },
+        { 'Roll Number': 'S02', 'Department ID': 'ECE', 'Student Status': 'Active' }
+      ];
+      var mockFaculty = [
+        { 'Employee ID': 'F01', 'Department ID': 'CSE', 'Status': 'Active' },
+        { 'Employee ID': 'F02', 'Department ID': 'ECE', 'Status': 'Active' }
+      ];
+      var mockUsers = [
+        { 'User ID': 'U01', 'Department': 'CSE' },
+        { 'User ID': 'U02', 'Department': 'ECE' }
+      ];
+
+      // Test RLS filtering on Students
+      var cseStudents = SecurityUtils.applyStudentRLS(mockStudents, cseHOD);
+      var eceStudents = SecurityUtils.applyStudentRLS(mockStudents, eceHOD);
+      var rlsStudentsPass = (cseStudents.length === 1 && String(cseStudents[0]['Roll Number'] || cseStudents[0].roll_number) === 'S01') &&
+                            (eceStudents.length === 1 && String(eceStudents[0]['Roll Number'] || eceStudents[0].roll_number) === 'S02');
+      recordResult(rlsStudentsPass, "REGRESSION: Student RLS Department Isolation", rlsStudentsPass ? "" : "Students not filtered correctly", "SecurityUtils.js");
+
+      // Test RLS filtering on Faculty
+      var cseFac = SecurityUtils.applyFacultyRLS(mockFaculty, cseHOD);
+      var eceFac = SecurityUtils.applyFacultyRLS(mockFaculty, eceHOD);
+      var rlsFacultyPass = (cseFac.length === 1 && String(cseFac[0]['Employee ID'] || cseFac[0].employee_id) === 'F01') &&
+                           (eceFac.length === 1 && String(eceFac[0]['Employee ID'] || eceFac[0].employee_id) === 'F02');
+      recordResult(rlsFacultyPass, "REGRESSION: Faculty RLS Department Isolation", rlsFacultyPass ? "" : "Faculty not filtered correctly", "SecurityUtils.js");
+
+      // Test RLS filtering on Users
+      var cseU = SecurityUtils.applyUserRLS(mockUsers, cseHOD);
+      var eceU = SecurityUtils.applyUserRLS(mockUsers, eceHOD);
+      var rlsUsersPass = (cseU.length === 1 && String(cseU[0]['User ID'] || cseU[0].user_id) === 'U01') &&
+                         (eceU.length === 1 && String(eceU[0]['User ID'] || eceU[0].user_id) === 'U02');
+      recordResult(rlsUsersPass, "REGRESSION: User RLS Department Isolation", rlsUsersPass ? "" : "Users not filtered correctly", "SecurityUtils.js");
+
+      // Test Student mutations validation
+      var createWrongStudent = StudentService.createStudent({ 'Roll Number': 'S03', 'Department ID': 'ECE', 'Student Name': 'Test' }, 'Test', cseHOD);
+      var studentMutationPass = (createWrongStudent && !createWrongStudent.success);
+      recordResult(studentMutationPass, "REGRESSION: Student Mutation Department Isolation", studentMutationPass ? "" : "Blocked student creation failed", "StudentService.js");
+
+      // Test User mutations validation
+      var createWrongUser = UserService.createUser({ username: 'cse_usr_test', role: 'COORDINATOR', department: 'ECE', email: 'test_cse@bvc.edu' }, cseHOD);
+      var userMutationPass = (createWrongUser && !createWrongUser.success);
+      recordResult(userMutationPass, "REGRESSION: User Mutation Department Isolation", userMutationPass ? "" : "Blocked user creation failed", "UserService.js");
+
+      recordResult(true, "REGRESSION: Security & RLS Policy Enforcement", "", "SecurityUtils.js");
     } catch (e) {
       recordResult(false, "REGRESSION: Security & RLS Policy Enforcement", e.message, "SecurityUtils.js");
     }

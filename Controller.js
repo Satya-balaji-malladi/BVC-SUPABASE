@@ -9,6 +9,20 @@
 const Controller = {
 
   // ==========================================
+  // System Controller (Cron & Background Jobs)
+  // ==========================================
+  System: {
+    /**
+     * Synchronizes Active/Inactive statuses for all entities based on ongoing events.
+     * Designed to be called by a Time-Driven Trigger (Cron).
+     * @returns {object} Response object.
+     */
+    syncAllStatuses: function () {
+      return StatusService.refreshAllStatuses();
+    }
+  },
+
+  // ==========================================
   // Authentication Controller
   // ==========================================
   Auth: {
@@ -44,7 +58,75 @@ const Controller = {
      * @param {string} sessionToken
      */
     getUserAssignedEvents: function (sessionToken) {
-      return RoleResolutionEngine.getAssignedEvents(sessionToken);
+      return SessionService.withSession(sessionToken, function(userId) {
+        var user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID, userId);
+        if (!user) return [];
+        var role = String(user[CONFIG.COLUMNS.USER_ROLE] || user.role || '').trim().toUpperCase().replace(/[\s_]+/g, '');
+        var empId = String(user[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || user.employee_id || user.employeeId || '').trim().toUpperCase();
+        var cleanUserId = String(userId).trim().toUpperCase();
+
+        var allEvents = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
+        allEvents = allEvents.filter(function(e) { return !e[CONFIG.COLUMNS.DELETION_FLAG]; });
+
+        if (role === 'SUPERADMIN') {
+          return allEvents;
+        }
+
+        var assignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_ASSIGNMENTS) || [];
+        var coordinators = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
+
+        var assignedEventIds = new Set();
+
+        assignments.forEach(function(a) {
+          if (!a || a[CONFIG.COLUMNS.DELETION_FLAG]) return;
+          var uId = String(a['User ID'] || a.user_id || '').trim().toUpperCase();
+          var eId = String(a['Event ID'] || a.event_id || '').trim();
+          if ((uId === cleanUserId || (empId && uId === empId)) && eId) {
+            assignedEventIds.add(eId);
+          }
+        });
+
+        coordinators.forEach(function(c) {
+          if (!c || c[CONFIG.COLUMNS.DELETION_FLAG]) return;
+          var uId = String(c['User ID'] || c.user_id || '').trim().toUpperCase();
+          var eId = String(c['Event ID'] || c.event_id || '').trim();
+          var status = String(c['Assignment Status'] || c.assignment_status || 'Active').trim().toLowerCase();
+          if ((uId === cleanUserId || (empId && uId === empId)) && eId && status !== 'inactive') {
+            assignedEventIds.add(eId);
+          }
+        });
+
+        // Also match events where user is organizer, created_by, or coordinator_id
+        allEvents.forEach(function(e) {
+          if (!e) return;
+          var eId = String(e[CONFIG.COLUMNS.EVENT_ID] || e.event_id || e.eventId || '').trim();
+          var org = String(e[CONFIG.COLUMNS.EVENT_ORGANIZER] || e['Organizer'] || e.organizer || '').trim().toUpperCase();
+          var cId = String(e[CONFIG.COLUMNS.COORDINATOR_ID] || e.coordinator_id || e.coordinatorId || '').trim().toUpperCase();
+          var crBy = String(e[CONFIG.COLUMNS.CREATED_BY] || e.created_by || e.createdBy || '').trim().toUpperCase();
+
+          if (org === cleanUserId || (empId && org === empId) ||
+              cId === cleanUserId || (empId && cId === empId) ||
+              crBy === cleanUserId || (empId && crBy === empId)) {
+            if (eId) assignedEventIds.add(eId);
+          }
+        });
+
+        if (role === 'HOD') {
+          var userDept = String(user.Department || user.department || '').trim().toUpperCase();
+          allEvents.forEach(function(e) {
+            var eDept = String(e.department || e.Department || e[CONFIG.COLUMNS.DEPARTMENTS] || '').trim().toUpperCase();
+            if (userDept && (eDept === userDept || eDept.includes(userDept) || userDept.includes(eDept))) {
+              var eId = String(e[CONFIG.COLUMNS.EVENT_ID] || e.event_id || '').trim();
+              if (eId) assignedEventIds.add(eId);
+            }
+          });
+        }
+
+        return allEvents.filter(function(e) {
+          var eId = String(e[CONFIG.COLUMNS.EVENT_ID] || e.event_id || '').trim();
+          return assignedEventIds.has(eId);
+        });
+      });
     },
 
     /**
@@ -53,7 +135,44 @@ const Controller = {
      * @param {string} eventId
      */
     resolveEffectiveRole: function (sessionToken, eventId) {
-      return RoleResolutionEngine.resolveEffectiveRole(sessionToken, eventId);
+      return SessionService.withSession(sessionToken, function(userId) {
+        var user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID, userId);
+        if (!user) return Utils.buildResponse(false, 'User not found');
+        var role = String(user[CONFIG.COLUMNS.USER_ROLE] || user.role || '').trim().toUpperCase();
+        
+        if (role === 'SUPERADMIN' || role === 'SUPER ADMIN') {
+          return Utils.buildResponse(true, 'Success', { effectiveRole: 'SuperAdmin', isGlobalAdmin: true });
+        }
+        
+        if (role === 'HOD') {
+          return Utils.buildResponse(true, 'Success', { effectiveRole: 'HOD', isGlobalAdmin: false });
+        }
+        
+        var assignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_ASSIGNMENTS) || [];
+        var matches = assignments.filter(function(a) {
+          return String(a['Event ID'] || a.event_id || '').trim() === String(eventId).trim() &&
+                 String(a['User ID'] || a.user_id || '').trim() === userId &&
+                 !a[CONFIG.COLUMNS.DELETION_FLAG];
+        });
+        
+        if (matches.length > 0) {
+          var match = matches[0];
+          var effRole = match.role || match.Role || 'Coordinator';
+          return Utils.buildResponse(true, 'Success', { effectiveRole: effRole, isGlobalAdmin: false });
+        }
+        
+        var event = DatabaseService.findOne(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID, eventId);
+        if (event) {
+          var organizer = String(event[CONFIG.COLUMNS.EVENT_ORGANIZER] || event.organizer || '').trim().toUpperCase();
+          var cleanUserId = String(userId).trim().toUpperCase();
+          var cleanEmpId = String(user.employee_id || user[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || '').trim().toUpperCase();
+          if (organizer === cleanUserId || organizer === cleanEmpId) {
+            return Utils.buildResponse(true, 'Success', { effectiveRole: 'Event Admin', isGlobalAdmin: false });
+          }
+        }
+        
+        return Utils.buildResponse(false, 'Unauthorized: No assignments found for this event');
+      });
     }
   },
 
@@ -88,6 +207,70 @@ const Controller = {
     hasRole: function (sessionToken, role) {
       return SessionService.hasRole(sessionToken, role);
     }
+  },
+
+  // ==========================================
+  // Faculty Controller
+  // ==========================================
+  Faculty: {
+    createFaculty: function (sessionToken, facultyData) {
+      return FacultyService.createFaculty(sessionToken, facultyData);
+    },
+    getFacultyMembers: function (sessionToken) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return FacultyService.getFacultyMembers(userContext);
+      });
+    },
+    getFacultyByDepartment: function (sessionToken, departmentId) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        let targetDept = departmentId;
+        if (userContext && userContext.isHOD) {
+          targetDept = userContext.department;
+        }
+        return FacultyService.getFacultyByDepartment(targetDept, userContext);
+      });
+    },
+    getFacultyListForUser: function (sessionToken) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        var userContext = SessionService.getUserContext(sessionToken);
+        return FacultyService.getFacultyListForUser(userContext.role, userContext.department);
+      });
+    },
+    updateFaculty: function (sessionToken, facultyId, updates) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return FacultyService.updateFaculty(facultyId, updates, userContext);
+      });
+    },
+    deactivateFaculty: function (sessionToken, facultyId) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return FacultyService.deactivateFaculty(facultyId, userContext);
+      });
+    },
+    deleteFaculty: function (sessionToken, facultyId) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return FacultyService.deleteFaculty(facultyId, userContext);
+      });
+    }
+  },
+
+  // ==========================================
+  // Guest Controller
+  // ==========================================
+  Guest: {
+    createGuest: function (sessionToken, guestData) {
+      return GuestService.createGuest(sessionToken, guestData);
+    },
+    getAllGuests: function (sessionToken) {
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return GuestService.getAllGuests(userContext);
+      });
+    },
   },
 
   // ==========================================
@@ -156,45 +339,7 @@ const Controller = {
       return SessionService.withSession(sessionToken, function (_sessionUserId) {
         return UserService.getUserByUsername(username);
       });
-    }
-  },
-
-  // ==========================================
-  // Faculty Controller
-  // ==========================================
-  Faculty: {
-    createFaculty: function (sessionToken, facultyData) {
-      return FacultyService.createFaculty(sessionToken, facultyData);
     },
-    getFacultyMembers: function (sessionToken) {
-      return SessionService.withSession(sessionToken, function (userId) {
-        return FacultyService.getFacultyMembers();
-      });
-    },
-    getFacultyByDepartment: function (sessionToken, departmentId) {
-      return SessionService.withSession(sessionToken, function (userId) {
-        return FacultyService.getFacultyByDepartment(departmentId);
-      });
-    },
-    getFacultyListForUser: function (sessionToken) {
-      return SessionService.withSession(sessionToken, function (userId) {
-        var userContext = SessionService.getUserContext(sessionToken);
-        return FacultyService.getFacultyListForUser(userContext.role, userContext.department);
-      });
-    },
-    updateFaculty: function (sessionToken, facultyId, updates) {
-      return SessionService.withSession(sessionToken, function (userId) {
-        return FacultyService.updateFaculty(facultyId, updates);
-      });
-    },
-    deactivateFaculty: function (sessionToken, facultyId) {
-      return SessionService.withSession(sessionToken, function (userId) {
-        return FacultyService.deactivateFaculty(facultyId);
-      });
-    }
-  },
-
-  User: {
     /**
      * @returns {object[]} Array of all users.
      */
@@ -203,6 +348,11 @@ const Controller = {
       return SessionService.withSession(sessionToken, function (_sessionUserId) {
         Logger.log("BACKEND STEP 6: Session validated. sessionUserId: " + _sessionUserId);
         const userContext = SessionService.getUserContext(sessionToken);
+        const roleClean = String(userContext && userContext.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        if (roleClean === 'COORDINATOR') {
+          Logger.log("UNAUTHORIZED: Coordinator role attempted to query getAllUsers");
+          return [];
+        }
         const users = UserService.getAllUsers(userContext);
         Logger.log("BACKEND STEP 7 - Controller.User.getAllUsers received from UserService: " + typeof users + " / Array? " + Array.isArray(users) + " / Length: " + (users ? users.length : 0));
         return users || [];
@@ -220,7 +370,8 @@ const Controller = {
         if (!SecurityUtils.hasPermission(callerId, 'edit_user')) {
           return Utils.buildResponse(false, 'Unauthorized: You do not have permission to update users.');
         }
-        return UserService.updateUser(userId, userData);
+        const callerUserContext = SessionService.getUserContext(sessionToken);
+        return UserService.updateUser(userId, userData, callerUserContext);
       });
     },
 
@@ -234,7 +385,18 @@ const Controller = {
         if (!SecurityUtils.hasPermission(callerId, 'delete_user')) {
           return Utils.buildResponse(false, 'Unauthorized: You do not have permission to delete users.');
         }
-        return UserService.deleteUser(userId);
+        const callerUserContext = SessionService.getUserContext(sessionToken);
+        return UserService.deleteUser(userId, callerId, callerUserContext);
+      });
+    },
+
+    restoreUser: function (sessionToken, userId) {
+      return SessionService.withSession(sessionToken, function (callerId) {
+        if (!SecurityUtils.hasPermission(callerId, 'delete_user')) {
+          return Utils.buildResponse(false, 'Unauthorized: You do not have permission to restore users.');
+        }
+        const callerUserContext = SessionService.getUserContext(sessionToken);
+        return UserService.restoreUser(userId, callerId, callerUserContext);
       });
     },
 
@@ -248,7 +410,8 @@ const Controller = {
         if (!SecurityUtils.hasPermission(callerId, 'edit_user')) {
           return Utils.buildResponse(false, 'Unauthorized: You do not have permission to deactivate users.');
         }
-        return UserService.deactivateUser(userId);
+        const callerUserContext = SessionService.getUserContext(sessionToken);
+        return UserService.deactivateUser(userId, callerId, callerUserContext);
       });
     },
 
@@ -262,7 +425,8 @@ const Controller = {
         if (!SecurityUtils.hasPermission(callerId, 'reset_password')) {
           return Utils.buildResponse(false, 'Unauthorized: You do not have permission to reset user passwords.');
         }
-        return UserService.resetPassword(userId);
+        const callerUserContext = SessionService.getUserContext(sessionToken);
+        return UserService.resetPassword(userId, callerId, callerUserContext);
       });
     },
 
@@ -272,8 +436,9 @@ const Controller = {
      * @returns {object} Response object.
      */
     activateUser: function (sessionToken, userId) {
-      return SessionService.withSession(sessionToken, function (_sessionUserId) {
-        return UserService.activateUser(userId);
+      return SessionService.withSession(sessionToken, function (callerId) {
+        const callerUserContext = SessionService.getUserContext(sessionToken);
+        return UserService.activateUser(userId, callerId, callerUserContext);
       });
     },
 
@@ -374,8 +539,9 @@ const Controller = {
      * @returns {object} Response object.
      */
     createStudent: function (sessionToken, studentData) {
-      return SessionService.withSession(sessionToken, function (_sessionUserId) {
-        return StudentService.createStudent(studentData);
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return StudentService.createStudent(studentData, userId, userContext);
       });
     },
 
@@ -386,8 +552,9 @@ const Controller = {
      * @returns {object} Response object.
      */
     updateStudent: function (sessionToken, rollNumber, studentData) {
-      return SessionService.withSession(sessionToken, function (_sessionUserId) {
-        return StudentService.updateStudent(rollNumber, studentData);
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return StudentService.updateStudent(rollNumber, studentData, userId, userContext);
       });
     },
 
@@ -397,8 +564,9 @@ const Controller = {
      * @returns {object} Response object.
      */
     deleteStudent: function (sessionToken, rollNumber) {
-      return SessionService.withSession(sessionToken, function (_sessionUserId) {
-        return StudentService.deleteStudent(rollNumber);
+      return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        return StudentService.deleteStudent(rollNumber, userId, userContext);
       });
     },
 
@@ -410,7 +578,8 @@ const Controller = {
     getStudentByRollNumber: function (sessionToken, rollNumber) {
       return SessionService.withSession(sessionToken, function (_sessionUserId) {
         if (!rollNumber) return Utils.buildResponse(false, 'Missing roll number parameter.');
-        const student = StudentService.getStudentByRollNumber(rollNumber);
+        const userContext = SessionService.getUserContext(sessionToken);
+        const student = StudentService.getStudentByRollNumber(rollNumber, userContext);
         if (student) {
           return Utils.buildResponse(true, 'Student retrieved successfully', { student: student });
         }
@@ -488,7 +657,8 @@ const Controller = {
         if (!SecurityUtils.hasPermission(userId, 'create_event')) {
           return Utils.buildResponse(false, 'Unauthorized: You do not have permission to create events.');
         }
-        return EventService.createEvent(eventData, userId);
+        const userContext = SessionService.getUserContext(sessionToken);
+        return EventService.createEvent(eventData, userId, userContext);
       });
     },
 
@@ -503,11 +673,49 @@ const Controller = {
         if (!SecurityUtils.hasPermission(_sessionUserId, 'edit_event', eventId)) {
           return Utils.buildResponse(false, 'Unauthorized: You do not have permission to edit this event.');
         }
+        if (typeof EventService !== 'undefined' && !EventService.canEditEvent(eventId, _sessionUserId)) {
+          return Utils.buildResponse(false, 'This event is Cancelled or Completed and cannot be edited.');
+        }
         Logger.log("BACKEND: Controller.Event.updateEvent started for " + eventId);
         const result = EventService.updateEvent(eventId, eventData, _sessionUserId);
         Logger.log("BACKEND: Controller.Event.updateEvent finished.");
         return result;
       });
+    },
+
+    changeEventStatus: function (sessionToken, eventId, newStatus) {
+      return SessionService.withSession(sessionToken, function (_sessionUserId) {
+        const user = typeof UserService !== 'undefined' ? UserService.getUserById(_sessionUserId) : null;
+        const role = user ? String(user.role || user.Role || '').toUpperCase().trim() : '';
+        const isSuper = (role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN');
+        const isAdmin = (role === 'ADMIN');
+        
+        if (newStatus === 'Cancelled' && !isSuper) {
+          return Utils.buildResponse(false, 'Unauthorized: Only a Super Admin can cancel events.');
+        }
+        
+        if (!isSuper && !isAdmin) {
+          return Utils.buildResponse(false, 'Unauthorized: You do not have permission to change event status.');
+        }
+
+        return EventService.changeEventStatus(eventId, newStatus, _sessionUserId);
+      });
+    },
+
+    stopEvent: function (sessionToken, eventId) {
+      return this.changeEventStatus(sessionToken, eventId, 'Stopped');
+    },
+
+    cancelEvent: function (sessionToken, eventId) {
+      return this.changeEventStatus(sessionToken, eventId, 'Cancelled');
+    },
+
+    resumeEvent: function (sessionToken, eventId) {
+      return this.changeEventStatus(sessionToken, eventId, 'Active');
+    },
+
+    completeEvent: function (sessionToken, eventId) {
+      return this.changeEventStatus(sessionToken, eventId, 'Completed');
     },
 
     /**
@@ -1076,21 +1284,47 @@ const Controller = {
   Settings: {
     getSettings: function (sessionToken) {
       return SessionService.withSession(sessionToken, function (userId) {
+        var user = UserService.getUserById(userId);
+        if (!user) return Utils.buildResponse(false, 'User not found.');
+        var roleClean = String(user['Role'] || user.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        var allowed = ['SUPERADMIN', 'ADMIN', 'HOD'];
+        if (allowed.indexOf(roleClean) === -1) {
+          return Utils.buildResponse(false, 'Access Denied: Insufficient permissions to view settings.');
+        }
         return SettingsService.getSettings();
       });
     },
     saveSettings: function (sessionToken, payload) {
       return SessionService.withSession(sessionToken, function (userId) {
+        var user = UserService.getUserById(userId);
+        if (!user) return Utils.buildResponse(false, 'User not found.');
+        var roleClean = String(user['Role'] || user.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        var allowed = ['SUPERADMIN', 'ADMIN', 'HOD'];
+        if (allowed.indexOf(roleClean) === -1) {
+          return Utils.buildResponse(false, 'Access Denied: You do not have permission to modify system settings.');
+        }
         return SettingsService.saveSettings(payload);
       });
     },
     clearAttendanceLogs: function (sessionToken) {
       return SessionService.withSession(sessionToken, function (userId) {
+        var user = UserService.getUserById(userId);
+        if (!user) return Utils.buildResponse(false, 'User not found.');
+        var roleClean = String(user['Role'] || user.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        if (roleClean !== 'SUPERADMIN') {
+          return Utils.buildResponse(false, 'Access Denied: Only Super Admins can clear attendance logs.');
+        }
         return SettingsService.clearAttendanceLogs(userId);
       });
     },
     resetSystem: function (sessionToken) {
       return SessionService.withSession(sessionToken, function (userId) {
+        var user = UserService.getUserById(userId);
+        if (!user) return Utils.buildResponse(false, 'User not found.');
+        var roleClean = String(user['Role'] || user.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        if (roleClean !== 'SUPERADMIN') {
+          return Utils.buildResponse(false, 'Access Denied: Only Super Admins can perform a system reset.');
+        }
         return SettingsService.resetSystem(userId);
       });
     }
@@ -1180,7 +1414,8 @@ const Controller = {
     getRecentEvents: function (sessionToken) {
       return SessionService.withSession(sessionToken, function (userId) {
         Logger.log("DASHBOARD_MODULE | STEP 2 - Session validated | User ID: " + userId);
-        return DashboardService.getRecentActivities();
+        const userContext = SessionService.getUserContext(sessionToken);
+        return DashboardService.getRecentActivities(userContext);
       });
     }
   },
@@ -1663,6 +1898,11 @@ const Controller = {
     },
     getCrossDepartmentAttendance: function (sessionToken) {
       return SessionService.withSession(sessionToken, function (userId) {
+        const userContext = SessionService.getUserContext(sessionToken);
+        const roleClean = String(userContext && userContext.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        if (roleClean !== 'HOD') {
+          return Utils.buildResponse(false, 'Unauthorized: Cross Department Check is restricted to HODs.');
+        }
         return ReportService.getCrossDepartmentAttendance(userId);
       });
     },

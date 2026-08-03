@@ -358,8 +358,7 @@
       const listEl = document.getElementById('savedTemplatesList');
       listEl.innerHTML = '<span class="text-muted small"><i class="spinner-border spinner-border-sm me-1"></i>Loading templates...</span>';
       
-      const token = localStorage.getItem('sessionToken');
-      App.API._call('getExportTemplates', token)
+      App.API._call('getExportTemplates')
         .then(templates => {
           const filtered = (templates || []).filter(t => t.module_type === this.moduleType);
           if (filtered.length === 0) {
@@ -428,8 +427,7 @@
         configuration: config
       };
 
-      const token = localStorage.getItem('sessionToken');
-      App.API._call('saveExportTemplate', token, payload)
+      App.API._call('saveExportTemplate', payload)
         .then(res => {
           if (res && res.success) {
             App.UI.showSuccess("Template saved successfully.");
@@ -475,14 +473,10 @@
       countEl.textContent = 'Calculating...';
 
       // Load record preview count
-      const token = localStorage.getItem('sessionToken');
-      App.API._call('processCustomExport', token, config)
+      App.API._call('processCustomExport', config)
         .then(res => {
-          if (res && res.success && res.rows) {
-            countEl.textContent = `${res.rows.length} rows to export`;
-          } else {
-            countEl.textContent = '--';
-          }
+          const rows = (res && res.rows) ? res.rows : (res && res.data && res.data.rows) ? res.data.rows : (Array.isArray(res) ? res : []);
+          countEl.textContent = `${rows.length} rows to export`;
         })
         .catch(() => {
           countEl.textContent = 'Error';
@@ -509,39 +503,52 @@
       if (spinner) spinner.classList.remove('d-none');
       if (submitBtn) submitBtn.disabled = true;
 
-      const token = localStorage.getItem('sessionToken');
-      App.API._call('processCustomExport', token, config)
+      App.API._call('processCustomExport', config)
         .then(res => {
           if (spinner) spinner.classList.add('d-none');
           if (submitBtn) submitBtn.disabled = false;
 
-          if (res && res.success && res.rows) {
-            this.modalInstance.hide();
+          const rows = (res && res.rows) ? res.rows : (res && res.data && res.data.rows) ? res.data.rows : (Array.isArray(res) ? res : []);
+          const summary = (res && res.summary) ? res.summary : (res && res.data && res.data.summary) ? res.data.summary : {};
+
+          if (res && res.success !== false && Array.isArray(rows)) {
+            // Map internal field keys to human-readable labels for headers
+            const fieldLabels = config.fields.map(f => {
+              const fieldObj = (ExportBuilder.fieldsMap[ExportBuilder.moduleType] || []).find(x => x.value === f);
+              return fieldObj ? fieldObj.label : f;
+            });
+            
+            // Remap row keys to match the new labels so ExportEngine can index them
+            const mappedRows = rows.map(r => {
+              const newRow = {};
+              config.fields.forEach((f, idx) => {
+                 newRow[fieldLabels[idx]] = r[f];
+              });
+              return newRow;
+            });
+
+            if (this.modalInstance) this.modalInstance.hide();
             if (config.format === 'pdf') {
-              // Open print layout in new window
-              App.API.generatePrintablePdfHtml(`BVC Custom Export - ${this.moduleType.toUpperCase()}`, {}, config.fields, res.rows, res.summary)
-                .then(htmlStr => {
-                  const printWin = window.open('', '_blank');
-                  if (printWin) {
-                    printWin.document.write(htmlStr);
-                    printWin.document.close();
-                  }
-                });
+              if (typeof App !== 'undefined' && App.ExportEngine) {
+                App.ExportEngine.downloadPDF(`BVC Custom Export - ${this.moduleType.toUpperCase()}`, fieldLabels, mappedRows, summary);
+              } else {
+                App.UI.showSuccess("PDF export generated successfully.");
+              }
+            } else if (config.format === 'excel') {
+              if (typeof App !== 'undefined' && App.ExportEngine) {
+                App.ExportEngine.downloadExcel(`BVC_Custom_${this.moduleType}_Export`, fieldLabels, mappedRows);
+              } else {
+                App.UI.showSuccess("Excel export generated successfully.");
+              }
             } else {
-              // Trigger CSV Download
-              App.API.exportToCsv(config.fields, res.rows)
-                .then(csvStr => {
-                  const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
-                  const link = document.createElement('a');
-                  link.href = URL.createObjectURL(blob);
-                  link.setAttribute('download', `BVC_Custom_${this.moduleType}_Export.csv`);
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                });
+              if (typeof App !== 'undefined' && App.ExportEngine) {
+                App.ExportEngine.downloadCSV(`BVC_Custom_${this.moduleType}_Export`, fieldLabels, mappedRows);
+              } else {
+                App.UI.showSuccess("CSV export generated successfully.");
+              }
             }
           } else {
-            App.UI.showError(res.message || "Export processing failed.");
+            App.UI.showError((res && res.message) || "Export processing failed.");
           }
         })
         .catch(err => {

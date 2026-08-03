@@ -27,8 +27,8 @@
 
       // Hide Add/Import Participant buttons for Admin and Super Admin roles
       const storedRole = localStorage.getItem('userRole') || (App.State && App.State.currentUser && App.State.currentUser.role) || '';
-      const role = String(storedRole).toUpperCase().trim();
-      const isAdminOrSuper = role === 'ADMIN' || role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN';
+      const role = String(storedRole).toUpperCase().trim().replace(/[\s_]+/g, '');
+      const isAdminOrSuper = role === 'ADMIN' || role === 'SUPERADMIN';
       const addBtn = document.getElementById('participants-add-btn');
       const importBtn = document.getElementById('participants-bulk-import-btn');
       if (isAdminOrSuper) {
@@ -199,17 +199,63 @@
       if (bulkSelect) bulkSelect.innerHTML = selectHtml;
     },
 
+    getCurrentUserDept: function () {
+      const currentUser = (App.State && App.State.currentUser) || App.User;
+      if (currentUser) {
+        const d = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || currentUser.department_code || currentUser['Department Code'];
+        if (d) return String(d).trim();
+      }
+      return String(localStorage.getItem('userDept') || '').trim();
+    },
+
+    getCurrentUserRole: function () {
+      const currentUser = (App.State && App.State.currentUser) || App.User;
+      const r = currentUser ? (currentUser.role || currentUser.Role) : (localStorage.getItem('userRole') || '');
+      return String(r || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+    },
+
     populateDeptsDropdown: function () {
       const filter = document.getElementById('participants-dept-filter');
-      let html = '<option value="">All Depts</option>';
+      const isHOD = this.getCurrentUserRole() === 'HOD';
+      const userDept = this.getCurrentUserDept();
 
-      this.departmentsList.forEach(d => {
-        const id = d['Department ID'];
-        const code = d['Department Code'] || id;
-        html += `<option value="${id}">${code}</option>`;
-      });
+      if (isHOD && filter) {
+        let deptCode = userDept;
+        let deptName = userDept;
+        let deptId = userDept;
 
-      if (filter) filter.innerHTML = html;
+        const matched = (this.departmentsList || []).find(d => {
+          const c = String(d['Department Code'] || d.department_code || '').trim().toUpperCase();
+          const id = String(d['Department ID'] || d.department_id || '').trim().toUpperCase();
+          const n = String(d['Department Name'] || d.department_name || '').trim().toUpperCase();
+          const target = String(userDept).trim().toUpperCase();
+          return c === target || id === target || n === target;
+        });
+
+        if (matched) {
+          deptCode = matched['Department Code'] || matched.department_code || userDept;
+          deptName = matched['Department Name'] || matched.department_name || deptCode;
+          deptId = matched['Department ID'] || matched.department_id || deptCode;
+        }
+
+        const displayText = (deptName && deptCode && deptName.toUpperCase() !== deptCode.toUpperCase())
+          ? `${deptName} (${deptCode})`
+          : deptCode;
+
+        filter.innerHTML = `<option value="${deptId}">${displayText}</option>`;
+        filter.value = deptId;
+        filter.disabled = true;
+      } else if (filter) {
+        filter.disabled = false;
+        filter.removeAttribute('disabled');
+        let html = '<option value="">All Depts</option>';
+        (this.departmentsList || []).forEach(d => {
+          const id = d['Department ID'];
+          const code = d['Department Code'] || id;
+          html += `<option value="${id}">${code}</option>`;
+        });
+        filter.innerHTML = html;
+      }
 
       // Populate Colleges dropdown
       const collegeFilter = document.getElementById('participants-college-filter');
@@ -293,10 +339,16 @@
       const collegeVal = collegeFilter ? collegeFilter.value : '';
       const partVal = partFilter ? partFilter.value : '';
       const attendanceVal = attendanceFilter ? attendanceFilter.value : '';
+      const isHOD = this.getCurrentUserRole() === 'HOD';
+      const roleNorm = this.getCurrentUserRole();
+      const isEventAdminOrCoord = (roleNorm === 'EVENTADMIN' || roleNorm === 'EVENT_ADMIN' || roleNorm === 'COORDINATOR');
+      const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
 
       this.filteredData = this.participantsData.filter(p => {
-        if (eventVal && p['Event ID'] !== eventVal) return false;
-        if (deptVal && p.department !== deptVal) return false;
+        const pEvtId = String(p['Event ID'] || p.event_id || p.eventId || '').trim();
+        if (isEventAdminOrCoord && selectedEventId && pEvtId !== String(selectedEventId).trim()) return false;
+        if (eventVal && pEvtId !== eventVal) return false;
+        if (deptVal && !isHOD && p.department !== deptVal) return false;
         if (yearVal && String(p.year) !== String(yearVal)) return false;
         if (collegeVal && (p.college_name || 'BVC Engineering College') !== collegeVal) return false;
         if (attendanceVal && p['Attendance Status'] !== attendanceVal) return false;
@@ -736,13 +788,16 @@
         p['Attendance Status']
       ]);
 
-      let csv = "\uFEFF"; // UTF-8 BOM
-      csv += headers.join(",") + "\r\n";
-      rows.forEach(r => {
-        csv += r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(",") + "\r\n";
-      });
+        let csvContent = "\uFEFF"; // UTF-8 BOM
+        csvContent += headers.join(",") + "\r\n";
+        rows.forEach(row => {
+          csvContent += row.map(val => {
+            const cleanVal = String(val ?? '').replace(/"/g, '""');
+            return `"${cleanVal}"`;
+          }).join(",") + "\r\n";
+        });
 
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);

@@ -18,7 +18,8 @@ const AnalyticsService = {
   _getCache: function(userId) {
     if (this._requestCache) return this._requestCache;
 
-    const allEvents = EventService.getAllEvents() || [];
+    const allEventsResponse = EventService.getAllEvents() || [];
+    const allEvents = Array.isArray(allEventsResponse) ? allEventsResponse : (allEventsResponse.data || []);
     const allStudentsResponse = StudentService.getAllStudents();
     const allStudents = (allStudentsResponse && allStudentsResponse.success) ? allStudentsResponse.students : [];
     const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
@@ -39,18 +40,25 @@ const AnalyticsService = {
 
     const userRecord = userMap.get(String(userId).trim());
     let authorizedEvents = allEvents;
+    let authorizedStudents = allStudents;
+    let authorizedUsers = allUsers;
     if (userRecord) {
       const roleStr = String(userRecord['Role'] || userRecord.role || '').toUpperCase();
       const deptStr = String(userRecord['Department'] || userRecord.department || '').trim().toUpperCase();
+      const normRole = roleStr.replace(/[\s_]+/g, '');
       const userContext = {
         userId: userId,
         role: userRecord['Role'] || userRecord.role,
         department: deptStr,
-        isAdmin: roleStr === 'ADMIN' || roleStr === 'SUPER ADMIN' || roleStr === 'SUPER_ADMIN',
-        isHOD: roleStr === 'HOD',
-        isCoordinator: roleStr === 'COORDINATOR'
+        isSuperAdmin: normRole === 'SUPERADMIN',
+        isAdmin: normRole === 'SUPERADMIN' || normRole === 'ADMIN' || normRole === 'EVENTADMIN',
+        isEventAdmin: normRole === 'EVENTADMIN',
+        isHOD: normRole === 'HOD',
+        isCoordinator: normRole === 'COORDINATOR'
       };
       authorizedEvents = SecurityUtils.applyEventRLS(allEvents, userContext);
+      authorizedStudents = SecurityUtils.applyStudentRLS(allStudents, userContext);
+      authorizedUsers = SecurityUtils.applyUserRLS(allUsers, userContext);
     }
 
     const authorizedEventIds = new Set((authorizedEvents || []).map(e => e.event_id || e.eventId || e['Event ID']));
@@ -68,16 +76,19 @@ const AnalyticsService = {
     });
 
     this._requestCache = {
-      events: allEvents,
-      students: allStudents,
-      attendance: allAttendance,
-      users: allUsers,
+      events: authorizedEvents,
+      students: authorizedStudents,
+      attendance: authorizedAttendance,
+      users: authorizedUsers,
       participants: authorizedParticipants,
       studentMap,
       userMap,
       authorizedEvents,
       authorizedAttendance,
-      authorizedEventIds
+      authorizedEventIds,
+      allEvents,
+      allStudents,
+      allUsers
     };
     return this._requestCache;
   },
@@ -100,8 +111,8 @@ const AnalyticsService = {
       try {
         if (!eventId) return Utils.buildResponse(false, 'Target Event ID required.');
 
-        var attendanceLogs = DatabaseService.findByColumn(CONFIG.TABLES.ATTENDANCE, 'event_id', eventId, { strict: true }) || [];
-        var allStudents = DatabaseService.selectAll(CONFIG.TABLES.STUDENTS) || [];
+        var attendanceLogs = DatabaseService.findByColumn(CONFIG.SHEETS.ATTENDANCE, 'event_id', eventId, { strict: true }) || [];
+        var allStudents = DatabaseService.readAllRows(CONFIG.SHEETS.STUDENTS) || [];
 
         var studentMap = {};
         allStudents.forEach(function (s) {
@@ -576,6 +587,94 @@ const AnalyticsService = {
       return Utils.buildResponse(true, 'Leaderboard data fetched', { leaderboard: list });
     } catch (e) {
       return Utils.buildResponse(false, e.message);
+    }
+  },
+
+  /**
+   * Generates Cross-Department Participation Matrix, Top Cross-Dept Events, and Top Cross-Dept Students analytics.
+   * @param {string} userId - Caller user ID.
+   * @returns {object} Response object with cross-dept matrix metrics.
+   */
+  getCrossDepartmentMatrix: function (userId) {
+    try {
+      const cache = this._getCache(userId);
+      const attendance = cache.authorizedAttendance || [];
+      const eventsMap = new Map((cache.allEvents || []).map(e => [String(e.event_id || e['Event ID']).trim(), e]));
+      const studentMap = cache.studentMap;
+
+      const matrix = {}; // { fromDept: { toDept: count } }
+      const eventCrossCounts = {}; // { eventId: count }
+      const studentCrossCounts = {}; // { roll: { name, homeDept, count } }
+      let totalCrossScans = 0;
+
+      attendance.forEach(a => {
+        if ((a['Attendance Status'] || a.status) !== CONFIG.ATTENDANCE_STATUS.PRESENT) return;
+        const eId = String(a['Event ID'] || a.event_id || '').trim();
+        const roll = String(a['Roll Number'] || a.roll_number || '').trim().toUpperCase();
+
+        const evt = eventsMap.get(eId);
+        const student = studentMap.get(roll);
+
+        if (evt && student) {
+          const homeDept = String(student['Department ID'] || student.department || student.department_id || 'Unknown').trim().toUpperCase();
+          const rawHostDepts = String(evt['Departments'] || evt['Department'] || evt.departments || evt.department || 'General').trim().toUpperCase();
+          const hostDepts = rawHostDepts.split(',').map(d => d.trim().replace(/[\s_]+/g, ''));
+
+          // Check if student's home department is different from event host department
+          const isCrossDept = (rawHostDepts !== 'ALL' && !hostDepts.includes(homeDept.replace(/[\s_]+/g, '')));
+
+          if (isCrossDept) {
+            totalCrossScans++;
+            const primaryHostDept = hostDepts[0] || 'General';
+
+            // Matrix tally
+            if (!matrix[homeDept]) matrix[homeDept] = {};
+            matrix[homeDept][primaryHostDept] = (matrix[homeDept][primaryHostDept] || 0) + 1;
+
+            // Top Event tally
+            eventCrossCounts[eId] = (eventCrossCounts[eId] || 0) + 1;
+
+            // Top Student tally
+            if (!studentCrossCounts[roll]) {
+              studentCrossCounts[roll] = {
+                rollNumber: roll,
+                studentName: student['Student Name'] || student.student_name || roll,
+                homeDept: homeDept,
+                crossDeptScans: 0
+              };
+            }
+            studentCrossCounts[roll].crossDeptScans++;
+          }
+        }
+      });
+
+      // Top Cross-Dept Events
+      const topCrossEvents = Object.keys(eventCrossCounts)
+        .map(eId => {
+          const evt = eventsMap.get(eId);
+          return {
+            eventId: eId,
+            eventName: evt ? (evt['Event Name'] || evt.event_name || eId) : eId,
+            department: evt ? (evt['Department'] || evt.departments || 'General') : 'General',
+            crossDeptCount: eventCrossCounts[eId]
+          };
+        })
+        .sort((a, b) => b.crossDeptCount - a.crossDeptCount)
+        .slice(0, 10);
+
+      // Top Cross-Dept Students
+      const topCrossStudents = Object.values(studentCrossCounts)
+        .sort((a, b) => b.crossDeptScans - a.crossDeptScans)
+        .slice(0, 10);
+
+      return Utils.buildResponse(true, 'Cross-Department Matrix data generated successfully', {
+        totalCrossScans: totalCrossScans,
+        matrix: matrix,
+        topCrossEvents: topCrossEvents,
+        topCrossStudents: topCrossStudents
+      });
+    } catch (e) {
+      return Utils.buildResponse(false, 'Failed to compute Cross-Department Matrix: ' + e.message);
     }
   }
 };

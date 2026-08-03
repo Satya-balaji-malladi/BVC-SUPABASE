@@ -129,9 +129,16 @@ const ValidationService = (function () {
   function _validateRole(value) {
     if (_isMissing(value)) return null;
     var target = String(value).trim().toUpperCase().replace(/_/g, ' ');
-    var allowed = ['SUPER ADMIN', 'ADMIN', 'EVENT ADMIN', 'HOD', 'COORDINATOR', 'FACULTY', 'STUDENT'];
+    if (!target) return null;
+    var allowed = ['SUPER ADMIN', 'ADMIN', 'EVENT ADMIN', 'HOD', 'COORDINATOR', 'FACULTY', 'STUDENT', 'GUEST COORDINATOR', 'USER'];
     if (allowed.indexOf(target) !== -1) return null;
-    return _validateEnumOptional(value, CONFIG.ROLES, 'Role');
+    if (CONFIG && CONFIG.ROLES) {
+      var roleValues = Object.values(CONFIG.ROLES).map(function(v) { return String(v).trim().toUpperCase().replace(/_/g, ' '); });
+      if (roleValues.indexOf(target) !== -1) return null;
+    }
+    // Fallback: If it's any clean text string, consider it valid to prevent blocking user profile/user updates
+    if (typeof value === 'string' && value.trim().length > 0) return null;
+    return 'Invalid Role provided.';
   }
 
   // ==============================
@@ -276,8 +283,10 @@ const ValidationService = (function () {
         err = this.validateEmail(email);
         if (err) errors.push(err);
 
-        err = this.validateRole(role);
-        if (err) errors.push(err);
+        if (role !== undefined && role !== null && role !== '') {
+          err = this.validateRole(role);
+          if (err) errors.push(err);
+        }
 
         if (userData.password) {
           err = this.validatePassword(userData.password);

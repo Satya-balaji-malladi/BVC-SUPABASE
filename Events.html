@@ -52,7 +52,7 @@
       </div>
       <div class="col-md-2">
         <select id="events-coord-filter" class="form-select">
-          <option value="">All Admins</option>
+          <option value="">All Faculty Admins</option>
         </select>
       </div>
       <div class="col-md-2">
@@ -187,11 +187,11 @@
 
                 <div class="col-md-12 mt-3" id="eventCoordinatorGroup">
                   <div class="d-flex justify-content-between align-items-center">
-                    <label for="eventCoordinator" class="form-label mb-0">Assign Event Admin <span class="text-danger">*</span></label>
+                    <label for="eventCoordinator" class="form-label mb-0">Select Faculty Event Admin <span class="text-danger">*</span></label>
                     <a href="javascript:void(0)" class="small text-decoration-none" id="btnCreateAdminInline"><i class="bi bi-person-plus-fill me-1"></i>+ Create Admin</a>
                   </div>
                   <select class="form-select mt-1" id="eventCoordinator" required>
-                    <option value="">Select Event Admin</option>
+                    <option value="">Select Faculty</option>
                     <!-- Populated dynamically -->
                   </select>
                   <div class="invalid-feedback">Please assign an Event Admin.</div>
@@ -200,7 +200,25 @@
                 <!-- Inline Create Admin Sub-form -->
                 <div class="col-md-12 mt-3 d-none" id="new-coordinator-fields">
                   <div class="card p-3 border-0 bg-light" style="border-radius: 12px; border: 1px solid var(--border-color) !important;">
-                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-person-plus-fill me-1"></i>Create New Event Admin / User</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                      <h6 class="fw-bold text-primary mb-0"><i class="bi bi-person-plus-fill me-1"></i>Create New Event Admin</h6>
+                      <button type="button" class="btn-close btn-sm" id="btnCloseInlineAdmin"></button>
+                    </div>
+                    
+                    <div id="inlineAdminError" class="alert alert-danger d-none py-2 small mb-3"></div>
+                    
+                    <div class="row g-2 mb-2">
+                      <div class="col-md-12">
+                        <label for="newAdminPersonType" class="form-label small fw-semibold mb-1"><i class="bi bi-person-badge me-1"></i>Select Admin Person Type <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm fw-bold border-primary" id="newAdminPersonType">
+                          <option value="Faculty" selected>Faculty Member</option>
+                          <option value="Student">Student Coordinator</option>
+                          <option value="Guest">Guest / External Admin</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Shared / Dynamic Fields Grid -->
                     <div class="row g-2">
                       <div class="col-md-6">
                         <label for="newCoordFirstName" class="form-label small mb-1">First Name <span class="text-danger">*</span></label>
@@ -210,14 +228,79 @@
                         <label for="newCoordLastName" class="form-label small mb-1">Last Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control form-control-sm" id="newCoordLastName" placeholder="e.g. Doe">
                       </div>
-                      <div class="col-md-6">
-                        <label for="newCoordEmail" class="form-label small mb-1">Email Address <span class="text-danger">*</span></label>
-                        <input type="email" class="form-control form-control-sm" id="newCoordEmail" placeholder="e.g. john.doe@bvc.edu">
-                      </div>
-                      <div class="col-md-6">
+
+                      <!-- Faculty Specific Fields -->
+                      <div class="col-md-6 field-group-faculty" id="groupEmpId">
                         <label for="newCoordEmployeeId" class="form-label small mb-1">Employee ID <span class="text-danger">*</span></label>
                         <input type="text" class="form-control form-control-sm" id="newCoordEmployeeId" placeholder="e.g. EMP1234">
                       </div>
+                      <div class="col-md-6 field-group-faculty" id="groupDesignation">
+                        <label for="newCoordDesignation" class="form-label small mb-1">Designation</label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordDesignation" placeholder="e.g. Assistant Professor">
+                      </div>
+
+                      <!-- Student Specific Fields -->
+                      <div class="col-md-6 field-group-student d-none" id="groupRollNumber">
+                        <label for="newCoordRollNumber" class="form-label small mb-1">Roll Number <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordRollNumber" placeholder="e.g. 23221A4201">
+                      </div>
+                      <div class="col-md-3 field-group-student d-none" id="groupYear">
+                        <label for="newCoordYear" class="form-label small mb-1">Year</label>
+                        <select class="form-select form-select-sm" id="newCoordYear">
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3" selected>3</option>
+                          <option value="4">4</option>
+                        </select>
+                      </div>
+                      <div class="col-md-3 field-group-student d-none" id="groupSection">
+                        <label for="newCoordSection" class="form-label small mb-1">Section</label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordSection" placeholder="e.g. A">
+                      </div>
+
+                      <!-- Guest Specific Fields -->
+                      <div class="col-md-6 field-group-guest d-none" id="groupOrganization">
+                        <label for="newCoordOrganization" class="form-label small mb-1">Organization / Institution <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordOrganization" placeholder="e.g. TCS / IIT Hyd">
+                      </div>
+                      <div class="col-md-6 field-group-guest d-none" id="groupGuestDesignation">
+                        <label for="newCoordGuestDesignation" class="form-label small mb-1">Designation</label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordGuestDesignation" placeholder="e.g. Senior Resource Person">
+                      </div>
+
+                      <!-- Department Field (Faculty / Student) - Hidden, auto-set by system -->
+                      <div class="col-md-6 d-none" id="groupDepartment">
+                        <label for="newCoordDepartment" class="form-label small mb-1">Department <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" id="newCoordDepartment">
+                          <!-- Populated dynamically -->
+                        </select>
+                      </div>
+
+                      <div class="col-md-6">
+                        <label for="newCoordEmail" class="form-label small mb-1">Gmail / Email Address <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control form-control-sm" id="newCoordEmail" placeholder="e.g. john.doe@gmail.com">
+                      </div>
+                      <div class="col-md-6 d-none">
+                        <label for="newCoordMobile" class="form-label small mb-1">Mobile Number</label>
+                        <input type="tel" class="form-control form-control-sm" id="newCoordMobile" placeholder="e.g. 9876543210" maxlength="10">
+                      </div>
+
+                      <div class="col-md-6 d-none">
+                        <label for="newCoordUsername" class="form-label small mb-1">Username <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="newCoordUsername" placeholder="e.g. john_admin">
+                      </div>
+                      <div class="col-md-6 d-none">
+                        <label for="newCoordPassword" class="form-label small mb-1">Password <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control form-control-sm" id="newCoordPassword" placeholder="Set password">
+                      </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-3 pt-2 border-top">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCancelInlineAdmin">Cancel</button>
+                      <button type="button" class="btn btn-sm btn-primary" id="btnSaveInlineAdmin">
+                        <span class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+                        <i class="bi bi-check-circle me-1"></i>Save & Auto-Select Admin
+                      </button>
                     </div>
                   </div>
                 </div>

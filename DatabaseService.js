@@ -7,9 +7,11 @@ const DatabaseService = {
   _tableColumns: {
     departments: ['department_id', 'department_code', 'department_name', 'short_name', 'hod_name', 'hod_employee_id', 'total_students', 'total_coordinators', 'total_events_hosted', 'total_participants', 'status', 'created_by', 'created_at', 'updated_by', 'updated_at', 'remarks', 'deletion_flag'],
     students: ['student_id', 'roll_number', 'user_id', 'student_name', 'email_address', 'year', 'semester', 'section', 'gender', 'student_status', 'phone_number', 'department_id', 'guardian_name', 'date_of_birth', 'enrollment_date', 'last_updated_at', 'notes', 'college', 'deletion_flag'],
-    users: ['user_id', 'employee_id', 'first_name', 'last_name', 'email_address', 'phone_number', 'department', 'title_designation', 'username', 'password_hash', 'salt', 'authentication_provider', 'first_login', 'role', 'status', 'profile_picture_url', 'failed_login_attempts', 'account_locked', 'last_login_timestamp', 'last_logout_timestamp', 'password_reset_required', 'password_last_changed', 'password_expiry_date', 'two_factor_enabled', 'two_factor_secret', 'otp', 'otp_expiry', 'otp_attempts', 'popup_notifications', 'notification_sound', 'theme_preference', 'language', 'timezone', 'bio_notes', 'profile_completed', 'created_by', 'created_at', 'updated_by', 'updated_at', 'deletion_flag'],
+    users: ['user_id', 'employee_id', 'first_name', 'last_name', 'email_address', 'phone_number', 'department', 'title_designation', 'username', 'password_hash', 'salt', 'authentication_provider', 'first_login', 'role', 'default_role', 'status', 'profile_picture_url', 'failed_login_attempts', 'account_locked', 'last_login_timestamp', 'last_logout_timestamp', 'password_reset_required', 'password_last_changed', 'password_expiry_date', 'two_factor_enabled', 'two_factor_secret', 'otp', 'otp_expiry', 'otp_attempts', 'popup_notifications', 'notification_sound', 'theme_preference', 'language', 'timezone', 'bio_notes', 'profile_completed', 'alternate_phone', 'created_by', 'created_at', 'updated_by', 'updated_at', 'deletion_flag'],
     events: ['event_id', 'event_name', 'description', 'location', 'event_category', 'organizer', 'start_date', 'end_date', 'start_time', 'end_time', 'attendance_type', 'barcode_attendance', 'manual_attendance', 'capacity', 'registered_count', 'event_status', 'approval_status', 'approved_by', 'approved_at', 'report_generated', 'report_date', 'remarks', 'created_at', 'updated_at', 'last_attendance_sync', 'notes', 'deletion_flag', 'attendance_window_start', 'attendance_window_end', 'rules', 'schedule', 'speakers', 'certificates_config', 'attendance_settings', 'check_out_enabled', 'departments', 'years', 'last_action', 'last_action_at', 'last_action_by', 'enable_registration', 'registration_open', 'registration_close', 'maximum_seats', 'allow_spot_registration', 'registration_fields', 'terms_and_conditions', 'registration_url'],
     event_coordinators: ['assignment_id', 'event_id', 'user_id', 'assignment_role', 'assignment_status', 'assigned_by', 'assigned_date', 'updated_by', 'updated_date', 'remarks', 'deletion_flag'],
+    event_assignments: ['assignment_id', 'event_id', 'user_id', 'role', 'coordinator_type', 'status', 'assigned_by', 'assigned_at'],
+    department_hods: ['id', 'department_id', 'user_id', 'assigned_at'],
     event_participants: ['participant_id', 'event_id', 'roll_number', 'registration_type', 'registration_status', 'attendance_status', 'approval_status', 'approved_by', 'registration_date', 'registration_time', 'registration_timestamp', 'attendance_timestamp', 'certificate_issued', 'certificate_id', 'created_at', 'updated_at', 'created_by', 'deletion_flag', 'last_action', 'remarks', 'last_sync_timestamp', 'custom_fields_data'],
     attendance: ['attendance_id', 'event_id', 'roll_number', 'user_id', 'attendance_status', 'attendance_method', 'date', 'time', 'timestamp', 'is_undo', 'undo_reason', 'undo_timestamp', 'correction_requested', 'correction_status', 'correction_reason', 'correction_handled_by', 'location', 'remarks', 'created_at', 'updated_at', 'sync_status', 'deletion_flag', 'check_out_timestamp', 'total_duration_minutes'],
     sessions: ['session_id', 'user_id', 'username', 'login_timestamp', 'last_activity_timestamp', 'expiry_time', 'logout_timestamp', 'session_status', 'ip_address', 'user_agent', 'device_type', 'os', 'browser', 'location', 'login_method', 'session_token', 'created_by', 'created_at', 'updated_by', 'updated_at', 'deletion_flag', 'remarks'],
@@ -88,6 +90,10 @@ const DatabaseService = {
       if (key.indexOf('__') === 0) continue; // Skip Apps Script row metadata
       var dbKey = this._appToDbMap[key] || this._toSnakeCase(key);
 
+      if (dbTable === 'users' && (dbKey === 'online_status' || dbKey === 'last_seen' || key === 'OnlineStatus' || key === 'LastSeen')) {
+        continue;
+      }
+
       // Filter out keys that do not exist in the database table, with special mappings
       if (validCols && validCols.indexOf(dbKey) === -1) {
         if (dbTable === 'users' && (dbKey === 'lastlogin' || dbKey === 'last_login')) {
@@ -122,15 +128,21 @@ const DatabaseService = {
             val = val.toISOString();
           }
         }
+        // Truncate strings for strict VARCHAR(50) columns to prevent PostgreSQL 22001 errors
+        if (typeof val === 'string' && val.length > 50) {
+          if (dbKey === 'record_id' || dbKey === 'record_type' || dbKey === 'employee_id' || dbKey === 'department_id' || dbKey === 'assignment_id') {
+            val = val.substring(0, 50);
+          }
+        }
       }
 
       dbRecord[dbKey] = val;
     }
 
     // Explicit safety override for strict non-null database fields:
-    if (dbTable === 'users' && !dbRecord['salt']) {
-      dbRecord['salt'] = 'plain';
-    }
+    /* if (dbTable === 'users' && !dbRecord['salt']) {
+       dbRecord['salt'] = 'plain';
+     }*/
 
     return dbRecord;
   },
@@ -181,6 +193,13 @@ const DatabaseService = {
     }
 
     const response = UrlFetchApp.fetch(url, options);
+    Logger.log("========== PATCH DEBUG ==========");
+    Logger.log("URL: " + url);
+    Logger.log("METHOD: " + method);
+    Logger.log("PAYLOAD: " + JSON.stringify(payload));
+    Logger.log("STATUS: " + response.getResponseCode());
+    Logger.log("BODY: " + response.getContentText());
+    Logger.log("================================");
     if (CONFIG && CONFIG.DEBUG) {
       Logger.log("[DEBUG] HTTP Status = " + response.getResponseCode());
       Logger.log("[DEBUG] Response Body = " + response.getContentText());
@@ -253,7 +272,6 @@ const DatabaseService = {
     return this.getHeaderRow(sheetName);
   },
 
-  /**
   _hasDeletionFlag: function(dbTable) {
     var tbl = String(dbTable || '').toLowerCase().trim();
     if (tbl === 'faculty' || tbl === 'departments' || tbl === 'sessions' || tbl === 'audit_logs' || tbl === 'audit_log' || tbl === 'system_logs') {
@@ -493,7 +511,13 @@ const DatabaseService = {
       const now = new Date().toISOString();
       if (CONFIG.COLUMNS.UPDATED_AT) updates[CONFIG.COLUMNS.UPDATED_AT] = now;
 
+      Logger.log("========== BEFORE MAP ==========");
+      Logger.log(JSON.stringify(updates, null, 2));
+
       const dbUpdates = this._mapToDbRecord(updates, dbTable);
+
+      Logger.log("========== AFTER MAP ==========");
+      Logger.log(JSON.stringify(dbUpdates, null, 2));
       const query = dbCol + '=eq.' + encodeURIComponent(val);
 
       const res = this._request(dbTable, 'PATCH', dbUpdates, query);
@@ -520,7 +544,13 @@ const DatabaseService = {
       const now = new Date().toISOString();
       if (CONFIG.COLUMNS.UPDATED_AT) updates[CONFIG.COLUMNS.UPDATED_AT] = now;
 
+      Logger.log("========== BEFORE MAP ==========");
+      Logger.log(JSON.stringify(updates, null, 2));
+
       const dbUpdates = this._mapToDbRecord(updates, dbTable);
+
+      Logger.log("========== AFTER MAP ==========");
+      Logger.log(JSON.stringify(dbUpdates, null, 2));
 
       // Map list of values to CSV/IN query filter
       const valList = (Array.isArray(vals) ? vals : [vals]).map(function (v) { return encodeURIComponent(v); }).join(',');

@@ -46,8 +46,7 @@ function doGet(e) {
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } catch (e) {
       // Fallback if CoordinatorIndex doesn't exist yet
-      return HtmlService.createTemplateFromFile('Index')
-        .evaluate()
+      return HtmlService.createTemplateFromFile('Index').evaluate()
         .setTitle('Dashboard - Coordinator (Fallback)')
         .addMetaTag('viewport', 'width=device-width, initial-scale=1')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -116,14 +115,7 @@ function getPageContent(page) {
   try {
     if (p === 'forgotpassword') return HtmlService.createTemplateFromFile('ForgotPassword').evaluate().getContent();
     if (p === 'completeprofile') return HtmlService.createTemplateFromFile('CompleteProfile').evaluate().getContent();
-    if (p === 'dashboard') return HtmlService.createTemplateFromFile('Admin').evaluate().getContent();
-    if (p === 'eventadmin') {
-      try {
-        return HtmlService.createTemplateFromFile('EventAdmin').evaluate().getContent();
-      } catch (e) {
-        return HtmlService.createTemplateFromFile('Admin').evaluate().getContent();
-      }
-    }
+    if (p === 'dashboard' || p === 'eventadmin' || p === 'admin') return HtmlService.createTemplateFromFile('Admin').evaluate().getContent();
     if (p === 'register' || p === 'registration') return HtmlService.createTemplateFromFile('RegistrationForm').evaluate().getContent();
     if (p === 'coordinator') {
       try {

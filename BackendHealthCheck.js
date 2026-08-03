@@ -34,23 +34,19 @@ const BackendHealthCheck = {
     Logger.log('Checking sheets and header structure...');
     const sheets = Object.values(CONFIG.SHEETS);
     sheets.forEach(s => {
-      const sheet = DatabaseService.getSheet(s);
-      if (!sheet) {
-        throw new Error('Required sheet not found: ' + s);
-      }
       const headers = DatabaseService.getHeaderRow(s);
       if (!headers || headers.length === 0) {
-        throw new Error('Sheet ' + s + ' is missing header columns.');
+        throw new Error('Sheet/Table ' + s + ' is missing header columns.');
       }
-      Logger.log('  - Sheet "' + s + '" verified. Headers count: ' + headers.length);
+      Logger.log('  - Sheet/Table "' + s + '" verified. Headers count: ' + headers.length);
     });
   },
 
   checkIdGeneration: function() {
     Logger.log('Checking ID generation locking...');
     const tests = [
-      { sheet: CONFIG.SHEETS.USERS, col: 'User ID' },
-      { sheet: CONFIG.SHEETS.EVENTS, col: 'Event ID' }
+      { sheet: 'USERS', col: 'User ID' },
+      { sheet: 'EVENTS', col: 'Event ID' }
     ];
     tests.forEach(t => {
       const nextId = IdService._generateNextIdWithLock ? IdService._generateNextIdWithLock(t.sheet) : 'MOCK_ID';
@@ -76,7 +72,7 @@ const BackendHealthCheck = {
     if (typeof Utils === 'undefined' || !Utils.buildResponse) {
       throw new Error('Utils module is missing or corrupted.');
     }
-    if (typeof ValidationService === 'undefined' || !ValidationService.validateRequiredFields) {
+    if (typeof ValidationService === 'undefined' || (!ValidationService.validateRequired && !ValidationService.validateRequiredFields)) {
       throw new Error('ValidationService is missing or corrupted.');
     }
     if (typeof AuditService === 'undefined' || !AuditService.logAction) {

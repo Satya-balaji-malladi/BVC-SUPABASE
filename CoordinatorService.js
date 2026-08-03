@@ -218,6 +218,8 @@ const CoordinatorService = {
           Logger.log('[COORD-AUTH][ERROR] Error syncing to event_assignments: ' + (e && e.message ? e.message : e));
         }
 
+        if (typeof StatusService !== 'undefined') StatusService.refreshUserStatus(userId, null, false);
+        
         try {
           AuditService.logAction(
             assignedBy || 'System',
@@ -276,6 +278,8 @@ const CoordinatorService = {
         } catch (e) {
           Logger.log('[COORD-AUTH][ERROR] Error syncing removal to event_assignments: ' + (e && e.message ? e.message : e));
         }
+
+        if (recUserId && typeof StatusService !== 'undefined') StatusService.refreshUserStatus(recUserId, null, false);
 
         try {
           AuditService.logAction(
@@ -742,14 +746,23 @@ const CoordinatorService = {
       }
 
       const allRows = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
+      const assignmentRows = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_ASSIGNMENTS) || [];
+
+      let userEmpId = '';
+      try {
+        const userRec = UserService.getUserById(userId);
+        if (userRec) {
+          userEmpId = this._normId(userRec.employee_id || userRec[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || userRec.employeeId || '');
+        }
+      } catch (ex) {}
 
       const assignedEventIds = allRows
         .filter(row => {
           if (!row) return false;
-          const rowUserId = row['User ID'] !== undefined ? row['User ID'] : row.user_id;
+          const rowUserId = this._normId(row['User ID'] !== undefined ? row['User ID'] : row.user_id);
           const rowStatus = row['Assignment Status'] !== undefined ? row['Assignment Status'] : row.assignment_status;
-          return this._normId(rowUserId) === normUser &&
-            String(rowStatus || '').trim().toLowerCase() === 'active';
+          const matchUser = (rowUserId === normUser) || (userEmpId && rowUserId === userEmpId);
+          return matchUser && String(rowStatus || '').trim().toLowerCase() !== 'inactive';
         })
         .map(row => {
           const rowEventId = row['Event ID'] !== undefined ? row['Event ID'] : row.event_id;
@@ -757,7 +770,17 @@ const CoordinatorService = {
         })
         .filter(id => id.length > 0);
 
-      const allEvents = EventService.getAllEvents() || [];
+      const fromAssignments = assignmentRows
+        .filter(row => {
+          if (!row || row[CONFIG.COLUMNS.DELETION_FLAG]) return false;
+          const rowUserId = this._normId(row['User ID'] !== undefined ? row['User ID'] : row.user_id);
+          return (rowUserId === normUser) || (userEmpId && rowUserId === userEmpId);
+        })
+        .map(row => String(row['Event ID'] || row.event_id || '').trim())
+        .filter(id => id.length > 0);
+
+      const allEventsResponse = EventService.getAllEvents() || [];
+      const allEvents = Array.isArray(allEventsResponse) ? allEventsResponse : (allEventsResponse.data || []);
       const coordinatorIdCol = (CONFIG.COLUMNS && CONFIG.COLUMNS.COORDINATOR_ID) ? CONFIG.COLUMNS.COORDINATOR_ID : 'Organizer';
       const createdByCol = (CONFIG.COLUMNS && CONFIG.COLUMNS.CREATED_BY) ? CONFIG.COLUMNS.CREATED_BY : 'Created By';
 
@@ -769,13 +792,13 @@ const CoordinatorService = {
         const crId = this._normId(
           ev[createdByCol] || ev.created_by || ev.createdBy || ev['Created By']
         );
-        return (cId === normUser || crId === normUser);
+        return (cId === normUser || (userEmpId && cId === userEmpId) || crId === normUser || (userEmpId && crId === userEmpId));
       }).map(ev => {
         const eId = (CONFIG.COLUMNS && CONFIG.COLUMNS.EVENT_ID) ? ev[CONFIG.COLUMNS.EVENT_ID] : null;
         return String(eId || ev.eventId || ev.event_id || ev['Event ID'] || '').trim();
       }).filter(id => id.length > 0);
 
-      const combinedIds = Array.from(new Set(assignedEventIds.concat(primaryEvents)));
+      const combinedIds = Array.from(new Set(assignedEventIds.concat(fromAssignments).concat(primaryEvents)));
 
       const activeEventIds = combinedIds.filter(id => {
         const event = EventService.getEventById(id);

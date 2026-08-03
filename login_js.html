@@ -58,13 +58,21 @@
         google.script.run
           .withSuccessHandler((res) => {
             if (res && res.success) {
-              console.log('Session restored successfully. Loading Dashboard...');
-              /*if (google.script.history && google.script.history.replace) {
-   google.script.history.replace(null, { page: 'dashboard' }, null);
- }*/
-              document.open();
-              document.write(res.html);
-              document.close();
+              const restoredUser = res.user || res.data?.user || {};
+              const restoredRole = String(restoredUser.Role || restoredUser.role || '').trim().toUpperCase().replace(/[\s_]+/g, '');
+              const storedEventId = localStorage.getItem('selectedEventId');
+
+              // Only Faculty and Event Admin need Event Context on restore
+              const needsEventContext = (restoredRole === 'FACULTY' || restoredRole === 'EVENTADMIN') && !storedEventId;
+              if (needsEventContext) {
+                if (sessionLoadingContainer) sessionLoadingContainer.classList.add('d-none');
+                initiateEventContextFlow(sessionToken, restoredRole, restoredUser, true);
+              } else {
+                console.log('Session restored successfully. Loading Dashboard...');
+                document.open();
+                document.write(res.html);
+                document.close();
+              }
             } else {
               console.log('Session restoration failed:', res ? res.message : 'Unknown reason');
               localStorage.removeItem('sessionToken');
@@ -291,6 +299,14 @@
 
       localStorage.setItem("sessionToken", actualToken);
       localStorage.setItem("userRole", role);
+      if (user) {
+        const dept = user.department || user.Department || user.department_id || user['Department ID'] || user.dept || '';
+        if (dept) localStorage.setItem("userDept", dept);
+        localStorage.setItem("userObj", JSON.stringify(user));
+        if (window.App && window.App.State) {
+          window.App.State.currentUser = user;
+        }
+      }
 
       // Fire warmup ping to keep Apps Script runtime warm (avoids cold start on next request)
       try { if (window.App && App.API && App.API.warmup) App.API.warmup(); } catch (e) { }
@@ -318,7 +334,11 @@
       // Navigate to Target Page
       // ==========================
 
-      if (role === 'COORDINATOR') {
+      // Normalize role for consistent comparison
+      const roleNorm = role.replace(/[\s_]+/g, '');
+
+      // ── Coordinator → Scanner Terminal (all coordinator subtypes) ──
+      if (roleNorm === 'COORDINATOR') {
         loginForm.classList.add('d-none');
         const redirectContainer = document.getElementById('coordinatorRedirectContainer');
         const btnOpen = document.getElementById('btnOpenCoordinator');
@@ -332,46 +352,241 @@
           window.open(coordUrl, '_top');
         }
         return;
-      } else {
-        let targetPage = 'dashboard';
-        const isProfileCompleted = (user.profile_completed === true || user.profile_completed === 'true' || user.ProfileCompleted === true || user.ProfileCompleted === 'true');
-        if (!isProfileCompleted) {
-          targetPage = 'completeprofile';
-        } else if (role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'EVENTADMIN') {
-          targetPage = 'eventadmin';
+      }
+
+      // ── Super Admin / HOD / Admin → Direct to Dashboard (no event context) ──
+      if (roleNorm === 'SUPERADMIN' || roleNorm === 'HOD' || roleNorm === 'ADMIN') {
+        proceedToPortal(actualToken, role, user);
+        return;
+      }
+
+      // ── Faculty / Event Admin → Event Context Selection Screen ──
+      if (roleNorm === 'FACULTY' || roleNorm === 'EVENTADMIN') {
+        initiateEventContextFlow(actualToken, roleNorm, user, true);
+        return;
+      }
+
+      // ── All other roles → Direct Portal ──
+      proceedToPortal(actualToken, role, user);
+    }
+
+    /**
+     * initiateEventContextFlow
+     * Shows the "Select Event Context" screen for Faculty and Event Admin.
+     * Both Faculty and Event Admin can create new events from this screen.
+     * Coordinators never reach this function (they go to scanner terminal).
+     * Super Admin / HOD / Admin bypass this entirely (go direct to dashboard).
+     *
+     * @param {string} actualToken  - Session token
+     * @param {string} roleNorm     - Normalized role (e.g. 'FACULTY', 'EVENTADMIN')
+     * @param {object} user         - User object from login response
+     * @param {boolean} canCreate   - Whether this role is allowed to create events
+     */
+    function initiateEventContextFlow(actualToken, roleNorm, user, canCreate) {
+      const loginFormEl = document.getElementById('loginForm');
+      const selectionContainer = document.getElementById('eventSelectionContainer');
+      const dropdown = document.getElementById('eventDropdown');
+      const btnProceed = document.getElementById('btnProceedEvent');
+      const btnCreate = document.getElementById('btnCreateEventQuick');
+      const alertEl = document.getElementById('eventSelectionAlert');
+      const quickFormContainer = document.getElementById('quickEventFormContainer');
+      const quickForm = document.getElementById('quickEventForm');
+      const btnCancelQE = document.getElementById('btnQECancel');
+
+      if (loginFormEl) loginFormEl.classList.add('d-none');
+      if (selectionContainer) selectionContainer.classList.remove('d-none');
+
+      // Show or hide the "Create" button based on role permission
+      if (btnCreate) {
+        if (canCreate) {
+          btnCreate.classList.remove('d-none');
+        } else {
+          btnCreate.classList.add('d-none');
         }
+      }
 
-        // Admin / Event Admin / HOD / Super Admin: load the app shell via document.write
-        google.script.run
-          .withSuccessHandler(function (html) {
+      // Update page heading to show role context
+      const headingEl = document.querySelector('#eventSelectionContainer h5');
+      if (headingEl) {
+        const roleLabel = roleNorm === 'FACULTY' ? 'Faculty' : 'Event Admin';
+        headingEl.innerHTML = `<i class="bi bi-calendar-event me-2 text-primary"></i>Select Event Context <span class="badge bg-primary-subtle text-primary ms-1 fs-small">${roleLabel}</span>`;
+      }
 
-            console.log('Application shell loaded for target:', targetPage);
+      dropdown.innerHTML = '<option value="">-- Choose an Event --</option>';
+      dropdown.insertAdjacentHTML('beforeend', '<option value="LOADING" disabled>Loading events...</option>');
 
-            if (google.script.history && google.script.history.replace) {
-              google.script.history.replace(
-                null,
-                { page: targetPage },
-                null
-              );
+      google.script.run
+        .withSuccessHandler(function(events) {
+          dropdown.innerHTML = '<option value="">-- Choose an Event --</option>';
+
+          if (events && events.length > 0) {
+            events.forEach(function(e) {
+              const name = e['Event Name'] || e.event_name || e.eventName || 'Unnamed Event';
+              const id   = e['Event ID']   || e.event_id   || e.eventId;
+              if (id) {
+                dropdown.insertAdjacentHTML('beforeend', `<option value="${id}">${name}</option>`);
+              }
+            });
+            if (alertEl) {
+              alertEl.className = 'alert alert-info small mb-3 p-2';
+              alertEl.textContent = 'Please select your assigned event context to proceed to the portal.';
             }
+          } else {
+            if (alertEl) {
+              alertEl.className = 'alert alert-warning small mb-3 p-2';
+              alertEl.textContent = canCreate
+                ? 'No assigned events found. Please create a new event to proceed.'
+                : 'No assigned events found. Please contact your administrator.';
+            }
+          }
 
-            document.open();
-            document.write(html);
-            document.close();
+          // Only Faculty and Event Admin can see "+ Create New Event" in dropdown
+          if (canCreate) {
+            dropdown.insertAdjacentHTML('beforeend', '<option value="CREATE_NEW" class="text-success fw-semibold">+ Create New Event</option>');
+          }
+        })
+        .withFailureHandler(function(err) {
+          console.error('Failed to load assigned events:', err);
+          dropdown.innerHTML = '<option value="">-- Choose an Event --</option>';
+          if (canCreate) {
+            dropdown.insertAdjacentHTML('beforeend', '<option value="CREATE_NEW" class="text-success fw-semibold">+ Create New Event</option>');
+          }
+          if (alertEl) {
+            alertEl.className = 'alert alert-danger small mb-3 p-2';
+            alertEl.textContent = 'Failed to load events. You can try creating a new one.';
+          }
+        })
+        .getUserAssignedEvents(actualToken);
 
-          })
-          .withFailureHandler(function (error) {
+      // Dropdown change handler
+      dropdown.addEventListener('change', function() {
+        const val = dropdown.value;
+        if (val === 'CREATE_NEW' && canCreate) {
+          selectionContainer.classList.add('d-none');
+          quickFormContainer.classList.remove('d-none');
+          btnProceed.disabled = true;
+        } else if (val && val !== 'LOADING') {
+          btnProceed.disabled = false;
+        } else {
+          btnProceed.disabled = true;
+        }
+      });
 
-            console.error(error);
-            showAlert(
-              'Failed to load application shell.',
-              'danger'
-            );
+      // Proceed button
+      btnProceed.addEventListener('click', function() {
+        const eventId = dropdown.value;
+        if (!eventId || eventId === 'CREATE_NEW' || eventId === 'LOADING') return;
+        localStorage.setItem('selectedEventId', eventId);
+        proceedToPortal(actualToken, roleNorm, user);
+      });
 
-          })
-          .getPageContent(targetPage);
+      // Create button (only visible when canCreate = true)
+      if (btnCreate && canCreate) {
+        btnCreate.addEventListener('click', function() {
+          selectionContainer.classList.add('d-none');
+          quickFormContainer.classList.remove('d-none');
+        });
+      }
+
+      // Cancel quick-create form
+      if (btnCancelQE) {
+        btnCancelQE.addEventListener('click', function() {
+          quickFormContainer.classList.add('d-none');
+          selectionContainer.classList.remove('d-none');
+          dropdown.value = '';
+          btnProceed.disabled = true;
+        });
+      }
+
+      // Quick event create form submit
+      if (quickForm && canCreate) {
+        quickForm.addEventListener('submit', function(e) {
+          e.preventDefault();
+
+          const qeName      = document.getElementById('qeName');
+          const qeLocation  = document.getElementById('qeLocation');
+          const qeStartDate = document.getElementById('qeStartDate');
+          const qeEndDate   = document.getElementById('qeEndDate');
+          const btnQESubmit = document.getElementById('btnQESubmit');
+
+          if (!qeName.value.trim() || !qeLocation.value.trim() || !qeStartDate.value || !qeEndDate.value) {
+            qeName.classList.toggle('is-invalid', !qeName.value.trim());
+            qeLocation.classList.toggle('is-invalid', !qeLocation.value.trim());
+            qeStartDate.classList.toggle('is-invalid', !qeStartDate.value);
+            qeEndDate.classList.toggle('is-invalid', !qeEndDate.value);
+            return;
+          }
+
+          // Clear validation
+          [qeName, qeLocation, qeStartDate, qeEndDate].forEach(function(el) { el.classList.remove('is-invalid'); });
+
+          btnQESubmit.disabled = true;
+          btnQESubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+
+          const eventData = {
+            eventName : qeName.value.trim(),
+            venue     : qeLocation.value.trim(),
+            startDate : qeStartDate.value,
+            endDate   : qeEndDate.value,
+            status    : 'Active'
+          };
+
+          google.script.run
+            .withSuccessHandler(function(res) {
+              btnQESubmit.disabled = false;
+              btnQESubmit.textContent = 'Save & Proceed';
+
+              if (res && res.success) {
+                const newEvent = res.data || {};
+                const newEventId = newEvent.event_id || newEvent.eventId || newEvent['Event ID'];
+                if (newEventId) {
+                  localStorage.setItem('selectedEventId', newEventId);
+                  proceedToPortal(actualToken, roleNorm, user);
+                } else {
+                  alert('Event created but Event ID was missing. Please refresh and try again.');
+                }
+              } else {
+                alert('Failed to create event: ' + (res ? res.message : 'Unknown error'));
+              }
+            })
+            .withFailureHandler(function(err) {
+              btnQESubmit.disabled = false;
+              btnQESubmit.textContent = 'Save & Proceed';
+              alert('Server error while creating event: ' + (err && err.message ? err.message : err));
+            })
+            .createEvent(actualToken, eventData);
+        });
       }
     }
+
+    function proceedToPortal(actualToken, role, user) {
+      let targetPage = 'dashboard';
+      const isProfileCompleted = (user.profile_completed === true || user.profile_completed === 'true' || user.ProfileCompleted === true || user.ProfileCompleted === 'true');
+      if (!isProfileCompleted) {
+        targetPage = 'completeprofile';
+      } else if (role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'EVENTADMIN' || role === 'FACULTY') {
+        targetPage = 'eventadmin';
+      }
+
+      showAlert("Loading portal context, please wait...", "success");
+
+      google.script.run
+        .withSuccessHandler(function (html) {
+          console.log('Application shell loaded for target:', targetPage);
+          if (google.script.history && google.script.history.replace) {
+            google.script.history.replace(null, { page: targetPage }, null);
+          }
+          document.open();
+          document.write(html);
+          document.close();
+        })
+        .withFailureHandler(function (error) {
+          console.error(error);
+          showAlert('Failed to load application shell.', 'danger');
+        })
+        .getPageContent(targetPage);
+    }
+
     function handleLoginFailure(error) {
       console.error('System level pipeline failure caught:', error);
       setLoading(false); // ALWAYS stop loading on exception

@@ -11,11 +11,11 @@ const AuthService = {
   // Private helpers
   // --------------------
 
-  _getUsersSheetKey: function() {
+  _getUsersSheetKey: function () {
     return CONFIG.SHEETS && CONFIG.SHEETS.USERS;
   },
 
-  _getUserById: function(userId) {
+  _getUserById: function (userId) {
     try {
       var usersSheet = this._getUsersSheetKey();
       var userCol = CONFIG.ID_COLUMNS && CONFIG.ID_COLUMNS.USERS;
@@ -28,11 +28,11 @@ const AuthService = {
     }
   },
 
-  _getUserSafe: function(user) {
+  _getUserSafe: function (user) {
     return Utils && Utils.sanitizeUser ? Utils.sanitizeUser(user) : user;
   },
 
-  _verifyPassword: function(user, password) {
+  _verifyPassword: function (user, password) {
     try {
       if (!user || !CONFIG.COLUMNS) {
         return false;
@@ -71,43 +71,43 @@ const AuthService = {
       return false;
     }
   },
- _hashPassword: function(password, salt) {
-  try {
+  _hashPassword: function (password, salt) {
+    try {
 
-    password = String(password || "").trim();
-    salt = String(salt || "").trim();
+      password = String(password || "").trim();
+      salt = String(salt || "").trim();
 
-    // Ignore empty or N/A salt
-    if (
-      salt &&
-      salt !== "" &&
-      salt.toUpperCase() !== "N/A"
-    ) {
-      return Utils.hashString(salt + ":" + password);
+      // Ignore empty or N/A salt
+      if (
+        salt &&
+        salt !== "" &&
+        salt.toUpperCase() !== "N/A"
+      ) {
+        return Utils.hashString(salt + ":" + password);
+      }
+
+      return Utils.hashString(password);
+
+    } catch (e) {
+      Logger.log("AuthService._hashPassword error: " + e);
+      return "";
     }
-
-    return Utils.hashString(password);
-
-  } catch (e) {
-    Logger.log("AuthService._hashPassword error: " + e);
-    return "";
-  }
-},
-  _createSession: function(user) {
+  },
+  _createSession: function (user) {
     // SessionService is already part of the app; AuthService delegates to it.
     var sessionToken = SessionService.createSession(user);
     return { token: sessionToken, user: this._getUserSafe(user) };
   },
 
-  _standardError: function(msg) {
+  _standardError: function (msg) {
     return Utils.buildResponse(false, msg || CONFIG.MESSAGES.ERROR_DEFAULT);
   },
 
-  _standardSuccess: function(msg, data) {
+  _standardSuccess: function (msg, data) {
     return Utils.buildResponse(true, msg || CONFIG.MESSAGES.SUCCESS_DEFAULT, data || {});
   },
 
-  _incrementFailedAttempts: function(userId, currentAttempts) {
+  _incrementFailedAttempts: function (userId, currentAttempts) {
     try {
       // Uses CONFIG-driven column names where possible.
       var attemptsCol = CONFIG.COLUMNS.USER_FAILED_ATTEMPTS;
@@ -128,17 +128,17 @@ const AuthService = {
     }
   },
 
-  _resetFailedAttempts: function(userId) {
+  _resetFailedAttempts: function (userId) {
     try {
       var attemptsCol = CONFIG.COLUMNS.USER_FAILED_ATTEMPTS;
       if (!attemptsCol) return;
-      DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.ID_COLUMNS.USERS, userId, (function(){ var u = {}; u[attemptsCol] = 0; return u; })());
+      DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.ID_COLUMNS.USERS, userId, (function () { var u = {}; u[attemptsCol] = 0; return u; })());
     } catch (e) {
       Logger.log('AuthService._resetFailedAttempts error: ' + (e && e.message ? e.message : e));
     }
   },
 
-  _getLoginAttemptCount: function(user) {
+  _getLoginAttemptCount: function (user) {
     try {
       var attemptsCol = CONFIG.COLUMNS.USER_FAILED_ATTEMPTS;
       if (!attemptsCol || user[attemptsCol] === undefined || user[attemptsCol] === null) return 0;
@@ -149,135 +149,145 @@ const AuthService = {
     }
   },
 
- _isAccountLocked: function(user) {
-  try {
-    var lockCol = CONFIG.COLUMNS.USER_ACCOUNT_LOCKED;
-    if (!lockCol || !user) return false;
+  _isAccountLocked: function (user) {
+    try {
+      var lockCol = CONFIG.COLUMNS.USER_ACCOUNT_LOCKED;
+      if (!lockCol || !user) return false;
 
-    var value = String(user[lockCol]).trim().toLowerCase();
+      var value = String(user[lockCol]).trim().toLowerCase();
 
-    return (
-      value === "yes" ||
-      value === "true" ||
-      value === "1"
-    );
+      return (
+        value === "yes" ||
+        value === "true" ||
+        value === "1"
+      );
 
-  } catch (e) {
-    Logger.log(
-      "AuthService._isAccountLocked error: " +
-      (e && e.message ? e.message : e)
-    );
-    return false;
-  }
-},
+    } catch (e) {
+      Logger.log(
+        "AuthService._isAccountLocked error: " +
+        (e && e.message ? e.message : e)
+      );
+      return false;
+    }
+  },
 
   // --------------------
   // Public methods
   // --------------------
 
-  login: function(loginData) {
-  try {
-    var validationResult = ValidationService.validateLogin(loginData);
-    if (!validationResult.valid) {
-      return Utils.buildResponse(false, validationResult.errors.join(' '));
-    }
-
-    var identifier = String(loginData.employeeId || loginData.employee_id || loginData.usernameOrEmail || loginData.username || loginData.email || '').trim();
-    var password = loginData.password;
-
-    var user = null;
-    if (identifier) {
-      user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'employee_id', identifier);
-      if (!user) {
-        user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_USERNAME || 'username', identifier);
+  login: function (loginData) {
+    try {
+      var validationResult = ValidationService.validateLogin(loginData);
+      if (!validationResult.valid) {
+        return Utils.buildResponse(false, validationResult.errors.join(' '));
       }
-      if (!user) {
-        user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMAIL_ADDRESS || 'email_address', identifier);
+
+      var identifier = String(loginData.employeeId || loginData.employee_id || loginData.usernameOrEmail || loginData.username || loginData.email || '').trim();
+      var password = loginData.password;
+
+      var user = null;
+      if (identifier) {
+        user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'employee_id', identifier);
+        if (!user) {
+          user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_USERNAME || 'username', identifier);
+        }
+        if (!user) {
+          user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMAIL_ADDRESS || 'email_address', identifier);
+        }
       }
-    }
 
-Logger.log("Identifier: " + identifier);
-Logger.log("User Found:");
-Logger.log(JSON.stringify(user));
+      Logger.log("Identifier: " + identifier);
+      Logger.log("User Found:");
+      Logger.log(JSON.stringify(user));
 
-Logger.log("Verify Password:");
-Logger.log(this._verifyPassword(user, password));
-    if (!user) return this._standardError(CONFIG.MESSAGES.INVALID_CREDENTIALS);
+      Logger.log("Verify Password:");
+      Logger.log(this._verifyPassword(user, password));
+      if (!user) return this._standardError(CONFIG.MESSAGES.INVALID_CREDENTIALS);
 
-    // Extract internal User ID
-    var userId = user[CONFIG.COLUMNS.USER_ID];
+      // Faculty validation: Employee ID must match a record in the faculty sheet
+      var userRoleStr = String(user[CONFIG.COLUMNS.USER_ROLE] || user.role || '').trim().toUpperCase();
+      if (userRoleStr === 'FACULTY') {
+        var empId = String(user[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || user.employee_id || '').trim().toUpperCase();
+        var facultySheet = CONFIG.SHEETS.FACULTY;
+        var facultyEmpIdCol = CONFIG.COLUMNS.FACULTY_EMPLOYEE_ID || 'employee_id';
+        var facultyObj = DatabaseService.findOne(facultySheet, facultyEmpIdCol, empId);
+        if (!facultyObj) {
+          return this._standardError("Access Denied: Your Employee ID is not registered in the Faculty database.");
+        }
+      }
 
-    // User status verification
-    var statusCol = CONFIG.COLUMNS.USER_STATUS;
-    if (statusCol && user[statusCol] !== CONFIG.USER_STATUS.ACTIVE) {
-      return this._standardError(CONFIG.MESSAGES.ACCOUNT_INACTIVE);
-    }
+      // Extract internal User ID
+      var userId = user[CONFIG.COLUMNS.USER_ID];
 
-    if (this._isAccountLocked(user)) {
-      return this._standardError(CONFIG.MESSAGES.ACCOUNT_LOCKED);
-    }
+      // User status verification
+      var statusCol = CONFIG.COLUMNS.USER_STATUS;
+      if (statusCol && String(user[statusCol] || '').trim().toLowerCase() === String(CONFIG.USER_STATUS.SUSPENDED || 'Suspended').toLowerCase()) {
+        return this._standardError(CONFIG.MESSAGES.ACCOUNT_SUSPENDED || 'Your account is suspended.');
+      }
 
-    if (!this._verifyPassword(user, password)) {
-      var attempts = this._getLoginAttemptCount(user);
-      this._incrementFailedAttempts(userId, attempts);
-      return this._standardError(CONFIG.MESSAGES.INVALID_PASSWORD);
-    }
+      if (this._isAccountLocked(user)) {
+        return this._standardError(CONFIG.MESSAGES.ACCOUNT_LOCKED);
+      }
 
-    this._resetFailedAttempts(userId);
+      if (!this._verifyPassword(user, password)) {
+        var attempts = this._getLoginAttemptCount(user);
+        this._incrementFailedAttempts(userId, attempts);
+        return this._standardError(CONFIG.MESSAGES.INVALID_PASSWORD);
+      }
 
-    // Optional: first login detection
-    // Commented out blocking block since frontend has no pre-login change password UI.
-    // Users can change their password on the Profile page after login.
-    /*
-    var firstLoginCol = CONFIG.COLUMNS.USER_FIRST_LOGIN;
-    if (firstLoginCol && user[firstLoginCol] === true) {
-      return Utils.buildResponse(true, CONFIG.MESSAGES.FIRST_LOGIN, { requiresPasswordChange: true });
-    }
-    */
+      this._resetFailedAttempts(userId);
+
+      // Optional: first login detection
+      // Commented out blocking block since frontend has no pre-login change password UI.
+      // Users can change their password on the Profile page after login.
+      /*
+      var firstLoginCol = CONFIG.COLUMNS.USER_FIRST_LOGIN;
+      if (firstLoginCol && user[firstLoginCol] === true) {
+        return Utils.buildResponse(true, CONFIG.MESSAGES.FIRST_LOGIN, { requiresPasswordChange: true });
+      }
+      */
 
       // Session creation via SessionService only
       if (!CONFIG.SECURITY.ALLOW_MULTIPLE_SESSIONS && SessionService.isUserLoggedIn && SessionService.isUserLoggedIn(userId)) {
         SessionService.logoutAllSessions(userId);
       }
 
-    // Update spreadsheet presence details for login
-    try {
-      var loginUpdates = {};
-      loginUpdates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
-      loginUpdates[CONFIG.COLUMNS.USER_LAST_LOGIN_TS || 'LastLogin'] = new Date().toISOString();
-      DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID || 'User ID', userId, loginUpdates);
-      
-      user[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
-      user[CONFIG.COLUMNS.USER_LAST_LOGIN_TS || 'LastLogin'] = new Date().toISOString();
+      // Update user presence with correct Supabase snake_case column names
+      try {
+        var loginUpdates = {
+          'last_login_timestamp': new Date().toISOString(),
+          'updated_at': new Date().toISOString()
+        };
+        DatabaseService.updateRow(CONFIG.SHEETS.USERS, 'user_id', userId, loginUpdates);
+      } catch (e) {
+        Logger.log('AuthService login presence update error: ' + e.message);
+      }
+
+      var sessionData = this._createSession(user);
+      try {
+        AuditService.logAction(userId, 'AuthService', 'LOGIN', userId, 'User', 'User login', '', 'SUCCESS', userId);
+      } catch (error) {
+        Logger.log(error);
+      }
+      return Utils.buildResponse(true, CONFIG.MESSAGES.LOGIN_SUCCESS, sessionData);
     } catch (e) {
-      Logger.log('AuthService login presence update error: ' + e.message);
+      Logger.log('AuthService.login error: ' + (e && e.message ? e.message : e));
+      return this._standardError(CONFIG.MESSAGES.SESSION_CREATE_FAILED);
     }
-
-    var sessionData = this._createSession(user);
-    try {
-      AuditService.logAction(userId, 'AuthService', 'LOGIN', userId, 'User', 'User login', '', 'SUCCESS', userId);
-    } catch (error) {
-      Logger.log(error);
-    }
-    return Utils.buildResponse(true, CONFIG.MESSAGES.LOGIN_SUCCESS, sessionData);
-  } catch (e) {
-    Logger.log('AuthService.login error: ' + (e && e.message ? e.message : e));
-    return this._standardError(CONFIG.MESSAGES.SESSION_CREATE_FAILED);
   }
-}
-,
+  ,
 
-  logout: function(sessionToken) {
+  logout: function (sessionToken) {
     try {
       var userId = SessionService.getCurrentUser && SessionService.getCurrentUser(sessionToken);
       if (userId) {
-        var updates = {};
-        if (CONFIG.COLUMNS && CONFIG.COLUMNS.USER_LAST_LOGOUT) {
-          updates[CONFIG.COLUMNS.USER_LAST_LOGOUT] = new Date().getTime();
-        }
-        updates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Offline';
-        updates[CONFIG.COLUMNS.USER_LAST_SEEN || 'LastSeen'] = new Date().toISOString();
-        DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.ID_COLUMNS.USERS || CONFIG.COLUMNS.USER_ID || 'User ID', userId, updates);
+        var updates = {
+          'last_logout_timestamp': new Date().toISOString(),
+          // 'online_status': 'Offline', maked it comment
+          'last_seen': new Date().toISOString(),
+          'updated_at': new Date().toISOString()
+        };
+        DatabaseService.updateRow(CONFIG.SHEETS.USERS, 'user_id', userId, updates);
       }
 
       var ok = SessionService.destroySession(sessionToken);
@@ -289,7 +299,7 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  authenticate: function(sessionToken) {
+  authenticate: function (sessionToken) {
     try {
       if (!SessionService.isLoggedIn || !SessionService.isLoggedIn(sessionToken)) {
         return this._standardError(CONFIG.MESSAGES.SESSION_INVALID);
@@ -307,7 +317,7 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  validateCredentials: function(userId, password) {
+  validateCredentials: function (userId, password) {
     try {
       var user = this._getUserById(userId);
       if (!user) return Utils.buildResponse(false, CONFIG.MESSAGES.INVALID_CREDENTIALS);
@@ -322,7 +332,7 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  verifyPassword: function(user, password) {
+  verifyPassword: function (user, password) {
     try {
       return this._verifyPassword(user, password);
     } catch (e) {
@@ -331,7 +341,7 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  hashPassword: function(password, salt) {
+  hashPassword: function (password, salt) {
     try {
       return this._hashPassword(password, salt);
     } catch (e) {
@@ -340,7 +350,7 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  changePassword: function(userId, oldPassword, newPassword) {
+  changePassword: function (userId, oldPassword, newPassword) {
     try {
       var reqErr = ValidationService.validateRequired(newPassword, 'New Password');
       if (reqErr) return Utils.buildResponse(false, reqErr);
@@ -385,7 +395,7 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  forgotPassword: function(userId) {
+  forgotPassword: function (userId) {
     try {
       // Backward compatible placeholder: generateOTP.
       return this.generateOTP(userId);
@@ -395,173 +405,173 @@ Logger.log(this._verifyPassword(user, password));
     }
   },
 
-  generateOTP: function(userId) {
-  try {
-    var user = this._getUserById(userId);
-    if (!user) {
-      return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
-    }
-
-    var otp = Utils.generateOTP();
-    var expiryMs = CONFIG.SECURITY.OTP_EXPIRY_MINUTES
-      ? (CONFIG.SECURITY.OTP_EXPIRY_MINUTES * 60000)
-      : (CONFIG.SECURITY.OTP_EXPIRY_MS || (10 * 60000));
-
-    var updates = {};
-
-    if (CONFIG.COLUMNS.USER_OTP)
-      updates[CONFIG.COLUMNS.USER_OTP] = otp;
-
-    if (CONFIG.COLUMNS.USER_OTP_EXPIRY)
-    var expiryDate = new Date(Date.now() + expiryMs);
-updates[CONFIG.COLUMNS.USER_OTP_EXPIRY] = expiryDate;
-
-    if (CONFIG.COLUMNS.USER_OTP_ATTEMPTS)
-      updates[CONFIG.COLUMNS.USER_OTP_ATTEMPTS] = 0;
-
-    // ===== DEBUG =====
-    
-
-    var result = DatabaseService.updateRow(
-      CONFIG.SHEETS.USERS,
-      CONFIG.ID_COLUMNS.USERS,
-      userId,
-      updates
-    );
-
-    
-
-    var updatedUser = this._getUserById(userId);
-//front end----------
-    // ==========================================
-    // ADD THIS EMAIL TRIGGER RIGHT BEFORE THE RETURN STATEMENT:
-    // ==========================================
-    var emailCol = CONFIG.COLUMNS.USER_EMAIL || "Email Address";
-    var userEmail = updatedUser[emailCol] || updatedUser["Email"] || updatedUser["Email Address"];
-
-    
-    if (userEmail) {
-      var subject = "BVC Event Management - Reset OTP Token Request";
-      var body = "Hello,\n\nYour 6-digit password recovery verification token code is: " + otp + "\nThis code will expire in 5 minutes.\n\nIf you did not request this code, please ignore this email securely.";
-      
-      try {
-        MailApp.sendEmail(userEmail, subject, body);
-        Logger.log("OTP Email dispatched successfully to: " + userEmail);
-      } catch (emailError) {
-        Logger.log("Error sending OTP email: " + emailError.message);
-        return Utils.buildResponse(false, "Email Error: " + emailError.message);
+  generateOTP: function (userId) {
+    try {
+      var user = this._getUserById(userId);
+      if (!user) {
+        return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
       }
-    } else {
-      Logger.log("Error: User found but email column value was missing/empty.");
-      return Utils.buildResponse(false, "Database Error: No email address found for this user.");
-    }
-    // ==========================================
-    // =================
-//front end----------
-    return Utils.buildResponse(true, CONFIG.MESSAGES.OTP_GENERATED);
 
-  } catch (e) {
-    Logger.log("AuthService.generateOTP error: " + (e && e.message ? e.message : e));
-    return Utils.buildResponse(false, CONFIG.MESSAGES.OTP_GENERATION_FAILED);
-  }
-},
+      var otp = Utils.generateOTP();
+      var expiryMs = CONFIG.SECURITY.OTP_EXPIRY_MINUTES
+        ? (CONFIG.SECURITY.OTP_EXPIRY_MINUTES * 60000)
+        : (CONFIG.SECURITY.OTP_EXPIRY_MS || (10 * 60000));
 
- verifyOTP: function(userId, otp) {
-  try {
-    var user = this._getUserById(userId);
-    if (!user) {
-      return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
-    }
-
-    var attemptsCol = CONFIG.COLUMNS.USER_OTP_ATTEMPTS;
-    var expiryCol = CONFIG.COLUMNS.USER_OTP_EXPIRY;
-    var otpCol = CONFIG.COLUMNS.USER_OTP;
-
-    // Current OTP attempts
-    var attempts = attemptsCol ? (parseInt(user[attemptsCol], 10) || 0) : 0;
-
-    if (
-      typeof CONFIG.SECURITY.MAX_OTP_ATTEMPTS === "number" &&
-      attempts >= CONFIG.SECURITY.MAX_OTP_ATTEMPTS
-    ) {
-      return Utils.buildResponse(
-        false,
-        CONFIG.MESSAGES.OTP_MAX_ATTEMPTS_EXCEEDED
-      );
-    }
-
-    // ===========================
-    // NEW CODE STARTS HERE
-    // Check if an OTP actually exists
-    // ===========================
-    if (
-      otpCol &&
-      (!user[otpCol] || String(user[otpCol]).trim() === "")
-    ) {
-      Logger.log("NO ACTIVE OTP");
-      return Utils.buildResponse(
-        false,
-        CONFIG.MESSAGES.OTP_INVALID
-      );
-    }
-    // ===========================
-    // NEW CODE ENDS HERE
-    // ===========================
-
-    // Check OTP expiry
-    if (expiryCol && user[expiryCol]) {
-      var expiry = new Date(user[expiryCol]);
-
-      if (new Date() > expiry) {
-        return Utils.buildResponse(false, CONFIG.MESSAGES.OTP_EXPIRED);
-      }
-    }
-
-    // Verify OTP (Check both string match and integer match to handle Google Sheets leading-zero removal)
-    var storedOtp = String(user[otpCol]).trim();
-    var inputOtp = String(otp).trim();
-
-    if (
-      otpCol &&
-      storedOtp !== inputOtp &&
-      parseInt(storedOtp, 10) !== parseInt(inputOtp, 10)
-    ) {
       var updates = {};
 
-      if (attemptsCol) {
-        updates[attemptsCol] = attempts + 1;
-      }
+      if (CONFIG.COLUMNS.USER_OTP)
+        updates[CONFIG.COLUMNS.USER_OTP] = otp;
 
-      DatabaseService.updateRow(
+      if (CONFIG.COLUMNS.USER_OTP_EXPIRY)
+        var expiryDate = new Date(Date.now() + expiryMs);
+      updates[CONFIG.COLUMNS.USER_OTP_EXPIRY] = expiryDate;
+
+      if (CONFIG.COLUMNS.USER_OTP_ATTEMPTS)
+        updates[CONFIG.COLUMNS.USER_OTP_ATTEMPTS] = 0;
+
+      // ===== DEBUG =====
+
+
+      var result = DatabaseService.updateRow(
         CONFIG.SHEETS.USERS,
         CONFIG.ID_COLUMNS.USERS,
         userId,
         updates
       );
 
-      return Utils.buildResponse(false, CONFIG.MESSAGES.OTP_INVALID);
+
+
+      var updatedUser = this._getUserById(userId);
+      //front end----------
+      // ==========================================
+      // ADD THIS EMAIL TRIGGER RIGHT BEFORE THE RETURN STATEMENT:
+      // ==========================================
+      var emailCol = CONFIG.COLUMNS.USER_EMAIL || "Email Address";
+      var userEmail = updatedUser[emailCol] || updatedUser["Email"] || updatedUser["Email Address"];
+
+
+      if (userEmail) {
+        var subject = "BVC Event Management - Reset OTP Token Request";
+        var body = "Hello,\n\nYour 6-digit password recovery verification token code is: " + otp + "\nThis code will expire in 5 minutes.\n\nIf you did not request this code, please ignore this email securely.";
+
+        try {
+          MailApp.sendEmail(userEmail, subject, body);
+          Logger.log("OTP Email dispatched successfully to: " + userEmail);
+        } catch (emailError) {
+          Logger.log("Error sending OTP email: " + emailError.message);
+          return Utils.buildResponse(false, "Email Error: " + emailError.message);
+        }
+      } else {
+        Logger.log("Error: User found but email column value was missing/empty.");
+        return Utils.buildResponse(false, "Database Error: No email address found for this user.");
+      }
+      // ==========================================
+      // =================
+      //front end----------
+      return Utils.buildResponse(true, CONFIG.MESSAGES.OTP_GENERATED);
+
+    } catch (e) {
+      Logger.log("AuthService.generateOTP error: " + (e && e.message ? e.message : e));
+      return Utils.buildResponse(false, CONFIG.MESSAGES.OTP_GENERATION_FAILED);
     }
+  },
 
-    // Do NOT clear OTP here. It must remain in the database so it can be verified 
-    // again in Step 3 when the user actually submits the new password. 
-    // It will be cleared inside resetPassword() after success.
+  verifyOTP: function (userId, otp) {
+    try {
+      var user = this._getUserById(userId);
+      if (!user) {
+        return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
+      }
 
-    return Utils.buildResponse(true, CONFIG.MESSAGES.OTP_VERIFIED);
+      var attemptsCol = CONFIG.COLUMNS.USER_OTP_ATTEMPTS;
+      var expiryCol = CONFIG.COLUMNS.USER_OTP_EXPIRY;
+      var otpCol = CONFIG.COLUMNS.USER_OTP;
 
-  } catch (e) {
-    Logger.log(
-      "AuthService.verifyOTP error: " +
-      (e && e.message ? e.message : e)
-    );
+      // Current OTP attempts
+      var attempts = attemptsCol ? (parseInt(user[attemptsCol], 10) || 0) : 0;
 
-    return Utils.buildResponse(
-      false,
-      CONFIG.MESSAGES.OTP_VERIFICATION_FAILED
-    );
-  }
-},
+      if (
+        typeof CONFIG.SECURITY.MAX_OTP_ATTEMPTS === "number" &&
+        attempts >= CONFIG.SECURITY.MAX_OTP_ATTEMPTS
+      ) {
+        return Utils.buildResponse(
+          false,
+          CONFIG.MESSAGES.OTP_MAX_ATTEMPTS_EXCEEDED
+        );
+      }
 
-  resetPassword: function(userId, otp, newPassword) {
+      // ===========================
+      // NEW CODE STARTS HERE
+      // Check if an OTP actually exists
+      // ===========================
+      if (
+        otpCol &&
+        (!user[otpCol] || String(user[otpCol]).trim() === "")
+      ) {
+        Logger.log("NO ACTIVE OTP");
+        return Utils.buildResponse(
+          false,
+          CONFIG.MESSAGES.OTP_INVALID
+        );
+      }
+      // ===========================
+      // NEW CODE ENDS HERE
+      // ===========================
+
+      // Check OTP expiry
+      if (expiryCol && user[expiryCol]) {
+        var expiry = new Date(user[expiryCol]);
+
+        if (new Date() > expiry) {
+          return Utils.buildResponse(false, CONFIG.MESSAGES.OTP_EXPIRED);
+        }
+      }
+
+      // Verify OTP (Check both string match and integer match to handle Google Sheets leading-zero removal)
+      var storedOtp = String(user[otpCol]).trim();
+      var inputOtp = String(otp).trim();
+
+      if (
+        otpCol &&
+        storedOtp !== inputOtp &&
+        parseInt(storedOtp, 10) !== parseInt(inputOtp, 10)
+      ) {
+        var updates = {};
+
+        if (attemptsCol) {
+          updates[attemptsCol] = attempts + 1;
+        }
+
+        DatabaseService.updateRow(
+          CONFIG.SHEETS.USERS,
+          CONFIG.ID_COLUMNS.USERS,
+          userId,
+          updates
+        );
+
+        return Utils.buildResponse(false, CONFIG.MESSAGES.OTP_INVALID);
+      }
+
+      // Do NOT clear OTP here. It must remain in the database so it can be verified 
+      // again in Step 3 when the user actually submits the new password. 
+      // It will be cleared inside resetPassword() after success.
+
+      return Utils.buildResponse(true, CONFIG.MESSAGES.OTP_VERIFIED);
+
+    } catch (e) {
+      Logger.log(
+        "AuthService.verifyOTP error: " +
+        (e && e.message ? e.message : e)
+      );
+
+      return Utils.buildResponse(
+        false,
+        CONFIG.MESSAGES.OTP_VERIFICATION_FAILED
+      );
+    }
+  },
+
+  resetPassword: function (userId, otp, newPassword) {
     try {
       var user = this._getUserById(userId);
       if (!user) return Utils.buildResponse(false, CONFIG.MESSAGES.USER_NOT_FOUND);
@@ -587,13 +597,13 @@ updates[CONFIG.COLUMNS.USER_OTP_EXPIRY] = expiryDate;
       if (CONFIG.COLUMNS.USER_PASSWORD_RESET_REQUIRED) updates[CONFIG.COLUMNS.USER_PASSWORD_RESET_REQUIRED] = false;
 
       if (CONFIG.COLUMNS.USER_OTP)
-    updates[CONFIG.COLUMNS.USER_OTP] = "";
+        updates[CONFIG.COLUMNS.USER_OTP] = "";
 
-if (CONFIG.COLUMNS.USER_OTP_EXPIRY)
-    updates[CONFIG.COLUMNS.USER_OTP_EXPIRY] = "";
+      if (CONFIG.COLUMNS.USER_OTP_EXPIRY)
+        updates[CONFIG.COLUMNS.USER_OTP_EXPIRY] = "";
 
-if (CONFIG.COLUMNS.USER_OTP_ATTEMPTS)
-    updates[CONFIG.COLUMNS.USER_OTP_ATTEMPTS] = 0;
+      if (CONFIG.COLUMNS.USER_OTP_ATTEMPTS)
+        updates[CONFIG.COLUMNS.USER_OTP_ATTEMPTS] = 0;
 
       var ok = DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.ID_COLUMNS.USERS, userId, updates);
       if (ok) {
@@ -609,14 +619,14 @@ if (CONFIG.COLUMNS.USER_OTP_ATTEMPTS)
     }
   },
 
-  unlockAccount: function(userId) {
+  unlockAccount: function (userId) {
     try {
       var updates = {};
       var lockCol = CONFIG.COLUMNS.USER_ACCOUNT_LOCKED;
       var attemptsCol = CONFIG.COLUMNS.USER_FAILED_ATTEMPTS;
       if (lockCol) updates[lockCol] = "No";
       if (attemptsCol) updates[attemptsCol] = 0;
-      
+
       var success = DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.ID_COLUMNS.USERS, userId, updates);
       if (success) {
         return Utils.buildResponse(true, 'Account unlocked successfully');

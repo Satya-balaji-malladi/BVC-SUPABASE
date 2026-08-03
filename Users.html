@@ -4,17 +4,17 @@
     <div class="row g-3 mb-4" id="users-stats-container">
       <div class="col-md col-sm-6">
         <div class="p-3 bg-light rounded text-center">
-          <h6 class="text-muted mb-1">Total Users</h6>
+          <h6 class="text-muted mb-1" id="users-stat-label-total">Total Users</h6>
           <h3 class="mb-0 fw-bold" id="users-stat-total">0</h3>
         </div>
       </div>
       <div class="col-md col-sm-6">
         <div class="p-3 bg-light rounded text-center">
-          <h6 class="text-muted mb-1">Active Users</h6>
+          <h6 class="text-muted mb-1" id="users-stat-label-active">Active Users</h6>
           <h3 class="mb-0 fw-bold text-success" id="users-stat-active">0</h3>
         </div>
       </div>
-      <div class="col-md col-sm-6">
+      <div class="col-md col-sm-6" id="users-stat-hods-container">
         <div class="p-3 bg-light rounded text-center">
           <h6 class="text-muted mb-1">HODs</h6>
           <h3 class="mb-0 fw-bold text-warning" id="users-stat-hods">0</h3>
@@ -22,13 +22,13 @@
       </div>
       <div class="col-md col-sm-6">
         <div class="p-3 bg-light rounded text-center">
-          <h6 class="text-muted mb-1">Event Admins</h6>
+          <h6 class="text-muted mb-1" id="users-stat-label-event-admins">Event Admins</h6>
           <h3 class="mb-0 fw-bold text-info" id="users-stat-event-admins">0</h3>
         </div>
       </div>
       <div class="col-md col-sm-6">
         <div class="p-3 bg-light rounded text-center">
-          <h6 class="text-muted mb-1">Coordinators</h6>
+          <h6 class="text-muted mb-1" id="users-stat-label-coordinators">Coordinators</h6>
           <h3 class="mb-0 fw-bold text-primary" id="users-stat-coordinators">0</h3>
         </div>
       </div>
@@ -56,9 +56,8 @@
         </select>
       </div>
       <div class="col-md-3 text-end d-flex gap-2 justify-content-end">
-        <button class="btn btn-outline-secondary" data-action="export-users" title="Export CSV"><i class="bi bi-download"></i></button>
+        <button class="btn btn-outline-secondary" data-action="export-users" title="Export CSV"><i class="bi bi-download me-1"></i>Export</button>
         <button class="btn btn-primary" data-action="add-user"><i class="bi bi-person-plus me-1"></i>Add User</button>
-        <button class="btn btn-success" data-action="create-faculty" id="btn-open-create-faculty" data-bs-toggle="modal" data-bs-target="#createFacultyModal"><i class="bi bi-person-workspace me-1"></i>Create Faculty</button>
       </div>
     </div>
   </div>
@@ -206,8 +205,8 @@
               <div class="col-md-6 d-none">
                 <label for="userStatus" class="form-label">Status</label>
                 <select class="form-select" id="userStatus">
-                  <option value="Active" selected>Active</option>
-                  <option value="Inactive">Inactive</option>
+                  <option value="Inactive" selected>Inactive</option>
+                  <option value="Active">Active</option>
                 </select>
               </div>
 

@@ -3,14 +3,15 @@
 <?!= include('dashboard_css'); ?>
 
 <div class="dashboard-wrapper">
-  
+
   <!-- Dashboard Title & Breadcrumb -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
       <h2 class="section-title mb-0">Dashboard Overview</h2>
       <nav aria-label="breadcrumb" class="mt-2">
         <ol class="breadcrumb mb-0">
-          <li class="breadcrumb-item"><a href="#" class="text-decoration-none"><i class="bi bi-house-door"></i> Home</a></li>
+          <li class="breadcrumb-item"><a href="#" class="text-decoration-none"><i class="bi bi-house-door"></i> Home</a>
+          </li>
           <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
         </ol>
       </nav>
@@ -42,7 +43,7 @@
       <div class="stat-card">
         <div class="stat-icon bg-light-primary"><i class="bi bi-people-fill"></i></div>
         <div class="stat-details">
-          <div class="stat-label" id="labelTotalCoordinators">Total Coordinators</div>
+          <div class="stat-label" id="labelTotalCoordinators">Total Admins</div>
           <div class="stat-value" id="totalUsers">--</div>
           <div class="stat-trend positive"><i class="bi bi-arrow-up-short"></i> Active</div>
         </div>
@@ -103,18 +104,55 @@
         <div class="stat-icon bg-light-primary text-primary"><i class="bi bi-trophy-fill"></i></div>
         <div class="stat-details">
           <div class="stat-label">Top Event Today</div>
-          <div class="stat-value fs-6 text-truncate fw-bold" id="topEventTodayName" title="No events today">No events today</div>
-          <div class="stat-trend text-success"><i class="bi bi-people-fill me-1"></i><span id="topEventTodayCount">0</span> Attendees</div>
+          <div class="stat-value fs-6 text-truncate fw-bold" id="topEventTodayName" title="No events today">No events
+            today</div>
+          <div class="stat-trend text-success"><i class="bi bi-people-fill me-1"></i><span
+              id="topEventTodayCount">0</span> Attendees</div>
         </div>
       </div>
     </div>
     <div class="col-sm-6 col-lg-3 d-none" id="crossDeptCardContainer">
-      <div class="stat-card" id="btnOpenCrossDept" style="background: linear-gradient(135deg, #f0f3ff 0%, #e0e7ff 100%); border: 1px solid #c7d2fe; cursor: pointer;">
+      <div class="stat-card" id="btnOpenCrossDept"
+        style="background: linear-gradient(135deg, #f0f3ff 0%, #e0e7ff 100%); border: 1px solid #c7d2fe; cursor: pointer;">
         <div class="stat-icon bg-light-primary text-primary"><i class="bi bi-arrow-left-right"></i></div>
         <div class="stat-details">
           <div class="stat-label fw-bold text-indigo">Cross-Dept Scans</div>
           <div class="stat-value text-indigo" id="crossDeptCount">0</div>
           <div class="stat-trend text-primary small"><i class="bi bi-eye-fill"></i> Click to see all students</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Lifecycle Stats Breakdown Row -->
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-4">
+      <div class="stat-card border-start border-primary border-4 shadow-sm bg-white rounded-3">
+        <div class="stat-icon bg-light-primary text-primary"><i class="bi bi-calendar-event"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Upcoming Events</div>
+          <div class="stat-value" id="upcomingEventsCount">0</div>
+          <div class="stat-trend text-muted"><i class="bi bi-clock-fill"></i> Scheduled</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-4">
+      <div class="stat-card border-start border-warning border-4 shadow-sm bg-white rounded-3">
+        <div class="stat-icon bg-light-warning text-warning"><i class="bi bi-pause-circle-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Stopped Events</div>
+          <div class="stat-value" id="stoppedEventsCount">0</div>
+          <div class="stat-trend text-muted"><i class="bi bi-pause-fill"></i> Temporarily Stopped</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-4">
+      <div class="stat-card border-start border-danger border-4 shadow-sm bg-white rounded-3">
+        <div class="stat-icon bg-light-danger text-danger"><i class="bi bi-x-circle-fill"></i></div>
+        <div class="stat-details">
+          <div class="stat-label">Cancelled Events</div>
+          <div class="stat-value" id="cancelledEventsCount">0</div>
+          <div class="stat-trend text-muted"><i class="bi bi-x-octagon-fill"></i> Permanently Cancelled</div>
         </div>
       </div>
     </div>
@@ -175,7 +213,8 @@
         <div class="enterprise-card-header">
           <h3 class="enterprise-card-title"><i class="bi bi-graph-up me-2"></i>Attendance Analytics</h3>
           <div class="dropdown">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+              aria-expanded="false">
               This Month
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -200,7 +239,8 @@
       <div class="enterprise-card">
         <div class="enterprise-card-header">
           <h3 class="enterprise-card-title"><i class="bi bi-activity me-2"></i>Recent Activity</h3>
-          <button class="btn btn-sm btn-link text-decoration-none" aria-label="Refresh Activities" onclick="refreshDashboard()"><i class="bi bi-arrow-clockwise"></i></button>
+          <button class="btn btn-sm btn-link text-decoration-none" aria-label="Refresh Activities"
+            onclick="refreshDashboard()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
         <div class="enterprise-card-body">
           <ul class="timeline" id="recentActivityList">
@@ -220,7 +260,8 @@
           <h3 class="enterprise-card-title"><i class="bi bi-collection-play me-2"></i>Active & Upcoming Events</h3>
           <div class="input-group input-group-sm" style="width: 250px;">
             <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-            <input type="text" class="form-control" id="eventSearchInput" placeholder="Search events..." disabled aria-label="Search Events">
+            <input type="text" class="form-control" id="eventSearchInput" placeholder="Search events..." disabled
+              aria-label="Search Events">
           </div>
         </div>
         <div class="table-responsive">
@@ -245,7 +286,7 @@
   </div>
 
 
-  
+
   <div class="pb-4"></div> <!-- Footer spacing -->
 
 </div>
@@ -258,12 +299,14 @@
 
 <!-- Reusable Toast Container -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
-  <div id="dashboardToast" class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+  <div id="dashboardToast" class="toast align-items-center text-white bg-primary border-0" role="alert"
+    aria-live="assertive" aria-atomic="true">
     <div class="d-flex">
       <div class="toast-body" id="dashboardToastMessage">
         Action completed successfully.
       </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+        aria-label="Close"></button>
     </div>
   </div>
 </div>
@@ -291,8 +334,10 @@
 <div class="modal fade" id="crossDeptModal" tabindex="-1" aria-labelledby="crossDeptModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
-      <div class="modal-header bg-primary text-white" style="border-top-left-radius: 16px; border-top-right-radius: 16px;">
-        <h5 class="modal-title fw-bold" id="crossDeptModalLabel"><i class="bi bi-arrow-left-right me-2"></i>Students Participated in Other Departments</h5>
+      <div class="modal-header bg-primary text-white"
+        style="border-top-left-radius: 16px; border-top-right-radius: 16px;">
+        <h5 class="modal-title fw-bold" id="crossDeptModalLabel"><i class="bi bi-arrow-left-right me-2"></i>Students
+          Participated in Other Departments</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body p-4">

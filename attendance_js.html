@@ -98,25 +98,37 @@ App.Modules.attendance = {
   loadEventsDropdown: function() {
     const userId = App.State.currentUser ? App.State.currentUser.user_id : null;
     const role = App.State.currentUser ? App.State.currentUser.role : null;
-    
+    const userRole = String(role || localStorage.getItem('userRole') || '').toUpperCase().trim();
+    const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+    const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+
     App.API._call('getAllEvents').then(events => {
       const select = document.getElementById('attendanceEventSelect');
       if (!select) return;
-      
+
       select.innerHTML = '<option value="">Select Event...</option>';
-      let activeEvents = events.filter(e => e.status === 'Active' || e.status === 'Upcoming'); // Allow upcoming too for testing
-      
-      // Filter by coordinator if not admin
-      if (role === App.Constants.ROLES.COORDINATOR) {
+      let activeEvents = events.filter(e => e.status === 'Active' || e.status === 'Upcoming');
+
+      if (isEventAdmin && selectedEventId) {
+        activeEvents = events.filter(e => String(e.event_id || e['Event ID']).trim() === String(selectedEventId).trim());
+      } else if (role === App.Constants.ROLES.COORDINATOR) {
         activeEvents = activeEvents.filter(e => e.coordinator_id === userId);
       }
-      
+
       activeEvents.forEach(e => {
         const option = document.createElement('option');
-        option.value = e.event_id;
-        option.textContent = `${e.event_name} (${e.start_date})`;
+        const eId = e.event_id || e['Event ID'];
+        option.value = eId;
+        option.textContent = `${e.event_name || e['Event Name']} (${e.start_date || e['Start Date'] || ''})`;
         select.appendChild(option);
       });
+
+      if (selectedEventId && activeEvents.some(e => String(e.event_id || e['Event ID']).trim() === String(selectedEventId).trim())) {
+        select.value = selectedEventId;
+        this.currentEventId = selectedEventId;
+        document.getElementById('attendanceEntrySection')?.classList.remove('d-none');
+        this.loadAttendanceData();
+      }
     }).catch(err => App.ErrorHandler.handle(err));
   },
 

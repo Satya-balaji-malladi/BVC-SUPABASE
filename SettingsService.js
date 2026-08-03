@@ -99,7 +99,13 @@ const SettingsService = {
         'notificationsEnabled': { category: 'Notification', type: 'Boolean', desc: 'Enable notifications' },
         'securityLevel': { category: 'Security', type: 'String', desc: 'System security level' },
         'attendanceThreshold': { category: 'Attendance', type: 'Integer', desc: 'Default attendance threshold (%)' },
-        'academicYears': { category: 'Academic', type: 'String', desc: 'Active academic years config' }
+        'academicYears': { category: 'Academic', type: 'String', desc: 'Active academic years config' },
+        'hodDeptName': { category: 'Department', type: 'String', desc: 'HOD Department Name' },
+        'hodDeptCode': { category: 'Department', type: 'String', desc: 'HOD Department Code' },
+        'hodDeptEmail': { category: 'Department', type: 'String', desc: 'HOD Department Email' },
+        'hodDeptBranches': { category: 'Department', type: 'String', desc: 'HOD Department Branches' },
+        'hodDeptYears': { category: 'Department', type: 'String', desc: 'HOD Department Academic Years' },
+        'hodDeptSections': { category: 'Department', type: 'String', desc: 'HOD Department Sections' }
       };
 
       Object.keys(keysToSave).forEach(key => {

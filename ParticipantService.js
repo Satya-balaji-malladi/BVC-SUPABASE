@@ -184,6 +184,17 @@ const ParticipantService = {
     var self = this;
 
     try {
+      // 0. Event Status Check
+      if (typeof EventService !== 'undefined') {
+        const event = EventService.getEventById(eventId);
+        if (event) {
+          const stat = String(event.status || event['Event Status'] || '').toUpperCase().trim();
+          if (stat === 'STOPPED' || stat === 'CANCELLED' || stat === 'COMPLETED') {
+            return Utils.buildResponse(false, `Cannot add participant: Event is in "${event.status || event['Event Status']}" status.`);
+          }
+        }
+      }
+
       // 1. Centralized Authorization via CoordinatorService
       Logger.log('[START] Authorization');
       const user = this._getUserSafe(userId);
@@ -230,6 +241,7 @@ const ParticipantService = {
             };
 
             DatabaseService.updateRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'Roll Number', rollNumber, updates);
+            StatusService.refreshUserStatus(rollNumber, 'STUDENT', true);
             Logger.log('[END] Update');
 
             try {
@@ -267,6 +279,7 @@ const ParticipantService = {
               'Deletion Flag': false
             };
             DatabaseService.insertRow(CONFIG.SHEETS.EVENT_PARTICIPANTS, newParticipant);
+            StatusService.refreshUserStatus(rollNumber, 'STUDENT', true);
             Logger.log('[END] Insert');
 
             try {
@@ -327,6 +340,7 @@ const ParticipantService = {
         'Registration Status': removedStatus, 
         'Updated At': new Date().toISOString() 
       });
+      StatusService.refreshUserStatus(removedRec['Roll Number'], 'STUDENT', true);
       Logger.log('[END] Update');
 
       try {
@@ -382,15 +396,20 @@ const ParticipantService = {
       
       participants = participants.filter(p => p['Registration Status'] !== 'Cancelled');
       
-      // Filter out non-assigned events for Coordinators using centralized CoordinatorService mapping
-      const role = trueUser[CONFIG.COLUMNS.ROLE || 'Role'] || trueUser.role || trueUser.Role;
-      if (role === CONFIG.ROLES.COORDINATOR) {
-        const myEventIds = CoordinatorService.getAssignedEventIds(userId) || [];
-        participants = participants.filter(p => myEventIds.includes(p['Event ID']));
-      }
-
       const allStudents = DatabaseService.readAllRows(CONFIG.SHEETS.STUDENTS) || [];
       const allEvents = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
+
+      // Filter out non-assigned events for Coordinators, Event Admins, Admins, and HODs
+      const roleClean = String(trueUser[CONFIG.COLUMNS.ROLE || 'Role'] || trueUser.role || trueUser.Role || '').trim().toUpperCase().replace(/[\s_]+/g, '');
+      if (roleClean === 'COORDINATOR') {
+        const myEventIds = CoordinatorService.getAssignedEventIds(userId) || [];
+        participants = participants.filter(p => myEventIds.includes(String(p['Event ID'] || p.event_id || '').trim()));
+      } else if (roleClean === 'EVENTADMIN' || roleClean === 'ADMIN' || roleClean === 'HOD') {
+        const userContext = SessionService.getUserContext(userId) || { userId: userId, role: roleClean };
+        const assignedEvents = SecurityUtils.applyEventRLS(allEvents, userContext);
+        const assignedEventIds = new Set(assignedEvents.map(e => String(e['Event ID'] || e.event_id || e.eventId).trim()));
+        participants = participants.filter(p => assignedEventIds.has(String(p['Event ID'] || p.event_id || '').trim()));
+      }
 
       const enriched = participants.map(p => {
         const student = allStudents.find(s => s['Roll Number'] === p['Roll Number']) || {};

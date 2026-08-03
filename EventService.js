@@ -9,7 +9,7 @@ const EventService = {
   // Internal helpers (private)
   // ==========================================================
 
-  _normalizeEventTime_: function(timeValue) {
+  _normalizeEventTime_: function (timeValue) {
     // Normalizes event start time for dedup/search.
     // Handles values like "HH:mm", "HH:mm:ss" and Date objects as best-effort.
     try {
@@ -57,7 +57,7 @@ const EventService = {
     }
   },
 
-  _getActiveEventsForDedup_: function() {
+  _getActiveEventsForDedup_: function () {
     // Best-effort reuse to reduce duplicate DatabaseService reads.
     // Cache is per invocation of EventService object (no cross-request persistence).
     try {
@@ -66,7 +66,7 @@ const EventService = {
       }
 
       var events = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
-      var active = events.filter(function(e) { return !EventService._safeDeletionFlag_(e); });
+      var active = events.filter(function (e) { return !EventService._safeDeletionFlag_(e); });
       this._activeEventsForDedup_ = active;
       return active;
     } catch (e) {
@@ -75,7 +75,7 @@ const EventService = {
     }
   },
 
-  _evaluateEventStatus_: function(eventRecord) {
+  _evaluateEventStatus_: function (eventRecord) {
     try {
       if (!eventRecord) return eventRecord;
 
@@ -121,7 +121,7 @@ const EventService = {
           if (isNaN(d.getTime())) return null;
           dateStr = Utilities.formatDate(d, timezone, 'yyyy-MM-dd');
         }
-        
+
         let timeStr = defaultTime || '00:00';
         if (timeVal) {
           if (timeVal instanceof Date) {
@@ -195,41 +195,161 @@ const EventService = {
     }
   },
 
-  _invalidateCaches_: function() {
+  _invalidateCaches_: function () {
     this._allActiveSanitizedEvents_ = null;
     if (typeof CacheManager !== 'undefined') {
       try {
         CacheManager.clearPrefix('event');
-      } catch(e) {}
+      } catch (e) { }
     }
   },
 
-  _isDuplicateEvent: function(eventName, startDate, venue, startTime, excludeEventId) {
+  changeEventStatus: function(eventId, newStatus, userId) {
+    try {
+      const event = this.getEventById(eventId);
+      if (!event) return Utils.buildResponse(false, 'Event not found.');
+      
+      const oldStatus = event[CONFIG.COLUMNS.EVENT_STATUS] || event.status || 'Draft';
+      const cleanOld = String(oldStatus).trim();
+      const cleanNew = String(newStatus).trim();
+      
+      if (cleanOld === cleanNew) {
+        return Utils.buildResponse(true, 'Status is already ' + cleanNew, { event: event });
+      }
+
+      const user = typeof UserService !== 'undefined' ? UserService.getUserById(userId) : null;
+      const role = user ? String(user.role || user.Role || '').toUpperCase().trim().replace(/[\s_]+/g, '') : '';
+      const isSuper = (role === 'SUPERADMIN');
+
+      if (cleanOld === 'Cancelled' && !isSuper) {
+        return Utils.buildResponse(false, 'Only a Super Admin can reactivate a Cancelled event.');
+      }
+      
+      if (cleanOld === 'Completed' && !isSuper) {
+        return Utils.buildResponse(false, 'Only a Super Admin can modify a Completed event.');
+      }
+
+      const updateData = {
+        [CONFIG.COLUMNS.EVENT_STATUS]: cleanNew,
+        status: cleanNew,
+        Status: cleanNew,
+        event_status: cleanNew
+      };
+
+      if (cleanNew === 'Completed') {
+        updateData[CONFIG.COLUMNS.EVENT_COMPLETED_AT] = new Date().toISOString();
+        updateData[CONFIG.COLUMNS.EVENT_ARCHIVE_STATUS] = 'ReadOnly';
+      }
+
+      const success = DatabaseService.updateRow(CONFIG.SHEETS.EVENTS, CONFIG.ID_COLUMNS.EVENTS, eventId, updateData);
+      if (success) {
+        this._invalidateCaches_();
+        if (typeof StatusService !== 'undefined') StatusService.refreshAllStatuses();
+        
+        try {
+          AuditService.logAction(
+            userId,
+            'EventService',
+            'CHANGE_STATUS',
+            eventId,
+            'Event',
+            `Status changed from ${cleanOld} to ${cleanNew}`,
+            '',
+            'SUCCESS',
+            userId
+          );
+        } catch (auditErr) {
+          Logger.log("Audit log failed: " + auditErr.message);
+        }
+
+        return Utils.buildResponse(true, `Event status updated from ${cleanOld} to ${cleanNew}.`, { eventId: eventId, status: cleanNew });
+      }
+      return Utils.buildResponse(false, 'Failed to update event status in database.');
+    } catch (e) {
+      Logger.log("EventService.changeEventStatus error: " + e.message);
+      return Utils.buildResponse(false, 'Error: ' + e.message);
+    }
+  },
+
+  stopEvent: function(eventId, userId) {
+    return this.changeEventStatus(eventId, 'Stopped', userId);
+  },
+
+  cancelEvent: function(eventId, userId) {
+    return this.changeEventStatus(eventId, 'Cancelled', userId);
+  },
+
+  resumeEvent: function(eventId, userId) {
+    return this.changeEventStatus(eventId, 'Active', userId);
+  },
+
+  completeEvent: function(eventId, userId) {
+    return this.changeEventStatus(eventId, 'Completed', userId);
+  },
+
+  canMarkAttendance: function(eventIdOrEvent) {
+    try {
+      let event = eventIdOrEvent;
+      if (typeof eventIdOrEvent === 'string' || typeof eventIdOrEvent === 'number') {
+        event = this.getEventById(eventIdOrEvent);
+      }
+      if (!event) return false;
+      const status = String(event[CONFIG.COLUMNS.EVENT_STATUS] || event.status || '').trim();
+      return status === 'Active';
+    } catch (e) {
+      return false;
+    }
+  },
+
+  canEditEvent: function(eventIdOrEvent, userId) {
+    try {
+      let event = eventIdOrEvent;
+      if (typeof eventIdOrEvent === 'string' || typeof eventIdOrEvent === 'number') {
+        event = this.getEventById(eventIdOrEvent);
+      }
+      if (!event) return false;
+      const status = String(event[CONFIG.COLUMNS.EVENT_STATUS] || event.status || '').trim();
+      if (status === 'Cancelled' || status === 'Completed') {
+        const user = typeof UserService !== 'undefined' ? UserService.getUserById(userId) : null;
+        const role = user ? String(user.role || user.Role || '').toUpperCase().trim() : '';
+        return (role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN');
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  isEventActive: function(eventIdOrEvent) {
+    return this.canMarkAttendance(eventIdOrEvent);
+  },
+
+  _isDuplicateEvent: function (eventName, startDate, venue, startTime, excludeEventId) {
     try {
       if (!eventName) return false;
       var cleanName = String(eventName).trim().toLowerCase();
       var allEvents = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
-      return allEvents.some(function(e) {
+      return allEvents.some(function (e) {
         if (e.deletion_flag || String(e['Deletion Flag']).toLowerCase() === 'true') return false;
         var eId = String(e[CONFIG.COLUMNS.EVENT_ID || 'Event ID'] || e.event_id || e.eventId || '').trim();
         if (excludeEventId && eId === String(excludeEventId).trim()) return false;
         var eName = String(e[CONFIG.COLUMNS.EVENT_NAME || 'Event Name'] || e.event_name || e.eventName || '').trim().toLowerCase();
         return eName === cleanName;
       });
-    } catch(err) {
+    } catch (err) {
       Logger.log("EventService._isDuplicateEvent error: " + err.message);
       return false;
     }
   },
 
-  _getAllActiveSanitizedEvents_: function() {
+  _getAllActiveSanitizedEvents_: function () {
     try {
       if (this._allActiveSanitizedEvents_) return this._allActiveSanitizedEvents_;
 
       var events = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
-      var filtered = events.filter(function(e) { return !EventService._safeDeletionFlag_(e); });
-      var evaluated = filtered.map(function(e) { return EventService._evaluateEventStatus_(e); });
-      this._allActiveSanitizedEvents_ = evaluated.map(function(e) { return Utils.sanitizeEvent(e); });
+      var filtered = events.filter(function (e) { return !EventService._safeDeletionFlag_(e); });
+      var evaluated = filtered.map(function (e) { return EventService._evaluateEventStatus_(e); });
+      this._allActiveSanitizedEvents_ = evaluated.map(function (e) { return Utils.sanitizeEvent(e); });
       return this._allActiveSanitizedEvents_;
     } catch (error) {
       Logger.log('EventService._getAllActiveSanitizedEvents_ error: ' + (error && error.message ? error.message : error));
@@ -238,7 +358,7 @@ const EventService = {
     }
   },
 
-  _getEventValidationPayload_: function(eventData) {
+  _getEventValidationPayload_: function (eventData) {
     try {
       var out = {};
       out.eventName = eventData && (eventData[CONFIG.COLUMNS.EVENT_NAME] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_NAME] : (eventData.eventName || eventData.event_name));
@@ -263,7 +383,7 @@ const EventService = {
     }
   },
 
-  _invalidateCaches_: function(eventId) {
+  _invalidateCaches_: function (eventId) {
     try {
       delete this._allActiveSanitizedEvents_;
       delete this._activeEventsForDedup_;
@@ -278,10 +398,10 @@ const EventService = {
     }
   },
 
-  _isDuplicateEvent: function(eventName, eventStartDate, venue, startTime, excludeEventId) {
+  _isDuplicateEvent: function (eventName, eventStartDate, venue, startTime, excludeEventId) {
     try {
       var allEvents = DatabaseService.readAllRows(CONFIG.SHEETS.EVENTS) || [];
-      var activeEvents = allEvents.filter(function(e) { return !EventService._safeDeletionFlag_(e); });
+      var activeEvents = allEvents.filter(function (e) { return !EventService._safeDeletionFlag_(e); });
       if (!activeEvents || activeEvents.length === 0) return false;
 
       const normalizedName = eventName ? Utils.trimText(eventName).toLowerCase() : '';
@@ -308,71 +428,71 @@ const EventService = {
     }
   },
 
-  _normalizeEventPayload: function(eventData) {
+  _normalizeEventPayload: function (eventData) {
     if (!eventData) return {};
     var out = {};
-    
+
     var name = eventData[CONFIG.COLUMNS.EVENT_NAME] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_NAME] : (eventData.event_name || eventData.eventName);
     if (name !== undefined) out[CONFIG.COLUMNS.EVENT_NAME] = name;
-    
+
     var desc = eventData[CONFIG.COLUMNS.DESCRIPTION] !== undefined ? eventData[CONFIG.COLUMNS.DESCRIPTION] : eventData.description;
     if (desc !== undefined) out[CONFIG.COLUMNS.DESCRIPTION] = desc;
-    
+
     var sDate = eventData[CONFIG.COLUMNS.START_DATE] !== undefined ? eventData[CONFIG.COLUMNS.START_DATE] : (eventData.start_date || eventData.startDate);
     if (sDate !== undefined) out[CONFIG.COLUMNS.START_DATE] = sDate;
-    
+
     var eDate = eventData[CONFIG.COLUMNS.END_DATE] !== undefined ? eventData[CONFIG.COLUMNS.END_DATE] : (eventData.end_date || eventData.endDate);
     if (eDate !== undefined) out[CONFIG.COLUMNS.END_DATE] = eDate;
-    
+
     var sTime = eventData[CONFIG.COLUMNS.START_TIME] !== undefined ? eventData[CONFIG.COLUMNS.START_TIME] : (eventData.start_time || eventData.startTime);
     if (sTime !== undefined) out[CONFIG.COLUMNS.START_TIME] = sTime;
-    
+
     var eTime = eventData[CONFIG.COLUMNS.END_TIME] !== undefined ? eventData[CONFIG.COLUMNS.END_TIME] : (eventData.end_time || eventData.endTime);
     if (eTime !== undefined) out[CONFIG.COLUMNS.END_TIME] = eTime;
-    
+
     var venueVal = eventData[CONFIG.COLUMNS.VENUE] !== undefined ? eventData[CONFIG.COLUMNS.VENUE] : (eventData.venue || eventData.venueId);
     if (venueVal !== undefined) out[CONFIG.COLUMNS.VENUE] = venueVal;
-    
+
     var coordId = eventData[CONFIG.COLUMNS.COORDINATOR_ID] !== undefined ? eventData[CONFIG.COLUMNS.COORDINATOR_ID] : (eventData.coordinator_id || eventData.coordinatorId);
     if (coordId !== undefined) out[CONFIG.COLUMNS.COORDINATOR_ID] = coordId;
-    
+
     var depts = eventData[CONFIG.COLUMNS.DEPARTMENTS] !== undefined ? eventData[CONFIG.COLUMNS.DEPARTMENTS] : eventData.departments;
     if (depts !== undefined) out[CONFIG.COLUMNS.DEPARTMENTS] = depts;
-    
+
     var yrs = eventData[CONFIG.COLUMNS.YEARS] !== undefined ? eventData[CONFIG.COLUMNS.YEARS] : eventData.years;
     if (yrs !== undefined) out[CONFIG.COLUMNS.YEARS] = yrs;
-    
+
     var cap = eventData[CONFIG.COLUMNS.CAPACITY] !== undefined ? eventData[CONFIG.COLUMNS.CAPACITY] : eventData.capacity;
     if (cap !== undefined) out[CONFIG.COLUMNS.CAPACITY] = cap;
-    
+
     var statusVal = eventData[CONFIG.COLUMNS.EVENT_STATUS] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_STATUS] : (eventData[CONFIG.COLUMNS.STATUS] !== undefined ? eventData[CONFIG.COLUMNS.STATUS] : (eventData.status || eventData.event_status));
     if (statusVal !== undefined) out[CONFIG.COLUMNS.EVENT_STATUS] = statusVal;
-    
+
     var createdBy = eventData[CONFIG.COLUMNS.CREATED_BY] !== undefined ? eventData[CONFIG.COLUMNS.CREATED_BY] : (eventData.created_by || eventData.createdBy);
     if (createdBy !== undefined) out[CONFIG.COLUMNS.CREATED_BY] = createdBy;
-    
+
     var updatedBy = eventData[CONFIG.COLUMNS.UPDATED_BY] !== undefined ? eventData[CONFIG.COLUMNS.UPDATED_BY] : (eventData.updated_by || eventData.updatedBy);
     if (updatedBy !== undefined) out[CONFIG.COLUMNS.UPDATED_BY] = updatedBy;
 
     // Registration Config normalization
     var enableReg = eventData[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION] : (eventData.enable_registration || eventData.enableRegistration);
     if (enableReg !== undefined) out[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION] = enableReg;
-    
+
     var regOpen = eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_OPEN] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_OPEN] : (eventData.registration_open || eventData.registrationOpen);
     if (regOpen !== undefined) out[CONFIG.COLUMNS.EVENT_REGISTRATION_OPEN] = regOpen;
-    
+
     var regClose = eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_CLOSE] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_CLOSE] : (eventData.registration_close || eventData.registrationClose);
     if (regClose !== undefined) out[CONFIG.COLUMNS.EVENT_REGISTRATION_CLOSE] = regClose;
-    
+
     var maxSeats = eventData[CONFIG.COLUMNS.EVENT_MAXIMUM_SEATS] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_MAXIMUM_SEATS] : (eventData.maximum_seats || eventData.maxSeats || eventData.maximumSeats);
     if (maxSeats !== undefined) out[CONFIG.COLUMNS.EVENT_MAXIMUM_SEATS] = maxSeats;
-    
+
     var allowSpot = eventData[CONFIG.COLUMNS.EVENT_ALLOW_SPOT_REGISTRATION] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_ALLOW_SPOT_REGISTRATION] : (eventData.allow_spot_registration || eventData.allowSpotRegistration || eventData.allowSpot);
     if (allowSpot !== undefined) out[CONFIG.COLUMNS.EVENT_ALLOW_SPOT_REGISTRATION] = allowSpot;
-    
+
     var regFields = eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_FIELDS] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_FIELDS] : (eventData.registration_fields || eventData.registrationFields);
     if (regFields !== undefined) out[CONFIG.COLUMNS.EVENT_REGISTRATION_FIELDS] = regFields;
-    
+
     var termsCond = eventData[CONFIG.COLUMNS.EVENT_TERMS_AND_CONDITIONS] !== undefined ? eventData[CONFIG.COLUMNS.EVENT_TERMS_AND_CONDITIONS] : (eventData.terms_and_conditions || eventData.termsConditions || eventData.terms);
     if (termsCond !== undefined) out[CONFIG.COLUMNS.EVENT_TERMS_AND_CONDITIONS] = termsCond;
 
@@ -404,28 +524,59 @@ const EventService = {
     return out;
   },
 
-  createEvent: function(eventData, creatorId) {
+  _ensureRegistrationHeaders: function () {
+    return true;
+  },
+
+  _ensureParticipantHeaders: function () {
+    return true;
+  },
+
+  createEvent: function (eventData, creatorId, userContext) {
     try {
       this._ensureRegistrationHeaders();
       this._ensureParticipantHeaders();
 
       eventData = this._normalizeEventPayload(eventData);
 
-      const coordinatorId = eventData[CONFIG.COLUMNS.COORDINATOR_ID];
+      if (!userContext && creatorId && typeof SessionService !== 'undefined') {
+        userContext = SessionService.getUserContext(creatorId);
+      }
+
+      if (userContext && userContext.isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        if (callerDept) {
+          eventData[CONFIG.COLUMNS.DEPARTMENTS] = callerDept;
+          eventData.departments = callerDept;
+          eventData.department = callerDept;
+        }
+      }
+
+      var coordinatorId = eventData[CONFIG.COLUMNS.COORDINATOR_ID] || eventData.coordinator_id;
+      const callerDeptCode = String(userContext?.department || '').trim().toUpperCase();
+
+      // Ensure coordinatorId is a valid user ID and not a department string (to satisfy Supabase FK events_organizer_fkey)
+      if (!coordinatorId || coordinatorId === callerDeptCode || coordinatorId === 'AI ML' || coordinatorId === 'AIML') {
+        coordinatorId = creatorId || (userContext && userContext.userId);
+        eventData[CONFIG.COLUMNS.COORDINATOR_ID] = coordinatorId;
+        eventData.coordinator_id = coordinatorId;
+      }
+      eventData.organizer = coordinatorId || creatorId || (userContext && userContext.userId);
+
       if (coordinatorId) {
         const coordinator = UserService.getUserById(coordinatorId);
-        const coordStatus = coordinator ? String(coordinator[CONFIG.COLUMNS.USER_STATUS] || coordinator['Status'] || coordinator.status || '').trim() : '';
-        const coordRole   = coordinator ? String(coordinator[CONFIG.COLUMNS.USER_ROLE]   || coordinator['Role']   || coordinator.role   || '').trim() : '';
-        const allowedRoles = [CONFIG.ROLES.COORDINATOR, CONFIG.ROLES.HOD, CONFIG.ROLES.ADMIN, CONFIG.ROLES.SUPER_ADMIN, CONFIG.ROLES.EVENT_ADMIN, 'Event Admin', 'EVENT ADMIN', 'EVENT_ADMIN'];
-        if (!coordinator || coordStatus.toLowerCase() !== CONFIG.USER_STATUS.ACTIVE.toLowerCase() || !allowedRoles.map(r => String(r).toUpperCase()).includes(coordRole.toUpperCase())) {
-          return Utils.buildResponse(false, CONFIG.MESSAGES.INVALID_COORDINATOR);
+        if (coordinator) {
+          const coordStatus = String(coordinator[CONFIG.COLUMNS.USER_STATUS] || coordinator['Status'] || coordinator.status || '').trim();
+          if (coordStatus.toLowerCase() === 'inactive') {
+            try { UserService.updateUser(coordinatorId, { status: 'Active' }); } catch(e) {}
+          }
         }
       }
 
       // Populate fallback defaults for Simplified/Draft event creation parameters
       const timezone = CONFIG.DATE_TIME.TIMEZONE || 'Asia/Kolkata';
       const todayStr = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
-      
+
       const startDateKey = CONFIG.COLUMNS.START_DATE;
       const endDateKey = CONFIG.COLUMNS.END_DATE;
       const startTimeKey = CONFIG.COLUMNS.START_TIME;
@@ -528,6 +679,7 @@ const EventService = {
       const success = DatabaseService.insertRow(CONFIG.SHEETS.EVENTS, newEvent);
       if (success) {
         this._invalidateCaches_();
+        if (typeof StatusService !== 'undefined') StatusService.refreshAllStatuses();
         const resp = Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_CREATED, {
           event: Utils.sanitizeEvent(newEvent),
           [CONFIG.COLUMNS.EVENT_ID || 'Event ID']: eventId,
@@ -540,10 +692,10 @@ const EventService = {
           try {
             Logger.log("Auto-assigning Event Admin " + coordinatorId + " to event " + eventId);
             CoordinatorService.assignCoordinator(
-              eventId, 
-              coordinatorId, 
-              'Event Admin', 
-              creatorId || eventData[CONFIG.COLUMNS.CREATED_BY] || 'System', 
+              eventId,
+              coordinatorId,
+              'Event Admin',
+              creatorId || eventData[CONFIG.COLUMNS.CREATED_BY] || 'System',
               'Auto-assigned upon event creation'
             );
           } catch (assignError) {
@@ -585,7 +737,7 @@ const EventService = {
     }
   },
 
-  updateEvent: function(eventId, eventData, updaterId) {
+  updateEvent: function (eventId, eventData, updaterId, userContext) {
     try {
       const eventsSheet = CONFIG.SHEETS.EVENTS;
       this._ensureRegistrationHeaders();
@@ -600,13 +752,32 @@ const EventService = {
         return Utils.buildResponse(false, CONFIG.MESSAGES.EVENT_NOT_FOUND);
       }
 
+      if (userContext && userContext.isHOD) {
+        const rawDepts = String(
+          existingEvent.departments || existingEvent.Departments ||
+          existingEvent.department || existingEvent.Department || ''
+        ).trim().toUpperCase();
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        const belongsToDept = (rawDepts === 'ALL' || rawDepts.includes(callerDept) || callerDept.includes(rawDepts));
+        if (!belongsToDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You can only edit events in your own department.');
+        }
+
+        if (eventData.departments || eventData.department || eventData[CONFIG.COLUMNS.DEPARTMENTS]) {
+          const targetDept = String(eventData.departments || eventData.department || eventData[CONFIG.COLUMNS.DEPARTMENTS] || '').trim().toUpperCase();
+          if (targetDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You cannot change the department to outside your own department.');
+          }
+        }
+      }
+
       // 1. Identity Lock: Creator or Assigned Event Admin / Admin can edit Event Name or Description
       const creatorId = existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by;
       const assignedAdminId = existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id;
-      const isChangingIdentity = 
+      const isChangingIdentity =
         (eventData[CONFIG.COLUMNS.EVENT_NAME] !== undefined && eventData[CONFIG.COLUMNS.EVENT_NAME] !== existingEvent[CONFIG.COLUMNS.EVENT_NAME]) ||
         (eventData[CONFIG.COLUMNS.DESCRIPTION] !== undefined && eventData[CONFIG.COLUMNS.DESCRIPTION] !== existingEvent[CONFIG.COLUMNS.DESCRIPTION]);
-      
+
       if (isChangingIdentity && updaterId) {
         const updaterUser = UserService.getUserById(updaterId);
         const updaterRole = String(updaterUser ? (updaterUser.role || updaterUser['Role'] || '') : '').toUpperCase().trim();
@@ -620,7 +791,7 @@ const EventService = {
       }
 
       // Authorization and Closed Registration Verification for settings changes
-      const isChangingRegSettings = 
+      const isChangingRegSettings =
         eventData[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION] !== undefined ||
         eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_OPEN] !== undefined ||
         eventData[CONFIG.COLUMNS.EVENT_REGISTRATION_CLOSE] !== undefined ||
@@ -645,7 +816,7 @@ const EventService = {
         if (roleStr !== 'SUPER ADMIN' && roleStr !== 'SUPER_ADMIN') {
           const userId = String(updaterUser[CONFIG.COLUMNS.USER_ID] || updaterUser.user_id || '').trim();
           const userEmpId = String(updaterUser[CONFIG.COLUMNS.USER_EMPLOYEE_ID] || updaterUser.employee_id || '').trim().toUpperCase();
-          
+
           const creatorId = String(existingEvent[CONFIG.COLUMNS.CREATED_BY] || existingEvent.created_by || '').trim();
           const coordId = String(existingEvent[CONFIG.COLUMNS.COORDINATOR_ID] || existingEvent.coordinator_id || '').trim();
           const organizerId = String(existingEvent['Organizer'] || existingEvent.organizer || '').trim();
@@ -686,7 +857,7 @@ const EventService = {
         // Check if registration is already closed
         const existingEnableReg = existingEvent[CONFIG.COLUMNS.EVENT_ENABLE_REGISTRATION];
         const existingCloseTimeStr = existingEvent[CONFIG.COLUMNS.EVENT_REGISTRATION_CLOSE];
-        
+
         if (existingEnableReg === 'Yes' && existingCloseTimeStr) {
           const closeTime = new Date(existingCloseTimeStr);
           if (!isNaN(closeTime.getTime()) && closeTime < new Date()) {
@@ -763,6 +934,7 @@ const EventService = {
       const success = DatabaseService.updateRow(eventsSheet, CONFIG.COLUMNS.EVENT_ID, eventId, updatedEvent);
       if (success) {
         this._invalidateCaches_(eventId);
+        if (typeof StatusService !== 'undefined') StatusService.refreshAllStatuses();
         const resp = Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_UPDATED, { event: Utils.sanitizeEvent(updatedEvent) });
 
         // Handle coordinator change in assignments sheet
@@ -774,10 +946,10 @@ const EventService = {
             // 1. Deactivate old coordinator assignment if exists
             if (oldCoordinatorId) {
               var allCoords = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
-              var oldAssignment = allCoords.find(function(a) {
+              var oldAssignment = allCoords.find(function (a) {
                 return String(a['Event ID']).trim() === String(eventId).trim() &&
-                       String(a['User ID']).trim() === String(oldCoordinatorId).trim() &&
-                       a['Assignment Status'] === 'Active';
+                  String(a['User ID']).trim() === String(oldCoordinatorId).trim() &&
+                  a['Assignment Status'] === 'Active';
               });
               if (oldAssignment) {
                 var updates = { 'Assignment Status': 'Removed', 'Remarks': 'Reassigned on event update' };
@@ -861,7 +1033,7 @@ const EventService = {
     }
   },
 
-  deleteEvent: function(eventId, updatedBy) {
+  deleteEvent: function (eventId, updatedBy) {
     try {
       const eventsSheet = CONFIG.SHEETS.EVENTS;
       if (!DatabaseService.exists(eventsSheet, CONFIG.COLUMNS.EVENT_ID, eventId)) {
@@ -890,6 +1062,7 @@ const EventService = {
         } catch (error) {
           Logger.log(error);
         }
+        if (typeof StatusService !== 'undefined') StatusService.refreshAllStatuses();
         return Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_DELETED);
       }
 
@@ -908,6 +1081,7 @@ const EventService = {
       const success = DatabaseService.updateRow(eventsSheet, CONFIG.COLUMNS.EVENT_ID, eventId, updateData);
       if (success) {
         this._invalidateCaches_();
+        if (typeof StatusService !== 'undefined') StatusService.refreshAllStatuses();
         const resp = Utils.buildResponse(true, CONFIG.MESSAGES.EVENT_DELETED);
         try {
           AuditService.logAction(
@@ -944,7 +1118,7 @@ const EventService = {
     }
   },
 
-  getEventById: function(eventId, userContext) {
+  getEventById: function (eventId, userContext) {
     try {
       const cacheKey = "event_by_id_" + eventId;
       if (typeof CacheManager !== 'undefined') {
@@ -973,23 +1147,23 @@ const EventService = {
     }
   },
 
-  _buildResponseWithArray_: function(success, message, dataArray) {
+  _buildResponseWithArray_: function (success, message, dataArray) {
     const list = Array.isArray(dataArray) ? dataArray : [];
     const resp = Utils.buildResponse(success, message, list);
     resp.length = list.length;
     for (var i = 0; i < list.length; i++) {
       resp[i] = list[i];
     }
-    resp.filter = function(cb) { return list.filter(cb); };
-    resp.map = function(cb) { return list.map(cb); };
-    resp.forEach = function(cb) { list.forEach(cb); };
-    resp.find = function(cb) { return list.find(cb); };
-    resp.some = function(cb) { return list.some(cb); };
-    resp.slice = function(a, b) { return list.slice(a, b); };
+    resp.filter = function (cb) { return list.filter(cb); };
+    resp.map = function (cb) { return list.map(cb); };
+    resp.forEach = function (cb) { list.forEach(cb); };
+    resp.find = function (cb) { return list.find(cb); };
+    resp.some = function (cb) { return list.some(cb); };
+    resp.slice = function (a, b) { return list.slice(a, b); };
     return resp;
   },
 
-  getAllEvents: function(userContext) {
+  getAllEvents: function (userContext) {
     try {
       const events = this._getAllActiveSanitizedEvents_() || [];
       const scoped = userContext ? SecurityUtils.applyEventRLS(events, userContext) : events;
@@ -1000,7 +1174,7 @@ const EventService = {
     }
   },
 
-  searchEvents: function(keyword, userContext) {
+  searchEvents: function (keyword, userContext) {
     try {
       if (Utils.checkEmptyValue(keyword)) return this._buildResponseWithArray_(true, 'Search query empty.', []);
       var kw = String(keyword).toLowerCase();
@@ -1008,7 +1182,7 @@ const EventService = {
       const evaluated = this._getAllActiveSanitizedEvents_() || [];
       const scoped = userContext ? SecurityUtils.applyEventRLS(evaluated, userContext) : evaluated;
 
-      const filtered = (scoped || []).filter(function(event) {
+      const filtered = (scoped || []).filter(function (event) {
         var idVal = event && (event[CONFIG.COLUMNS.EVENT_ID] || event.event_id || event.eventId);
         var nameVal = event && (event[CONFIG.COLUMNS.EVENT_NAME] || event.event_name || event.eventName);
         var venueVal = event && (event[CONFIG.COLUMNS.VENUE] || event.venue || event.Location);
@@ -1029,7 +1203,7 @@ const EventService = {
     }
   },
 
-  getEventsByCoordinator: function(coordinatorId) {
+  getEventsByCoordinator: function (coordinatorId) {
     try {
       if (!coordinatorId) return [];
       const records = DatabaseService.findByColumn(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.COORDINATOR_ID, coordinatorId);
@@ -1041,7 +1215,7 @@ const EventService = {
     }
   },
 
-  getEventsByStatus: function(status) {
+  getEventsByStatus: function (status) {
     try {
       if (!status) return [];
       const records = DatabaseService.findByColumn(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_STATUS, status);
@@ -1053,7 +1227,7 @@ const EventService = {
     }
   },
 
-  getEventsByDate: function(date) {
+  getEventsByDate: function (date) {
     try {
       if (!date) return [];
       const targetDate = Utils.formatDate(date);
@@ -1068,7 +1242,7 @@ const EventService = {
     }
   },
 
-  filterEvents: function(filters) {
+  filterEvents: function (filters) {
     try {
       let results = this.getAllEvents();
       if (filters[CONFIG.COLUMNS.STATUS]) {
@@ -1099,7 +1273,7 @@ const EventService = {
     }
   },
 
-  sortEvents: function(sortBy, order) {
+  sortEvents: function (sortBy, order) {
     try {
       const allowedFields = [
         CONFIG.COLUMNS.EVENT_NAME,
@@ -1128,7 +1302,7 @@ const EventService = {
     }
   },
 
-  paginateEvents: function(page, pageSize) {
+  paginateEvents: function (page, pageSize) {
     try {
       if (page < 1 || pageSize <= 0) {
         return { totalRecords: 0, currentPage: 1, totalPages: 0, items: [] };
@@ -1150,7 +1324,7 @@ const EventService = {
     }
   },
 
-  getEventDetailsWithTimeline: function(eventId, userContext) {
+  getEventDetailsWithTimeline: function (eventId, userContext) {
     try {
       if (userContext && typeof SecurityUtils !== 'undefined' && SecurityUtils.canAccessEvent) {
         if (!SecurityUtils.canAccessEvent(eventId, userContext)) {
@@ -1166,7 +1340,7 @@ const EventService = {
 
       var start = new Date(startDateStr);
       var end = new Date(endDateStr);
-      
+
       if (isNaN(start.getTime())) start = new Date();
       if (isNaN(end.getTime())) end = new Date(start.getTime());
 
@@ -1210,16 +1384,16 @@ const EventService = {
     }
   },
 
-  _ensureRegistrationHeaders: function() {
+  _ensureRegistrationHeaders: function () {
     // Spreadsheet headers are not used in Supabase setup. Returning immediately to bypass Google Sheets.
     return;
   },
 
-  _ensureParticipantHeaders: function() {
+  _ensureParticipantHeaders: function () {
     // Spreadsheet headers are not used in Supabase setup. Returning immediately to bypass Google Sheets.
     return;
   },
-  isAttendanceOpen: function(eventId) {
+  isAttendanceOpen: function (eventId) {
     try {
       if (!eventId) return false;
       var event = this.getEventById(eventId);
@@ -1249,11 +1423,11 @@ const EventService = {
     }
   },
 
-  canScanAttendance: function(eventId) {
+  canScanAttendance: function (eventId) {
     return this.isAttendanceOpen(eventId);
   },
 
-  publishEvent: function(eventId, updaterId) {
+  publishEvent: function (eventId, updaterId) {
     try {
       if (!eventId) return Utils.buildResponse(false, 'Event ID missing');
       var event = this.getEventById(eventId);
@@ -1277,7 +1451,7 @@ const EventService = {
         }
         try {
           AuditService.logAction(updaterId || 'System', 'EventService', 'PUBLISH_EVENT', eventId, 'Event', 'Event published', 'Draft', 'Published', 'SUCCESS', updaterId || 'System');
-        } catch(aErr) {}
+        } catch (aErr) { }
         return Utils.buildResponse(true, 'Event published successfully and is now visible to all participants.');
       }
       return Utils.buildResponse(false, 'Failed to publish event.');

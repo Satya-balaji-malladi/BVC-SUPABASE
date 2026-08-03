@@ -110,7 +110,18 @@
       }
 
       const exportBtn = document.querySelector('button[data-action="export-users"]');
-      if (exportBtn) exportBtn.addEventListener('click', () => App.ExportBuilder.open('users'));
+      if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+          console.log("[Download Flow] STEP 1: Export Users button clicked");
+          if (typeof App !== 'undefined' && App.ExportBuilder && typeof App.ExportBuilder.open === 'function') {
+            console.log("[Download Flow] STEP 2: App.ExportBuilder modal found, opening export builder");
+            App.ExportBuilder.open('users');
+          } else {
+            console.log("[Download Flow] STEP 2: App.ExportBuilder not present on page, calling direct exportToCSV()");
+            this.exportToCSV();
+          }
+        });
+      }
 
       const importBtn = document.querySelector('button[data-action="import-users"]');
       if (importBtn) importBtn.addEventListener('click', () => this.openImportModal());
@@ -239,6 +250,15 @@
      * CRUD Modals & Submits
      * ========================================================== */
 
+    getCurrentUserDept: function () {
+      const currentUser = (App.State && App.State.currentUser) || App.User;
+      if (currentUser) {
+        const d = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || currentUser.department_code || currentUser['Department Code'];
+        if (d) return String(d).trim();
+      }
+      return String(localStorage.getItem('userDept') || '').trim();
+    },
+
     openAddUserModal: function () {
       this.populateFilters();
       const form = document.getElementById('userForm');
@@ -267,17 +287,19 @@
         // Enforce role creation permission: Admin can only create HOD and Coordinator accounts. Super Admin gets all options.
         const roleSelect = document.getElementById('userRole');
         if (roleSelect) {
-          const storedRole = localStorage.getItem('userRole') || (App.User && App.User.role) || '';
-          const currentUserRole = String(storedRole).toUpperCase().trim();
+          const storedRole = localStorage.getItem('userRole') || (App.User && App.User.role) || (App.State && App.State.currentUser && App.State.currentUser.role) || '';
+          const currentUserRole = String(storedRole).toUpperCase().trim().replace(/[\s_]+/g, '');
           const superAdminOpt = roleSelect.querySelector('option[value="Super Admin"]');//added by human
           const adminOpt = roleSelect.querySelector('option[value="Admin"]');
           const eventAdminOpt = roleSelect.querySelector('option[value="Event Admin"]');
           const hodOpt = roleSelect.querySelector('option[value="HOD"]');
-          const isSuperAdmin = (currentUserRole === 'SUPER ADMIN' || currentUserRole === 'SUPER_ADMIN');
-          const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN');
+          const isSuperAdmin = (currentUserRole === 'SUPERADMIN');
+          const isEventAdmin = (currentUserRole === 'EVENTADMIN');
           const isHOD = (currentUserRole === 'HOD');
 
           const deptContainer = document.getElementById('userDepartmentContainer');
+          const deptSelect = document.getElementById('userDepartment');
+          const userDept = this.getCurrentUserDept();
 
           if (isEventAdmin) {
             if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
@@ -289,32 +311,61 @@
 
             if (deptContainer) {
               deptContainer.classList.add('d-none');
-              const currentUser = App.State && App.State.currentUser;
-              const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || 'CSE DEPARTMENT');
-              document.getElementById('userDepartment').value = userDept;
+              if (deptSelect) deptSelect.value = userDept || 'CSE DEPARTMENT';
             }
           } else if (isSuperAdmin) {
             if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
             if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
             if (hodOpt) { hodOpt.disabled = false; hodOpt.hidden = false; hodOpt.style.display = ''; }
             if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
-            /* if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }*/
             if (deptContainer) deptContainer.classList.remove('d-none');
-          }
-
-          else if (isHOD) {
+            if (deptSelect) {
+              deptSelect.disabled = false;
+              deptSelect.removeAttribute('disabled');
+            }
+          } else if (isHOD) {
             if (superAdminOpt) { superAdminOpt.disabled = true; superAdminOpt.hidden = true; superAdminOpt.style.display = 'none'; }
             if (adminOpt) { adminOpt.disabled = true; adminOpt.hidden = true; adminOpt.style.display = 'none'; }
             if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
             if (hodOpt) { hodOpt.disabled = true; hodOpt.hidden = true; hodOpt.style.display = 'none'; }
             if (deptContainer) deptContainer.classList.remove('d-none');
-          }
-          else {
+
+            if (deptSelect) {
+              if (userDept) {
+                let deptCode = userDept;
+                let deptDisplayName = userDept;
+                if (this.departmentsData && Array.isArray(this.departmentsData)) {
+                  const matchedDept = this.departmentsData.find(d => {
+                    if (!d) return false;
+                    const c = String(d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+                    const id = String(d['Department ID'] || d.department_id || '').toUpperCase().trim();
+                    const n = String(d['Department Name'] || d.department_name || '').toUpperCase().trim();
+                    const target = userDept.toUpperCase().trim();
+                    return c === target || id === target || n === target || (n && target && n.includes(target)) || (c && target && target.includes(c));
+                  });
+                  if (matchedDept) {
+                    deptCode = String(matchedDept['Department Code'] || matchedDept.department_code || userDept).trim();
+                    deptDisplayName = String(matchedDept['Department Name'] || matchedDept.department_name || matchedDept['Department Code'] || matchedDept.department_code || userDept).trim();
+                  }
+                }
+                deptSelect.innerHTML = `<option value="${deptCode}">${deptDisplayName}</option>`;
+                deptSelect.value = deptCode;
+                deptSelect.disabled = true;
+              } else {
+                deptSelect.disabled = false;
+                deptSelect.removeAttribute('disabled');
+              }
+            }
+          } else {
             if (superAdminOpt) { superAdminOpt.disabled = false; superAdminOpt.hidden = false; superAdminOpt.style.display = ''; }
             if (adminOpt) { adminOpt.disabled = false; adminOpt.hidden = false; adminOpt.style.display = ''; }
             if (eventAdminOpt) { eventAdminOpt.disabled = false; eventAdminOpt.hidden = false; eventAdminOpt.style.display = ''; }
             if (hodOpt) { hodOpt.disabled = false; hodOpt.hidden = false; hodOpt.style.display = ''; }
             if (deptContainer) deptContainer.classList.remove('d-none');
+            if (deptSelect) {
+              deptSelect.disabled = false;
+              deptSelect.removeAttribute('disabled');
+            }
           }
         }
       }
@@ -347,7 +398,20 @@
 
         document.getElementById('userEmail').value = user.email || '';
         document.getElementById('userName').value = user.full_name || '';
-        document.getElementById('userDepartment').value = user.department || '';
+        
+        const storedRole = localStorage.getItem('userRole') || (App.User && App.User.role) || (App.State && App.State.currentUser && App.State.currentUser.role) || '';
+        const currentUserRole = String(storedRole).toUpperCase().trim().replace(/[\s_]+/g, '');
+        const isHOD = (currentUserRole === 'HOD');
+        const deptSelect = document.getElementById('userDepartment');
+        if (deptSelect) {
+          deptSelect.value = user.department || this.getCurrentUserDept() || '';
+          if (isHOD) {
+            deptSelect.disabled = true;
+          } else {
+            deptSelect.disabled = false;
+            deptSelect.removeAttribute('disabled');
+          }
+        }
         document.getElementById('userRole').value = user.role || '';
         document.getElementById('userStatus').value = String(user.status).toUpperCase() === 'ACTIVE' ? 'Active' : 'Inactive';
 
@@ -404,16 +468,27 @@
         viewRoster: document.getElementById('permViewRoster')?.checked ?? true
       };
 
+      const userDept = this.getCurrentUserDept();
+      const storedRole = localStorage.getItem('userRole') || (App.User && App.User.role) || (App.State && App.State.currentUser && App.State.currentUser.role) || '';
+      const currentUserRole = String(storedRole).toUpperCase().trim().replace(/[\s_]+/g, '');
+      const isHOD = (currentUserRole === 'HOD');
+      const isEventAdmin = (currentUserRole === 'EVENTADMIN');
+
+      let departmentVal = (document.getElementById('userDepartment')?.value || '').trim();
+      if ((isHOD || isEventAdmin) && userDept) {
+        departmentVal = userDept;
+      }
+
       const userData = {
         full_name: document.getElementById('userName').value.trim(),
         email: emailVal,
         employee_id: (document.getElementById('userEmployeeId').value || '').trim().toUpperCase(),
-        department: document.getElementById('userDepartment').value,
+        department: departmentVal,
         role: roleVal,
         sub_role: subRoleVal,
         expiry_date: expiryDateVal,
         permissions: permissions,
-        status: document.getElementById('userStatus').value || 'Active'
+        status: document.getElementById('userStatus').value || 'Inactive'
       };
 
       if (mode === 'add') {
@@ -575,41 +650,56 @@
 
     /* Export CSV Actions */
     exportToCSV: function () {
-      if (!this.filteredData || this.filteredData.length === 0) {
-        App.UI.showToast("No data to export", "warning");
+      console.log("[Download Flow] STEP 3: Executing exportToCSV");
+      const exportList = (this.filteredData && this.filteredData.length > 0) ? this.filteredData : (this.usersData || []);
+      if (!exportList || exportList.length === 0) {
+        console.warn("[Download Flow] STEP 4: No user data available to export");
+        if (typeof App !== 'undefined' && App.UI && typeof App.UI.showToast === 'function') {
+          App.UI.showToast("No data to export", "warning");
+        } else {
+          alert("No data to export");
+        }
         return;
       }
 
-      const headers = ['User ID', 'Employee ID', 'Name', 'Email', 'Phone', 'Department', 'Role', 'Status', 'Created Date', 'Last Login'];
+      console.log("[Download Flow] STEP 4: Generating CSV payload for " + exportList.length + " user records");
+      const headers = ['User ID', 'Employee ID', 'Name', 'Email', 'Phone', 'Department', 'Role', 'Status', 'Created Date', 'Presence Status'];
       const csvRows = [];
       csvRows.push(headers.join(','));
 
-      this.filteredData.forEach(u => {
+      exportList.forEach(u => {
         const row = [
-          u.user_id,
-          u.employee_id,
-          u.full_name,
-          u.email,
-          u.phone,
-          u.department,
-          u.role,
-          u.status,
-          u.created_date,
-          u.last_login
-        ].map(cell => `"${String(cell).replace(/"/g, '""')}"`);
+          u.user_id || u['User ID'] || '',
+          u.employee_id || u['Employee ID'] || '',
+          u.full_name || u['First Name'] || u.name || '',
+          u.email || u['Email Address'] || '',
+          u.phone || u['Phone'] || '',
+          u.department || u['Department'] || '',
+          u.role || u['Role'] || '',
+          u.status || u['Status'] || '',
+          u.created_date || u['Created Date'] || '',
+          u.last_login || u['Last Login'] || ''
+        ].map(cell => `"${String(cell !== undefined && cell !== null ? cell : '').replace(/"/g, '""')}"`);
         csvRows.push(row.join(','));
       });
 
-      const csvString = csvRows.join('\n');
+      const csvString = '\uFEFF' + csvRows.join('\n');
+      console.log("[Download Flow] STEP 5: Creating CSV Blob object");
       const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
 
+      console.log("[Download Flow] STEP 6: Creating temporary <a> element and triggering browser click download");
       const link = document.createElement("a");
       link.setAttribute("href", url);
       link.setAttribute("download", `users_export_${new Date().getTime()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      console.log("[Download Flow] STEP 7: Download completed successfully!");
+
+      if (typeof App !== 'undefined' && App.UI && typeof App.UI.showSuccess === 'function') {
+        App.UI.showSuccess("Users exported to CSV successfully!");
+      }
     },
 
     /* ==========================================================
@@ -652,10 +742,43 @@
       const roleFilter = document.getElementById('users-role-filter');
       const statusFilter = document.getElementById('users-status-filter');
 
+      const currentUser = App.State && App.State.currentUser;
+      const rawRole = currentUser ? (currentUser.role || currentUser.Role) : (localStorage.getItem('userRole') || '');
+      const userRole = String(rawRole || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+      const rawDept = currentUser ? (currentUser.department || currentUser.Department || currentUser.dept) : (localStorage.getItem('userDept') || '');
+      const userDept = String(rawDept || '').trim().toUpperCase();
+      const isHOD = userRole === 'HOD';
+
       if (deptFilter) {
-        deptFilter.innerHTML = '<option value="">All Depts</option>';
-        if (this.departmentsData) {
-          const deptCodes = this.departmentsData.map(d => d['Department Code'] || d.department_code || d['Department Name'] || d.department_name).filter(Boolean).sort();
+        if (isHOD) {
+          let deptCode = userDept;
+          let deptName = userDept;
+          const matched = (this.departmentsData || []).find(d => {
+            if (!d) return false;
+            const code = String(d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+            const id   = String(d['Department ID'] || d.department_id || '').toUpperCase().trim();
+            const name = String(d['Department Name'] || d.department_name || '').toUpperCase().trim();
+            const target = String(userDept || '').toUpperCase().trim();
+            return code === target || id === target || name === target || name.includes(target) || target.includes(code);
+          });
+          if (matched) {
+            deptCode = matched['Department Code'] || matched.department_code || userDept;
+            deptName = matched['Department Name'] || matched.department_name || deptCode;
+          }
+          const displayText = (deptName && deptCode && deptName.toUpperCase() !== deptCode.toUpperCase())
+            ? `${deptName} (${deptCode})`
+            : deptCode;
+
+          deptFilter.innerHTML = `<option value="${deptCode}">${displayText}</option>`;
+          deptFilter.value = deptCode;
+          deptFilter.disabled = true;
+          deptFilter.style.display = '';
+        } else {
+          deptFilter.disabled = false;
+          deptFilter.removeAttribute('disabled');
+          deptFilter.style.display = '';
+          deptFilter.innerHTML = '<option value="">All Depts</option>';
+          const deptCodes = (this.departmentsData || []).map(d => d ? (d['Department Code'] || d.department_code || d['Department Name'] || d.department_name || '') : '').map(s => String(s).trim()).filter(Boolean).sort();
           const uniqueCodes = [...new Set(deptCodes)];
           uniqueCodes.forEach(code => {
             deptFilter.innerHTML += `<option value="${code}">${code}</option>`;
@@ -668,26 +791,35 @@
       if (userDeptSelect) {
         const curVal = userDeptSelect.value;
         userDeptSelect.innerHTML = '<option value="">Select Department</option>';
-        if (this.departmentsData && this.departmentsData.length > 0) {
-          this.departmentsData.forEach(d => {
-            const code = d['Department Code'] || d.department_code || '';
-            const name = d['Department Name'] || d.department_name || code;
-            if (code) {
-              const opt = document.createElement('option');
-              opt.value = code;
-              opt.textContent = `${name} (${code})`;
-              userDeptSelect.appendChild(opt);
-            }
+        let deptsToRender = this.departmentsData || [];
+        if (isHOD) {
+          deptsToRender = deptsToRender.filter(d => {
+            if (!d) return false;
+            const code = String(d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+            const id   = String(d['Department ID'] || d.department_id || '').toUpperCase().trim();
+            const name = String(d['Department Name'] || d.department_name || '').toUpperCase().trim();
+            const target = String(userDept || '').toUpperCase().trim();
+            return code === target || id === target || name === target || (name && target && name.includes(target)) || (code && target && target.includes(code));
           });
-        } else {
-          // Fallback options if database has no custom departments yet
-          ['CSE', 'ECE', 'EEE', 'CIVIL', 'MECH', 'AIDS', 'AIML'].forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c;
-            opt.textContent = c;
-            userDeptSelect.appendChild(opt);
-          });
+          if (deptsToRender.length === 0) {
+            deptsToRender = [{
+              'Department Code': userDept,
+              'Department Name': userDept,
+              'Department ID': userDept
+            }];
+          }
         }
+        deptsToRender.forEach(d => {
+          if (!d) return;
+          const code = String(d['Department Code'] || d.department_code || '').trim();
+          const name = String(d['Department Name'] || d.department_name || code || '').trim();
+          if (code) {
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = `${name} (${code})`;
+            userDeptSelect.appendChild(opt);
+          }
+        });
         if (curVal) userDeptSelect.value = curVal;
       }
 
@@ -725,20 +857,21 @@
       const statusVal = statusFilter ? statusFilter.value.toLowerCase().trim() : '';
 
       const currentUser = App.State && App.State.currentUser;
-      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
-      const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
+      const rawRole = currentUser ? (currentUser.role || currentUser.Role) : (localStorage.getItem('userRole') || '');
+      const userRole = String(rawRole || '').toUpperCase().trim();
+      const rawDept = currentUser ? (currentUser.department || currentUser.Department || currentUser.dept) : (localStorage.getItem('userDept') || '');
+      const userDept = String(rawDept || '').trim();
       const isHOD = (userRole === 'HOD');
 
-      // If HOD, disable/hide department filter dropdown and force HOD department matching
       if (isHOD && deptFilter) {
         deptFilter.disabled = true;
-        deptFilter.style.display = 'none';
+        deptFilter.style.display = '';
       }
 
       let filtered = this.usersData.filter(user => {
         if (isHOD && userDept) {
           const uDept = String(user.department || '').toUpperCase().trim();
-          const hDept = String(userDept).toUpperCase().trim();
+          const hDept = String(userDept || '').toUpperCase().trim();
           if (uDept !== hDept && !uDept.includes(hDept) && !hDept.includes(uDept)) {
             return false;
           }
@@ -748,7 +881,12 @@
           String(user.user_id).toLowerCase().includes(searchTerm) ||
           String(user.full_name).toLowerCase().includes(searchTerm) ||
           String(user.email).toLowerCase().includes(searchTerm);
-        const matchesRole = !roleVal || String(user.role).toLowerCase() === roleVal;
+        
+        // Normalize role by removing spaces, underscores, and "role" prefix
+        const normalizedUserRole = String(user.role).toLowerCase().replace(/[\s_]+/g, '').replace(/^role/, '');
+        const normalizedRoleVal = roleVal.replace(/[\s_]+/g, '').replace(/^role/, '');
+        const matchesRole = !roleVal || (normalizedRoleVal === 'eventadmin' ? (normalizedUserRole === 'eventadmin' || normalizedUserRole === 'admin' || normalizedUserRole === 'event') : normalizedUserRole === normalizedRoleVal);
+        
         const matchesDept = !deptVal || String(user.department).toLowerCase() === deptVal;
         const matchesStatus = !statusVal || String(user.status).toLowerCase() === statusVal;
 
@@ -848,11 +986,42 @@
     },
 
     renderStats: function (users) {
+      const getNormRole = u => String(u.role || u.Role || u.ROLE || u.default_role || u.defaultRole || '').toUpperCase().replace(/[\s_]+/g, '');
+      const getNormStatus = u => String(u.status || u.Status || '').toLowerCase();
+
       const total = users.length;
-      const active = users.filter(u => String(u.status).toLowerCase() === 'active').length;
-      const hods = users.filter(u => String(u.role).toLowerCase() === 'hod').length;
-      const eventAdmins = users.filter(u => String(u.role).toLowerCase() === 'event admin' || String(u.role).toLowerCase() === 'event_admin').length;
-      const coordinators = users.filter(u => String(u.role).toLowerCase() === 'coordinator').length;
+      const active = users.filter(u => getNormStatus(u) === 'active').length;
+      const hods = users.filter(u => getNormRole(u) === 'HOD').length;
+      const eventAdmins = users.filter(u => {
+        const r = getNormRole(u);
+        return r === 'EVENTADMIN' || r === 'ADMIN' || r === 'EVENT_ADMIN' || r === 'EVENT';
+      }).length;
+      const coordinators = users.filter(u => getNormRole(u) === 'COORDINATOR').length;
+
+      // Adjust cards dynamically for HOD role
+      const currentUser = App.State && App.State.currentUser;
+      const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim().replace(/[\s_]+/g, '');
+      const isHOD = (userRole === 'HOD');
+
+      const containerHods = document.getElementById('users-stat-hods-container');
+      const labelTotal = document.getElementById('users-stat-label-total');
+      const labelActive = document.getElementById('users-stat-label-active');
+      const labelEventAdmins = document.getElementById('users-stat-label-event-admins');
+      const labelCoordinators = document.getElementById('users-stat-label-coordinators');
+
+      if (isHOD) {
+        if (containerHods) containerHods.classList.add('d-none');
+        if (labelTotal) labelTotal.textContent = 'Total Dept Users';
+        if (labelActive) labelActive.textContent = 'Active Dept Users';
+        if (labelEventAdmins) labelEventAdmins.textContent = 'Dept Event Admins';
+        if (labelCoordinators) labelCoordinators.textContent = 'Dept Coordinators';
+      } else {
+        if (containerHods) containerHods.classList.remove('d-none');
+        if (labelTotal) labelTotal.textContent = 'Total Users';
+        if (labelActive) labelActive.textContent = 'Active Users';
+        if (labelEventAdmins) labelEventAdmins.textContent = 'Event Admins';
+        if (labelCoordinators) labelCoordinators.textContent = 'Coordinators';
+      }
 
       const elTotal = document.getElementById('users-stat-total');
       const elActive = document.getElementById('users-stat-active');
@@ -949,7 +1118,7 @@
 
       user.role = newRole;
       App.LoadingManager.show();
-      App.API.updateUser(user)
+      App.API.updateUser(userId, user)
         .then(() => {
           App.LoadingManager.hide();
           App.UI.showSuccess(`Role updated to ${newRole}. User now has ${newRole === 'Coordinator' ? 'Coordinator' : 'Event Admin'} access.`);
@@ -1010,16 +1179,10 @@
         if (spinner) spinner.classList.remove('d-none');
       }
 
-      google.script.run
-        .withSuccessHandler((res) => {
-          if (btnSave) {
-            btnSave.disabled = false;
-            const spinner = btnSave.querySelector('.spinner-border');
-            if (spinner) spinner.classList.add('d-none');
-          }
-
+      App.API.createFaculty(payload)
+        .then((res) => {
           if (res && res.success) {
-            App.UI.showSuccess('Faculty member created successfully.');
+            App.Utils?.showToast ? App.Utils.showToast('Faculty member created successfully.', false) : (App.UI?.showSuccess && App.UI.showSuccess('Faculty member created successfully.'));
             const modalEl = document.getElementById('createFacultyModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
               const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
@@ -1034,18 +1197,19 @@
             }
           }
         })
-        .withFailureHandler((err) => {
+        .catch((err) => {
+          if (alertBox && alertText) {
+            alertText.textContent = 'Error: ' + (err?.message || 'Faculty creation failed');
+            alertBox.classList.remove('d-none');
+          }
+        })
+        .finally(() => {
           if (btnSave) {
             btnSave.disabled = false;
             const spinner = btnSave.querySelector('.spinner-border');
             if (spinner) spinner.classList.add('d-none');
           }
-          if (alertBox && alertText) {
-            alertText.textContent = 'Connection error: ' + (err?.message || 'Unreachable');
-            alertBox.classList.remove('d-none');
-          }
-        })
-        .createFaculty(token, payload);
+        });
     },
 
     refresh: function () {

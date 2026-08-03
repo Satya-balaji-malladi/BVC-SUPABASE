@@ -5,10 +5,11 @@
 const ReportService = {
 
   _requestCache: null,
-  _getCache: function(userId) {
+  _getCache: function (userId) {
     if (this._requestCache) return this._requestCache;
 
-    const allEvents = EventService.getAllEvents() || [];
+    const allEventsResponse = EventService.getAllEvents() || [];
+    const allEvents = Array.isArray(allEventsResponse) ? allEventsResponse : (allEventsResponse.data || []);
     const allStudentsResponse = StudentService.getAllStudents();
     const allStudents = (allStudentsResponse && allStudentsResponse.success) ? allStudentsResponse.students : [];
     const allAttendance = DatabaseService.readAllRows(CONFIG.SHEETS.ATTENDANCE) || [];
@@ -32,19 +33,24 @@ const ReportService = {
     const userRecord = userMap.get(String(userId).trim());
     let authorizedEvents = allEvents;
     let authorizedStudents = allStudents;
+    let authorizedUsers = allUsers;
     if (userRecord) {
       const roleStr = String(userRecord['Role'] || userRecord.role || '').toUpperCase();
       const deptStr = String(userRecord['Department'] || userRecord.department || '').trim().toUpperCase();
+      const normRole = roleStr.replace(/[\s_]+/g, '');
       const userContext = {
         userId: userId,
         role: userRecord['Role'] || userRecord.role,
         department: deptStr,
-        isAdmin: roleStr === 'ADMIN' || roleStr === 'SUPER ADMIN' || roleStr === 'SUPER_ADMIN',
-        isHOD: roleStr === 'HOD',
-        isCoordinator: roleStr === 'COORDINATOR'
+        isSuperAdmin: normRole === 'SUPERADMIN',
+        isAdmin: normRole === 'SUPERADMIN' || normRole === 'ADMIN' || normRole === 'EVENTADMIN',
+        isEventAdmin: normRole === 'EVENTADMIN',
+        isHOD: normRole === 'HOD',
+        isCoordinator: normRole === 'COORDINATOR'
       };
       authorizedEvents = SecurityUtils.applyEventRLS(allEvents, userContext);
       authorizedStudents = SecurityUtils.applyStudentRLS(allStudents, userContext);
+      authorizedUsers = SecurityUtils.applyUserRLS(allUsers, userContext);
     }
 
     const authorizedEventIds = new Set((authorizedEvents || []).map(e => e.event_id || e.eventId || e['Event ID']));
@@ -70,34 +76,37 @@ const ReportService = {
     });
 
     this._requestCache = {
-      events: allEvents,
-      students: allStudents,
-      attendance: allAttendance,
-      users: allUsers,
+      events: authorizedEvents,
+      students: authorizedStudents,
+      attendance: authorizedAttendance,
+      users: authorizedUsers,
       participants: allParticipants,
       studentMap,
       userMap,
       authorizedEvents,
       authorizedStudents,
       authorizedAttendance,
-      authorizedEventIds
+      authorizedEventIds,
+      allEvents,
+      allStudents,
+      allUsers
     };
     return this._requestCache;
   },
-  _clearCache: function() { this._requestCache = null; },
+  _clearCache: function () { this._requestCache = null; },
 
-  _calculatePercentage: function(present, total) {
+  _calculatePercentage: function (present, total) {
     if (!total || total === 0) return 0;
     return Number(((present / total) * 100).toFixed(2));
   },
 
-  _safeGetDate: function(dateStr) {
+  _safeGetDate: function (dateStr) {
     if (!dateStr) return null;
     const d = new Date(dateStr);
     return isNaN(d.getTime()) ? null : d;
   },
 
-  _getReportCacheKey: function(userId, reportType, filters) {
+  _getReportCacheKey: function (userId, reportType, filters) {
     const filterStr = filters ? JSON.stringify(filters) : '';
     let hash = 0;
     for (let i = 0; i < filterStr.length; i++) {
@@ -107,7 +116,7 @@ const ReportService = {
     return `dashboard_stats_report_${userId}_${reportType}_${hash}`;
   },
 
-  _getCoordinatorName: function(coordinatorId) {
+  _getCoordinatorName: function (coordinatorId) {
     if (!coordinatorId) return 'Unknown';
     const records = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, 'User ID', coordinatorId);
     if (records && records.length > 0) {
@@ -117,7 +126,7 @@ const ReportService = {
     return 'Unknown';
   },
 
-  _enforceCoordinatorPermissions: function(events, userId) {
+  _enforceCoordinatorPermissions: function (events, userId) {
     const userRecords = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, 'User ID', userId);
     if (userRecords.length > 0) {
       const role = userRecords[0]['Role'] || userRecords[0].role;
@@ -144,6 +153,14 @@ const ReportService = {
     var runReport = function (userId) {
       try {
         if (!targetEventId) return Utils.buildResponse(false, 'Target Event ID required.');
+
+        // Enforce Event Access RLS to prevent cross-department data leakage
+        const userContext = SessionService.getUserContext(tokenOrUserId) || { userId: userId, role: 'Coordinator' };
+        if (typeof SecurityUtils !== 'undefined' && typeof SecurityUtils.canAccessEvent === 'function') {
+          if (!SecurityUtils.canAccessEvent(targetEventId, userContext)) {
+            return Utils.buildResponse(false, 'Unauthorized: You do not have permission to view reports for this event.');
+          }
+        }
 
         var attendanceLogs = DatabaseService.findByColumn(CONFIG.SHEETS.ATTENDANCE, 'event_id', targetEventId) || [];
         var participants = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'event_id', targetEventId) || [];
@@ -200,12 +217,12 @@ const ReportService = {
       try {
         var sessionResult = SessionService.withSession(tokenOrUserId, runReport);
         if (sessionResult && sessionResult.success) return sessionResult;
-      } catch (err) {}
+      } catch (err) { }
     }
     return runReport(tokenOrUserId || 'USR0001');
   },
 
-  getDashboardSummary: function(userId) {
+  getDashboardSummary: function (userId) {
     try {
       const cache = this._getCache(userId);
       const students = cache.authorizedStudents || cache.students;
@@ -251,7 +268,7 @@ const ReportService = {
     }
   },
 
-  getReportsDashboardSummary: function(userId) {
+  getReportsDashboardSummary: function (userId) {
     try {
       const cacheKey = "dashboard_stats_report_summary_" + userId;
       if (typeof CacheManager !== 'undefined') {
@@ -285,17 +302,17 @@ const ReportService = {
         const eventAtt = authorizedAttendance.filter(a => String(a['Event ID'] || a.event_id) === String(eId));
         const eventTotal = eventAtt.length;
         const eventPresent = eventAtt.filter(a => (a['Attendance Status'] || a.status) === CONFIG.ATTENDANCE_STATUS.PRESENT).length;
-        
+
         if (eventTotal > 0) {
-           const rate = this._calculatePercentage(eventPresent, eventTotal);
-           if (rate > highestRate) {
-             highestRate = rate;
-             highestEvent = eName;
-           }
-           if (rate < lowestRate) {
-             lowestRate = rate;
-             lowestEvent = eName;
-           }
+          const rate = this._calculatePercentage(eventPresent, eventTotal);
+          if (rate > highestRate) {
+            highestRate = rate;
+            highestEvent = eName;
+          }
+          if (rate < lowestRate) {
+            lowestRate = rate;
+            lowestEvent = eName;
+          }
         }
       });
 
@@ -320,7 +337,7 @@ const ReportService = {
     }
   },
 
-  getEventReport: function(userId, filters = {}) {
+  getEventReport: function (userId, filters = {}) {
     try {
       const cacheKey = this._getReportCacheKey(userId, 'event', filters);
       if (typeof CacheManager !== 'undefined') {
@@ -337,13 +354,13 @@ const ReportService = {
       if (filters.coordinatorId) events = events.filter(e => String(e.coordinator_id || e.coordinatorId || e['Organizer']) === String(filters.coordinatorId));
       if (filters.status) events = events.filter(e => (e.status || e['Event Status']) === filters.status);
       if (filters.fromDate && filters.toDate) {
-         const from = new Date(filters.fromDate).getTime();
-         const to = new Date(filters.toDate).getTime();
-         events = events.filter(e => {
-            const startDateVal = e.start_date || e['Start Date'];
-            const t = new Date(startDateVal).getTime();
-            return t >= from && t <= to;
-         });
+        const from = new Date(filters.fromDate).getTime();
+        const to = new Date(filters.toDate).getTime();
+        events = events.filter(e => {
+          const startDateVal = e.start_date || e['Start Date'];
+          const t = new Date(startDateVal).getTime();
+          return t >= from && t <= to;
+        });
       }
 
       let totalPresent = 0;
@@ -364,7 +381,7 @@ const ReportService = {
 
         totalParticipants += eventTotal;
         totalPresent += eventPresent;
-        
+
         const cId = event.coordinator_id || event.coordinatorId || event['Organizer'];
         const coordinatorRecord = cache.userMap.get(String(cId));
         const coordinatorName = coordinatorRecord ? (coordinatorRecord.full_name || (coordinatorRecord['First Name'] && coordinatorRecord['Last Name'] ? coordinatorRecord['First Name'] + ' ' + coordinatorRecord['Last Name'] : 'Unknown')) : 'Unknown';
@@ -383,9 +400,9 @@ const ReportService = {
         };
       });
 
-      const resp = Utils.buildResponse(true, 'Report generated', { 
+      const resp = Utils.buildResponse(true, 'Report generated', {
         summary: { total: events.length, present: totalPresent, percentage: this._calculatePercentage(totalPresent, totalParticipants) },
-        data: data 
+        data: data
       });
 
       try {
@@ -426,7 +443,7 @@ const ReportService = {
     }
   },
 
-  getStudentReport: function(userId, rollNumber) {
+  getStudentReport: function (userId, rollNumber) {
     try {
       const cacheKey = this._getReportCacheKey(userId, 'student', { rollNumber });
       if (typeof CacheManager !== 'undefined') {
@@ -437,7 +454,7 @@ const ReportService = {
       const cache = this._getCache(userId);
       const student = cache.studentMap.get(rollNumber);
       if (!student) return Utils.buildResponse(false, 'Student not found.');
-      
+
       const sYear = student['Year'] || student.year;
       const sRoll = student['Roll Number'] || student.roll_number || student.rollNumber;
       const sName = student['Student Name'] || student.student_name || student.studentName;
@@ -449,12 +466,12 @@ const ReportService = {
 
       const allAttendance = cache.authorizedAttendance.filter(a => String(a['Roll Number'] || a.roll_number) === String(sRoll));
       const presentCount = allAttendance.filter(a => (a['Attendance Status'] || a.status) === CONFIG.ATTENDANCE_STATUS.PRESENT).length;
-      
+
       const summary = {
         totalEvents: allAttendance.length,
         present: presentCount
       };
-      
+
       const data = allAttendance.map(r => {
         const rEventId = r['Event ID'] || r.event_id;
         const evt = cache.events.find(e => (e.event_id || e.eventId || e['Event ID']) === rEventId) || {};
@@ -485,7 +502,7 @@ const ReportService = {
     }
   },
 
-  getDepartmentReport: function(userId, department) {
+  getDepartmentReport: function (userId, department) {
     try {
       const cacheKey = this._getReportCacheKey(userId, 'department', { department });
       if (typeof CacheManager !== 'undefined') {
@@ -495,14 +512,14 @@ const ReportService = {
 
       const cache = this._getCache(userId);
       let students = cache.students;
-      
+
       // Filter out missing years and report count
       const initialCount = students.length;
       students = students.filter(s => s['Year'] || s.year);
       const excludedCount = initialCount - students.length;
-      
+
       if (department) students = students.filter(s => (s['Department ID'] || s.department) === department);
-      
+
       const authorizedAttendance = cache.authorizedAttendance;
 
       const deptStats = {};
@@ -545,7 +562,7 @@ const ReportService = {
     }
   },
 
-  getCoordinatorReport: function(userId, targetCoordinatorId) {
+  getCoordinatorReport: function (userId, targetCoordinatorId) {
     try {
       const cacheKey = this._getReportCacheKey(userId, 'coordinator', { targetCoordinatorId });
       if (typeof CacheManager !== 'undefined') {
@@ -557,10 +574,10 @@ const ReportService = {
       const currentUser = cache.userMap.get(String(userId));
       const currentUserRole = currentUser ? (currentUser['Role'] || currentUser.role) : null;
       if (currentUser && currentUserRole === CONFIG.ROLES.COORDINATOR) {
-         if (targetCoordinatorId && String(targetCoordinatorId) !== String(userId)) {
-            return Utils.buildResponse(false, 'Unauthorized. Coordinators can only view their own report.');
-         }
-         targetCoordinatorId = userId; // Force query to self
+        if (targetCoordinatorId && String(targetCoordinatorId) !== String(userId)) {
+          return Utils.buildResponse(false, 'Unauthorized. Coordinators can only view their own report.');
+        }
+        targetCoordinatorId = userId; // Force query to self
       }
 
       let allUsers = cache.users;
@@ -576,15 +593,15 @@ const ReportService = {
         const events = allEvents.filter(e => String(e.coordinator_id || e.coordinatorId || e['Organizer']) === String(cId));
         const eventIds = new Set(events.map(e => e.event_id || e.eventId || e['Event ID']));
         const attendance = allAttendance.filter(a => eventIds.has(a['Event ID'] || a.event_id));
-        
+
         let lastActivity = 'N/A';
         if (attendance.length > 0) {
-           const latest = attendance.slice().sort((a,b) => {
-             const timeA = new Date(a['Timestamp'] || a['Date'] || a.attendance_time).getTime();
-             const timeB = new Date(b['Timestamp'] || b['Date'] || b.attendance_time).getTime();
-             return timeB - timeA;
-           })[0];
-           lastActivity = Utils.formatDate(latest['Timestamp'] || latest['Date'] || latest.attendance_time);
+          const latest = attendance.slice().sort((a, b) => {
+            const timeA = new Date(a['Timestamp'] || a['Date'] || a.attendance_time).getTime();
+            const timeB = new Date(b['Timestamp'] || b['Date'] || b.attendance_time).getTime();
+            return timeB - timeA;
+          })[0];
+          lastActivity = Utils.formatDate(latest['Timestamp'] || latest['Date'] || latest.attendance_time);
         }
 
         return {
@@ -606,16 +623,16 @@ const ReportService = {
     }
   },
 
-  getDateRangeReport: function(userId, fromDate, toDate) {
+  getDateRangeReport: function (userId, fromDate, toDate) {
     return this.getEventReport(userId, { fromDate, toDate });
   },
 
-  getAttendanceDefaulters: function(userId, filters = {}) {
+  getAttendanceDefaulters: function (userId, filters = {}) {
     try {
       const cache = this._getCache(userId);
       const threshold = filters.threshold ? Number(filters.threshold) : 75;
       let students = cache.students.filter(s => (s['Year'] || s.year) && (s['Student Status'] || s.status) !== 'Inactive');
-      
+
       if (filters.department) students = students.filter(s => (s['Department ID'] || s.department) === filters.department);
       if (filters.year) students = students.filter(s => String(s['Year'] || s.year) === String(filters.year));
 
@@ -656,7 +673,7 @@ const ReportService = {
     }
   },
 
-  getTopParticipants: function(userId, filters = {}) {
+  getTopParticipants: function (userId, filters = {}) {
     try {
       const cache = this._getCache(userId);
       const limit = filters.limit ? Number(filters.limit) : 20;
@@ -691,7 +708,7 @@ const ReportService = {
     }
   },
 
-  getAbsentStudents: function(userId, filters = {}) {
+  getAbsentStudents: function (userId, filters = {}) {
     try {
       const cache = this._getCache(userId);
       let records = cache.authorizedAttendance.filter(a => (a['Attendance Status'] || a.status) === CONFIG.ATTENDANCE_STATUS.ABSENT);
@@ -709,7 +726,7 @@ const ReportService = {
         const aEventId = a['Event ID'] || a.event_id;
         const stu = cache.studentMap.get(aRoll) || {};
         const evt = cache.events.find(e => (e.event_id || e.eventId || e['Event ID']) === aEventId) || {};
-        
+
         return {
           roll_number: aRoll,
           student_name: stu['Student Name'] || stu.student_name || 'Unknown',
@@ -728,7 +745,7 @@ const ReportService = {
     }
   },
 
-  getYearWiseReport: function(userId, year) {
+  getYearWiseReport: function (userId, year) {
     try {
       const cache = this._getCache(userId);
       let students = cache.students.filter(s => s['Year'] || s.year);
@@ -769,7 +786,7 @@ const ReportService = {
     }
   },
 
-  getDepartmentComparison: function(userId) {
+  getDepartmentComparison: function (userId) {
     try {
       const result = this.getDepartmentReport(userId, '');
       if (!result.success) return result;
@@ -788,7 +805,7 @@ const ReportService = {
     }
   },
 
-  getMonthlyReport: function(userId, filters = {}) {
+  getMonthlyReport: function (userId, filters = {}) {
     try {
       const cache = this._getCache(userId);
       let events = cache.authorizedEvents;
@@ -840,7 +857,7 @@ const ReportService = {
     }
   },
 
-  getEventTrendReport: function(userId, filters = {}) {
+  getEventTrendReport: function (userId, filters = {}) {
     try {
       const cache = this._getCache(userId);
       let events = cache.authorizedEvents;
@@ -884,7 +901,7 @@ const ReportService = {
     }
   },
 
-  getCancelledEvents: function(userId, filters = {}) {
+  getCancelledEvents: function (userId, filters = {}) {
     try {
       const cache = this._getCache(userId);
       let events = cache.authorizedEvents.filter(e => (e.status || e['Event Status']) === CONFIG.EVENT_STATUS.CANCELLED);
@@ -927,7 +944,7 @@ const ReportService = {
     }
   },
 
-  getCoordinatorPerformance: function(userId, coordinatorId) {
+  getCoordinatorPerformance: function (userId, coordinatorId) {
     try {
       const cache = this._getCache(userId);
       const currentUser = cache.userMap.get(String(userId));
@@ -950,7 +967,7 @@ const ReportService = {
         const eventIds = new Set(events.map(e => e.event_id || e.eventId || e['Event ID']));
         const attendance = cache.attendance.filter(a => eventIds.has(a['Event ID'] || a.event_id));
         const present = attendance.filter(a => (a['Attendance Status'] || a.status) === CONFIG.ATTENDANCE_STATUS.PRESENT).length;
-        
+
         const completed = events.filter(e => (e.status || e['Event Status']) === CONFIG.EVENT_STATUS.COMPLETED).length;
         const cancelled = events.filter(e => (e.status || e['Event Status']) === CONFIG.EVENT_STATUS.CANCELLED).length;
         const active = events.filter(e => (e.status || e['Event Status']) === CONFIG.EVENT_STATUS.ACTIVE).length;
@@ -990,12 +1007,12 @@ const ReportService = {
     }
   },
 
-  getStudentEventHistory: function(userId, rollNumber) {
+  getStudentEventHistory: function (userId, rollNumber) {
     try {
       const cache = this._getCache(userId);
       const student = cache.studentMap.get(rollNumber);
       if (!student) return Utils.buildResponse(false, 'Student not found.');
-      
+
       const sYear = student['Year'] || student.year;
       const sRoll = student['Roll Number'] || student.roll_number;
       const sName = student['Student Name'] || student.student_name;
@@ -1046,42 +1063,62 @@ const ReportService = {
   // DATABASE AND EXPORT PROCESSORS
   // ============================================================
 
-  getReportById: function(reportId) {
+  getReportById: function (reportId) {
     if (!reportId) return null;
     const records = DatabaseService.findByColumn(CONFIG.SHEETS.GENERATED_REPORTS, 'Report ID', reportId) || [];
     return records.length > 0 ? records[0] : null;
   },
 
-  getGeneratedReports: function(userId) {
+  getGeneratedReports: function (userId) {
     const all = DatabaseService.readAllRows(CONFIG.SHEETS.GENERATED_REPORTS) || [];
     const user = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, 'User ID', userId)[0];
-    const role = user ? (user['Role'] || user.role) : null;
-    if (user && role === CONFIG.ROLES.COORDINATOR) {
-      return all.filter(r => String(r['Generated By User ID']) === String(userId));
+    if (!user) return [];
+    
+    const roleClean = String(user['Role'] || user.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+    if (roleClean === 'SUPERADMIN') return all;
+
+    if (roleClean === 'HOD') {
+      const userDept = String(user.Department || user.department || '').trim().toUpperCase();
+      if (!userDept) return [];
+      const allUsers = DatabaseService.readAllRows(CONFIG.SHEETS.USERS) || [];
+      const deptUserIds = new Set(allUsers.filter(u => {
+        const d = String(u.Department || u.department || '').trim().toUpperCase();
+        return d === userDept;
+      }).map(u => String(u['User ID'] || u.user_id || '').trim()));
+
+      return all.filter(r => {
+        const genById = String(r['Generated By User ID'] || r.generated_by_user_id || '').trim();
+        return deptUserIds.has(genById);
+      });
     }
-    return all;
+
+    // Default: Coordinator / others only see their own
+    return all.filter(r => {
+      const genById = String(r['Generated By User ID'] || r.generated_by_user_id || '').trim();
+      return genById === String(userId);
+    });
   },
 
-  deleteReport: function(reportId, userId) {
+  deleteReport: function (reportId, userId) {
     try {
       const record = this.getReportById(reportId);
       if (!record) return Utils.buildResponse(false, 'Report not found.');
       DatabaseService.hardDelete(CONFIG.SHEETS.GENERATED_REPORTS, 'Report ID', reportId);
-      
+
       const check = this.getReportById(reportId);
       if (!check) {
         try {
           AuditService.logAction(userId, 'ReportService', 'DELETE_REPORT', reportId, 'Report', 'Report deleted', '', 'SUCCESS', userId);
-        } catch(e) {}
+        } catch (e) { }
         return Utils.buildResponse(true, 'Report deleted successfully.');
       }
       return Utils.buildResponse(false, 'Failed to delete report.');
-    } catch(error) {
+    } catch (error) {
       return Utils.buildResponse(false, error.message);
     }
   },
 
-  _createReportRecord: function(eventId, userId, name, type, pdf, excel, csv) {
+  _createReportRecord: function (eventId, userId, name, type, pdf, excel, csv) {
     const reportId = IdService.generateReportId();
     const now = new Date();
     const nowStr = Utils.formatDate(now);
@@ -1111,78 +1148,86 @@ const ReportService = {
     return reportId;
   },
 
-  generatePDF: function(eventId, userId) {
+  generatePDF: function (eventId, userId) {
     try {
       const reportId = this._createReportRecord(eventId, userId, 'Attendance PDF Export - ' + eventId, 'Attendance Summary', true, false, false);
       try {
         AuditService.logAction(userId, 'ReportService', 'GENERATE_PDF', reportId, 'Report', 'PDF generated', '', 'SUCCESS', userId);
-      } catch(e) {}
+      } catch (e) { }
       return Utils.buildResponse(true, 'PDF generated successfully.', { reportId: reportId });
-    } catch(error) {
+    } catch (error) {
       return Utils.buildResponse(false, error.message);
     }
   },
 
-  generateExcel: function(eventId, userId) {
+  generateExcel: function (eventId, userId) {
     try {
       const reportId = this._createReportRecord(eventId, userId, 'Attendance Excel Export - ' + eventId, 'Participant List', false, true, false);
       try {
         AuditService.logAction(userId, 'ReportService', 'GENERATE_EXCEL', reportId, 'Report', 'Excel generated', '', 'SUCCESS', userId);
-      } catch(e) {}
+      } catch (e) { }
       return Utils.buildResponse(true, 'Excel generated successfully.', { reportId: reportId });
-    } catch(error) {
+    } catch (error) {
       return Utils.buildResponse(false, error.message);
     }
   },
 
-  generateCSV: function(eventId, userId) {
+  generateCSV: function (eventId, userId) {
     try {
       const reportId = this._createReportRecord(eventId, userId, 'Attendance CSV Export - ' + eventId, 'Detailed Attendance', false, false, true);
       try {
         AuditService.logAction(userId, 'ReportService', 'GENERATE_CSV', reportId, 'Report', 'CSV generated', '', 'SUCCESS', userId);
-      } catch(e) {}
+      } catch (e) { }
       return Utils.buildResponse(true, 'CSV generated successfully.', { reportId: reportId });
-    } catch(error) {
+    } catch (error) {
       return Utils.buildResponse(false, error.message);
     }
   },
 
-  getCrossDepartmentAttendance: function(userId) {
+  getCrossDepartmentAttendance: function (userId) {
     try {
       const cache = this._getCache(userId);
       const studentMap = cache.studentMap;
       const userRecord = cache.userMap.get(String(userId).trim());
       if (!userRecord) return Utils.buildResponse(false, 'User not found.', { list: [] });
-      
-      const roleStr = String(userRecord['Role'] || userRecord.role || '').toUpperCase();
+
+      const roleStr = String(userRecord['Role'] || userRecord.role || '').toUpperCase().trim();
       const deptStr = String(userRecord['Department'] || userRecord.department || '').trim().toUpperCase();
       const isHOD = roleStr === 'HOD';
-      
+
+      if (!isHOD) {
+        return Utils.buildResponse(
+          false,
+          "Access denied. Only HODs can view cross-department scans.",
+          { list: [] }
+        );
+      }
+
       const allAttendance = cache.attendance || [];
-      const allEvents = cache.events || [];
+      const allEvents = cache.allEvents || cache.events || [];
       const eventMap = new Map();
       allEvents.forEach(e => {
         eventMap.set(String(e.event_id || e['Event ID']).trim(), e);
       });
-      
+
       const crossDeptList = [];
       allAttendance.forEach(a => {
         const roll = a['Roll Number'] || a.roll_number || a.rollNumber;
         const eId = a['Event ID'] || a.event_id || a.eventId;
         if (!roll || !eId) return;
-        
+
         const student = studentMap.get(String(roll).trim().toUpperCase());
         if (!student) return;
-        
+
         const studentDept = String(student[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || student['Department ID'] || '').trim().toUpperCase();
-        
+
         if (isHOD && studentDept !== deptStr) return;
-        
+
         const event = eventMap.get(String(eId).trim());
         if (!event) return;
-        
+
         const eventDept = String(event.departments || event.department || '').trim().toUpperCase();
-        
+
         if (eventDept && studentDept !== eventDept) {
           crossDeptList.push({
             roll: roll,
@@ -1197,7 +1242,7 @@ const ReportService = {
           });
         }
       });
-      
+
       return Utils.buildResponse(true, 'Cross department attendance compiled.', { list: crossDeptList });
     } catch (e) {
       Logger.log('getCrossDepartmentAttendance error: ' + e.message);
@@ -1209,7 +1254,7 @@ const ReportService = {
    * Generates College-Wise Participation Ranking Report.
    * Counts each student EXACTLY ONCE per college regardless of how many events they attended.
    */
-  getCollegeRankingReport: function(userId) {
+  getCollegeRankingReport: function (userId) {
     try {
       const cache = this._getCache(userId);
       const attendance = cache.attendance || [];
@@ -1280,7 +1325,7 @@ const ReportService = {
    * Generates Department-Wise Participation Ranking Report.
    * Ranks departments (CSE, ECE, EEE, AI&ML, MECHANICAL, CIVIL, FIRST YEAR) based on participation counts.
    */
-  getDepartmentRankingReport: function(userId) {
+  getDepartmentRankingReport: function (userId) {
     try {
       const cache = this._getCache(userId);
       const attendance = cache.attendance || [];
@@ -1377,7 +1422,7 @@ const ReportService = {
    * Generates Department Internal Branch, Year & Section Participation Ranking Report for HOD.
    * Identifies which Branch, Year (2/3/4) and Section within HOD's department participates most.
    */
-  getDepartmentBranchRankingReport: function(userId) {
+  getDepartmentBranchRankingReport: function (userId) {
     try {
       const cache = this._getCache(userId);
       const attendance = cache.attendance || [];
@@ -1452,15 +1497,15 @@ const ReportService = {
   },
 
   // Backward-compatibility Aliases for Test Suite
-  getEventAttendanceReport: function(userId, filters) {
+  getEventAttendanceReport: function (userId, filters) {
     return this.getEventReport(userId, filters);
   },
 
-  getStudentAttendanceHistoryReport: function(userId, rollNumber) {
+  getStudentAttendanceHistoryReport: function (userId, rollNumber) {
     return this.getStudentReport(userId, rollNumber);
   },
 
-  getDepartmentWiseReport: function(userId, department) {
+  getDepartmentWiseReport: function (userId, department) {
     return this.getDepartmentReport(userId, department);
   }
 };

@@ -138,6 +138,10 @@
     loadFilterDropdowns: async function() {
       try {
         // Populate Events dropdown
+        const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
+        const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+        const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+
         const eventsRes = await App.API._call('getAllEvents');
         const events = Array.isArray(eventsRes) ? eventsRes
           : (eventsRes && Array.isArray(eventsRes.data)) ? eventsRes.data
@@ -145,8 +149,12 @@
           : [];
         const eventSelect = document.getElementById('filterEventId');
         if (eventSelect) {
-          eventSelect.innerHTML = '<option value="">All Events</option>';
-          events.filter(e => !e['Deletion Flag'] && e['Deletion Flag'] !== true).forEach(e => {
+          let filteredEvents = events.filter(e => !e['Deletion Flag'] && e['Deletion Flag'] !== true);
+          if (isEventAdmin && selectedEventId) {
+            filteredEvents = filteredEvents.filter(e => String(e['Event ID'] || e.event_id || e.eventId).trim() === String(selectedEventId).trim());
+          }
+          eventSelect.innerHTML = (isEventAdmin && selectedEventId) ? '' : '<option value="">All Events</option>';
+          filteredEvents.forEach(e => {
             const id = e['Event ID'] || e.event_id || e.eventId || '';
             const name = e['Event Name'] || e.event_name || e.name || id;
             if (id) {
@@ -156,6 +164,9 @@
               eventSelect.appendChild(opt);
             }
           });
+          if (selectedEventId && filteredEvents.some(e => String(e['Event ID'] || e.event_id || e.eventId).trim() === String(selectedEventId).trim())) {
+            eventSelect.value = selectedEventId;
+          }
         }
       } catch(e) {
         console.warn('[Reports] Failed to load events for filter:', e);
@@ -172,7 +183,7 @@
         if (coordSelect) {
           coordSelect.innerHTML = '<option value="">All Admins</option>';
           users.filter(u => {
-            const role = String(u['Role'] || u.role || '').toUpperCase();
+            const role = String(u['Role'] || u.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
             const deleted = u['Deletion Flag'] === true || u['Deletion Flag'] === 'true';
             return !deleted && (role === 'COORDINATOR' || role === 'HOD');
           }).forEach(u => {
@@ -736,23 +747,27 @@
        });
     },
 
-    exportCSV: function() {
+    exportCSV: async function() {
        if (this.currentData.length === 0) {
-          App.UI.showInfo('No data to export. Please generate a report first.');
-          return;
+          App.UI.showInfo('Auto-generating report data for export...');
+          await this.generateReport();
+          if (this.currentData.length === 0) {
+             App.UI.showInfo('No records found to export for the selected filters.');
+             return;
+          }
        }
        const cols = this.getColumnsForType();
-       let csv = cols.map(c => '"' + c.label + '"').join(',') + '\n';
+       let csvStr = cols.map(c => '"' + c.label + '"').join(',') + '\n';
        
        this.currentData.forEach(row => {
-          csv += cols.map(c => {
+          csvStr += cols.map(c => {
              let val = row[c.key];
              if (val === undefined || val === null) val = '';
              return '"' + String(val).replace(/"/g, '""') + '"';
           }).join(',') + '\n';
        });
 
-       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+       const blob = new Blob(['\uFEFF' + csvStr], { type: 'text/csv;charset=utf-8;' });
        const url = URL.createObjectURL(blob);
        const link = document.createElement('a');
        link.setAttribute('href', url);
@@ -760,12 +775,17 @@
        document.body.appendChild(link);
        link.click();
        document.body.removeChild(link);
+       App.UI.showSuccess('CSV Export downloaded successfully!');
     },
 
-     exportPDF: function() {
+     exportPDF: async function() {
         if (this.currentData.length === 0) {
-           App.UI.showInfo('No data to export. Please generate a report first.');
-           return;
+           App.UI.showInfo('Auto-generating report data for PDF export...');
+           await this.generateReport();
+           if (this.currentData.length === 0) {
+              App.UI.showInfo('No records found to export for the selected filters.');
+              return;
+           }
         }
 
         const reportTitle = document.getElementById('reportTypeSelect')

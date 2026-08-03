@@ -419,39 +419,121 @@ function runEventManagementTests(summaryOnly) {
     }
   }
 
-  function testPublishedToActive() {
+  function getCoordinatorUserId() {
     try {
-      var pass = true;
-      recordResult(pass, "testPublishedToActive()", "", "EventService.js");
+      var allUsers = UserService.getAllUsers(null) || [];
+      var co = allUsers.find(function(u) {
+        var r = String(u['Role'] || u.role || '').toUpperCase();
+        return r === 'COORDINATOR';
+      });
+      return co ? (co['User ID'] || co.user_id || co.userId || "USR_COORD_01") : "USR_COORD_01";
+    } catch(e) {
+      return "USR_COORD_01";
+    }
+  }
+  var coordinatorUserId = getCoordinatorUserId();
+
+  function testPublishedToActive() {
+    var ts = Date.now();
+    var eid = null;
+    try {
+      var res = EventService.createEvent({
+        event_name: "Lifecycle Upcoming " + ts,
+        start_date: "2026-10-15",
+        status: "Upcoming"
+      }, superAdminUserId);
+      if (res && res.data) eid = res.data[CONFIG.COLUMNS.EVENT_ID];
+      
+      var transRes = EventService.changeEventStatus(eid, 'Active', superAdminUserId);
+      var updated = EventService.getEventById(eid);
+      
+      var pass = transRes && transRes.success === true && updated && (updated.status || updated['Event Status']) === 'Active';
+      recordResult(pass, "testPublishedToActive()", pass ? "" : "Failed to change Upcoming event to Active", "EventService.js");
     } catch (e) {
       recordResult(false, "testPublishedToActive()", e.message, "EventService.js");
+    } finally {
+      if (eid) try { DatabaseService.hardDelete(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID, eid); } catch(ex){}
     }
   }
 
   function testActiveToCompleted() {
+    var ts = Date.now();
+    var eid = null;
     try {
-      var pass = true;
-      recordResult(pass, "testActiveToCompleted()", "", "EventService.js");
+      var res = EventService.createEvent({
+        event_name: "Lifecycle Active " + ts,
+        start_date: "2026-10-15",
+        status: "Active"
+      }, superAdminUserId);
+      if (res && res.data) eid = res.data[CONFIG.COLUMNS.EVENT_ID];
+      
+      var transRes = EventService.changeEventStatus(eid, 'Completed', superAdminUserId);
+      var updated = EventService.getEventById(eid);
+      
+      var pass1 = transRes && transRes.success === true && updated && (updated.status || updated['Event Status']) === 'Completed';
+      var pass2 = EventService.canMarkAttendance(eid) === false;
+      var pass3 = EventService.canEditEvent(eid, coordinatorUserId) === false; // Coordinator can't edit completed
+      var pass4 = EventService.canEditEvent(eid, superAdminUserId) === true; // Super Admin can edit completed
+      
+      var pass = pass1 && pass2 && pass3 && pass4;
+      recordResult(pass, "testActiveToCompleted()", pass ? "" : `Checks failed. statusCompleted: ${pass1}, canMark: ${pass2}, coordEdit: ${pass3}, saEdit: ${pass4}`, "EventService.js");
     } catch (e) {
       recordResult(false, "testActiveToCompleted()", e.message, "EventService.js");
+    } finally {
+      if (eid) try { DatabaseService.hardDelete(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID, eid); } catch(ex){}
     }
   }
 
   function testActiveToCancelled() {
+    var ts = Date.now();
+    var eid = null;
     try {
-      var pass = true;
-      recordResult(pass, "testActiveToCancelled()", "", "EventService.js");
+      var res = EventService.createEvent({
+        event_name: "Lifecycle Active " + ts,
+        start_date: "2026-10-15",
+        status: "Active"
+      }, superAdminUserId);
+      if (res && res.data) eid = res.data[CONFIG.COLUMNS.EVENT_ID];
+      
+      var transRes = EventService.changeEventStatus(eid, 'Cancelled', superAdminUserId);
+      var updated = EventService.getEventById(eid);
+      
+      var pass1 = transRes && transRes.success === true && updated && (updated.status || updated['Event Status']) === 'Cancelled';
+      var pass2 = EventService.canMarkAttendance(eid) === false;
+      var pass3 = EventService.canEditEvent(eid, coordinatorUserId) === false; // Coordinator can't edit cancelled
+      
+      var pass = pass1 && pass2 && pass3;
+      recordResult(pass, "testActiveToCancelled()", pass ? "" : `Checks failed. statusCancelled: ${pass1}, canMark: ${pass2}, coordEdit: ${pass3}`, "EventService.js");
     } catch (e) {
       recordResult(false, "testActiveToCancelled()", e.message, "EventService.js");
+    } finally {
+      if (eid) try { DatabaseService.hardDelete(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID, eid); } catch(ex){}
     }
   }
 
   function testRejectInvalidStatusTransitions() {
+    var ts = Date.now();
+    var eid = null;
     try {
-      var pass = true;
-      recordResult(pass, "testRejectInvalidStatusTransitions()", "", "EventService.js");
+      var res = EventService.createEvent({
+        event_name: "Lifecycle Cancelled " + ts,
+        start_date: "2026-10-15",
+        status: "Cancelled"
+      }, superAdminUserId);
+      if (res && res.data) eid = res.data[CONFIG.COLUMNS.EVENT_ID];
+      
+      // Try to change cancelled event status back to active using coordinatorUserId
+      var badRes = EventService.changeEventStatus(eid, 'Active', coordinatorUserId);
+      
+      // Try to change cancelled event status back to active using superAdminUserId
+      var goodRes = EventService.changeEventStatus(eid, 'Active', superAdminUserId);
+      
+      var pass = badRes && badRes.success === false && goodRes && goodRes.success === true;
+      recordResult(pass, "testRejectInvalidStatusTransitions()", pass ? "" : `Transition reject checks failed. badRes: ${badRes ? badRes.success : 'null'}, goodRes: ${goodRes ? goodRes.success : 'null'}`, "EventService.js");
     } catch (e) {
       recordResult(false, "testRejectInvalidStatusTransitions()", e.message, "EventService.js");
+    } finally {
+      if (eid) try { DatabaseService.hardDelete(CONFIG.SHEETS.EVENTS, CONFIG.COLUMNS.EVENT_ID, eid); } catch(ex){}
     }
   }
 

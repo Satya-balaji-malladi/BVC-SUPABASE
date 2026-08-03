@@ -125,5 +125,10 @@
         .removeEventAssignment(token, assignmentId, 'Removed by Event Admin');
     }
   };
+  
+  // Auto-initialize when SPA script executes
+  if (typeof App !== 'undefined' && App.EventAdmin && typeof App.EventAdmin.init === 'function') {
+    App.EventAdmin.init();
+  }
 })();
 </script>

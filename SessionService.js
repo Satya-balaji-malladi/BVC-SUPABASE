@@ -12,7 +12,7 @@ const SessionService = {
    * If missing, falls back to the existing header name already used by this project.
    * IMPORTANT: Never invent new header names.
    */
-  _col: function(configKey, fallbackHeaderName, todoTag) {
+  _col: function (configKey, fallbackHeaderName, todoTag) {
     try {
       if (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS[configKey]) return CONFIG.COLUMNS[configKey];
       // Fallback: keep the original header name used by this project.
@@ -28,7 +28,7 @@ const SessionService = {
   },
 
   // Token generator: uses Utils.generateUUID if available, else falls back to Utilities.getUuid.
-  generateSessionToken: function() {
+  generateSessionToken: function () {
     try {
       if (typeof Utils !== 'undefined' && Utils && typeof Utils.generateUUID === 'function') {
         return Utils.generateUUID();
@@ -41,14 +41,14 @@ const SessionService = {
   },
 
   // Helper to resolve timestamps safely from Date objects, strings, or numbers
-  _getTimestamp: function(val) {
+  _getTimestamp: function (val) {
     if (!val) return 0;
     if (val instanceof Date) return val.getTime();
     var t = new Date(val).getTime();
     return isNaN(t) ? 0 : t;
   },
 
-  createSession: function(user) {
+  createSession: function (user) {
     try {
       if (!user) throw new Error('User is required');
 
@@ -60,8 +60,8 @@ const SessionService = {
         throw new Error('Invalid user');
       }
 
-      var sessionId = (typeof IdService !== 'undefined' && IdService && typeof IdService.generateSessionId === 'function') 
-        ? IdService.generateSessionId() 
+      var sessionId = (typeof IdService !== 'undefined' && IdService && typeof IdService.generateSessionId === 'function')
+        ? IdService.generateSessionId()
         : ('SES' + Math.floor(Math.random() * 1000000));
       var sessionToken = this.generateSessionToken();
 
@@ -96,7 +96,7 @@ const SessionService = {
 
       if (typeof DatabaseService !== 'undefined' && DatabaseService && typeof DatabaseService.insertRow === 'function') {
         DatabaseService.insertRow(sessionSheet, updates);
-        
+
         // Write the new session to CacheManager immediately to bypass Sheets read on next request
         if (typeof CacheManager !== 'undefined') {
           var cacheKey = "session_" + sessionToken;
@@ -114,7 +114,7 @@ const SessionService = {
     }
   },
 
-  getSession: function(sessionToken) {
+  getSession: function (sessionToken) {
     Logger.log("ENTER: SessionService.getSession");
     try {
       Logger.log("========== GET SESSION START ==========");
@@ -146,10 +146,10 @@ const SessionService = {
         var expiryCol = this._col('EXPIRY_TIME', 'Expiry Time', 'EXPIRY_TIME');
         var statusCol = this._col('SESSION_STATUS', 'Session Status', 'SESSION_STATUS');
         var activeStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.ACTIVE) ? CONFIG.SESSION_STATUS.ACTIVE : 'Active';
-        
+
         var expiryTime = this._getTimestamp(cached[expiryCol]);
         var currentTime = new Date().getTime();
-        
+
         if (String(cached[statusCol]) === String(activeStatus) && (expiryTime === 0 || currentTime <= expiryTime)) {
           Logger.log("========== GET SESSION SUCCESS (CACHED) ==========");
           return cached;
@@ -168,33 +168,18 @@ const SessionService = {
       Logger.log("Using Token Column: " + tokenCol);
       Logger.log("Sessions Sheet: " + sessionSheet);
 
-      if (typeof DatabaseService !== 'undefined' && DatabaseService && typeof DatabaseService.readAllRows === 'function') {
-        // Read all sessions for debugging purposes
-        var allSessions = DatabaseService.readAllRows(sessionSheet) || [];
-        Logger.log("Total Sessions Found: " + allSessions.length);
-
-        // Search for matching session
-        if (typeof DatabaseService.findByColumn === 'function') {
-          var records = DatabaseService.findByColumn(sessionSheet, tokenCol, sessionToken, {
-            caseSensitive: false,
-            strict: true
-          }) || [];
-
-          if (records.length === 0 && allSessions.length > 0) {
-            var targetTok = String(sessionToken).trim().toLowerCase();
-            var fallbackMatch = allSessions.find(function(s) {
-              var sTok = String(s['Session Token'] || s.session_token || s.token || s.sessionToken || '').trim().toLowerCase();
-              return sTok === targetTok;
-            });
-            if (fallbackMatch) records = [fallbackMatch];
-          }
+      if (typeof DatabaseService !== 'undefined' && DatabaseService && typeof DatabaseService.findByColumn === 'function') {
+        var records = DatabaseService.findByColumn(sessionSheet, tokenCol, sessionToken, {
+          caseSensitive: false,
+          strict: true
+        }) || [];
 
           Logger.log("Matching Records Found: " + records.length);
 
           if (records.length > 0) {
             Logger.log("Matched Session:");
             Logger.log(JSON.stringify(records[0]));
-            
+
             // Cache session
             if (typeof CacheManager !== 'undefined') {
               var ttl = (CONFIG && CONFIG.SECURITY && CONFIG.SECURITY.SESSION_CACHE_TTL_SECONDS) ? CONFIG.SECURITY.SESSION_CACHE_TTL_SECONDS : 300;
@@ -207,7 +192,6 @@ const SessionService = {
             return records[0];
           }
         }
-      }
 
       Logger.log("No matching session found.");
       Logger.log("========== GET SESSION END ==========");
@@ -225,7 +209,7 @@ const SessionService = {
     }
   },
 
-  _validateSessionRecord: function(session, sessionToken) {
+  _validateSessionRecord: function (session, sessionToken) {
     try {
       Logger.log("=== ENTER _validateSessionRecord() ===");
       Logger.log("Session Token: " + sessionToken);
@@ -241,14 +225,14 @@ const SessionService = {
       var tokenCol = this._col('SESSION_TOKEN', 'Session Token', 'SESSION_TOKEN');
 
       var activeStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.ACTIVE) ? CONFIG.SESSION_STATUS.ACTIVE : 'Active';
-      
+
       var statusVal = session['Session Status'] || session['session_status'] || session[statusCol];
-      
+
       Logger.log("Validation Step 1");
       Logger.log("Status Column Name: " + statusCol);
       Logger.log("Status Value: " + statusVal);
       Logger.log("Expected Active Status: " + activeStatus);
-      
+
       if (String(statusVal).toLowerCase() !== String(activeStatus).toLowerCase()) {
         Logger.log("Validation FAILED because: Status mismatch (Expected Active, got: " + statusVal + ")");
         Logger.log("=== EXIT _validateSessionRecord() ===");
@@ -290,7 +274,7 @@ const SessionService = {
 
         var updates = {};
         var sessionSheet = (CONFIG && CONFIG.SHEETS && CONFIG.SHEETS.SESSIONS) ? CONFIG.SHEETS.SESSIONS : 'Sessions';
-        
+
         var now = new Date();
         updates[lastActivityCol] = now;
 
@@ -327,7 +311,7 @@ const SessionService = {
     }
   },
 
-  validateSession: function(sessionToken) {
+  validateSession: function (sessionToken) {
     Logger.log("ENTER: SessionService.validateSession");
     try {
       Logger.log("========== VALIDATE SESSION ==========");
@@ -378,15 +362,15 @@ const SessionService = {
     }
   },
 
-  isLoggedIn: function(sessionToken) {
+  isLoggedIn: function (sessionToken) {
     return this.validateSession(sessionToken);
   },
 
-  isValidSession: function(sessionToken) {
+  isValidSession: function (sessionToken) {
     return this.validateSession(sessionToken);
   },
 
-  _updateLastActivity: function(sessionToken, userId) {
+  _updateLastActivity: function (sessionToken, userId) {
     try {
       if (!sessionToken) return;
       var cacheKey = "last_activity_" + sessionToken;
@@ -394,9 +378,9 @@ const SessionService = {
       if (typeof CacheService !== 'undefined') {
         try {
           cachedTime = CacheService.getScriptCache().get(cacheKey);
-        } catch(e) {}
+        } catch (e) { }
       }
-      
+
       var currentTime = new Date().getTime();
       if (!cachedTime || (currentTime - parseInt(cachedTime, 10)) > 120000) {
         var lastActivityCol = this._col('SESSION_LAST_ACTIVITY_TIMESTAMP', 'Last Activity Timestamp', 'SESSION_LAST_ACTIVITY_TIMESTAMP');
@@ -408,14 +392,14 @@ const SessionService = {
 
         if (userId) {
           var userUpdates = {};
-          userUpdates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
+          userUpdates['last_login_timestamp'] = new Date().toISOString();
           DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID || 'User ID', userId, userUpdates);
         }
 
         if (typeof CacheService !== 'undefined') {
           try {
             CacheService.getScriptCache().put(cacheKey, String(currentTime), 120);
-          } catch(e) {}
+          } catch (e) { }
         }
       }
     } catch (e) {
@@ -423,21 +407,21 @@ const SessionService = {
     }
   },
 
-  pingHeartbeat: function(sessionToken) {
+  pingHeartbeat: function (sessionToken) {
     try {
       if (!sessionToken) return Utils.buildResponse(false, 'Session token missing');
       var userId = this.getCurrentUser(sessionToken);
       if (!userId) return Utils.buildResponse(false, 'Invalid session');
-      
+
       this._updateLastActivity(sessionToken, userId);
       return Utils.buildResponse(true, 'Heartbeat acknowledged.');
-    } catch(e) {
+    } catch (e) {
       Logger.log("SessionService.pingHeartbeat error: " + e.message);
       return Utils.buildResponse(false, 'Heartbeat failed.');
     }
   },
 
-  sweepPresence: function() {
+  sweepPresence: function () {
     try {
       if (CONFIG && CONFIG.SKIP_EMAIL) return;
       if (typeof CacheService !== 'undefined') {
@@ -445,24 +429,24 @@ const SessionService = {
           var lastRun = CacheService.getScriptCache().get("last_sweep_presence");
           if (lastRun) return;
           CacheService.getScriptCache().put("last_sweep_presence", String(Date.now()), 120);
-        } catch(cErr) {}
+        } catch (cErr) { }
       }
       var sessionSheet = (CONFIG && CONFIG.SHEETS && CONFIG.SHEETS.SESSIONS) ? CONFIG.SHEETS.SESSIONS : 'Sessions';
       var statusCol = this._col('SESSION_STATUS', 'Session Status', 'SESSION_STATUS');
       var tokenCol = this._col('SESSION_TOKEN', 'Session Token', 'SESSION_TOKEN');
       var userIdCol = this._col('SESSION_USER_ID', 'User ID', 'SESSION_USER_ID');
       var lastActivityCol = this._col('SESSION_LAST_ACTIVITY_TIMESTAMP', 'Last Activity Timestamp', 'SESSION_LAST_ACTIVITY_TIMESTAMP');
-      
+
       var activeStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.ACTIVE) ? CONFIG.SESSION_STATUS.ACTIVE : 'Active';
       var expiredStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.EXPIRED) ? CONFIG.SESSION_STATUS.EXPIRED : 'Expired';
-      
+
       var sessions = DatabaseService.readAllRows(sessionSheet) || [];
       var currentTime = new Date().getTime();
-      
+
       var userActivityMap = {};
       var userTokensMap = {};
-      
-      sessions.forEach(function(s) {
+
+      sessions.forEach(function (s) {
         if (String(s[statusCol]) === String(activeStatus)) {
           var uId = s[userIdCol];
           var lastAct = s[lastActivityCol];
@@ -473,19 +457,19 @@ const SessionService = {
           }
         }
       });
-      
+
       var threshold = 180000; // 3 minutes
       var usersSheet = CONFIG.SHEETS.USERS;
       var users = DatabaseService.readAllRows(usersSheet) || [];
-      
-      users.forEach(function(u) {
+
+      users.forEach(function (u) {
         var uId = u[CONFIG.COLUMNS.USER_ID || 'User ID'];
         if (!uId) return;
         var currentStatus = u[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'];
-        
+
         var maxActivity = userActivityMap[uId] || 0;
         var isOnlineRealtime = (maxActivity > 0 && (currentTime - maxActivity) <= threshold);
-        
+
         if (isOnlineRealtime) {
           if (currentStatus !== 'Online') {
             var updates = {};
@@ -502,7 +486,7 @@ const SessionService = {
               updates[CONFIG.COLUMNS.USER_LAST_SEEN || 'LastSeen'] = new Date().toISOString();
             }
             DatabaseService.updateRow(usersSheet, CONFIG.COLUMNS.USER_ID || 'User ID', uId, updates);
-            
+
             var token = userTokensMap[uId];
             if (token) {
               var sUpdates = {};
@@ -512,12 +496,12 @@ const SessionService = {
           }
         }
       });
-    } catch(e) {
+    } catch (e) {
       Logger.log("SessionService.sweepPresence error: " + e.message);
     }
   },
 
-  expireSession: function(sessionToken) {
+  expireSession: function (sessionToken) {
     try {
       var statusCol = this._col('SESSION_STATUS', 'Session Status', 'SESSION_STATUS');
       var tokenCol = this._col('SESSION_TOKEN', 'Session Token', 'SESSION_TOKEN');
@@ -548,7 +532,7 @@ const SessionService = {
     }
   },
 
-  destroySession: function(sessionToken) {
+  destroySession: function (sessionToken) {
     try {
       var session = this.getSession(sessionToken);
       if (!session) return false;
@@ -584,15 +568,15 @@ const SessionService = {
     }
   },
 
-  getCurrentUser: function(sessionToken) {
+  getCurrentUser: function (sessionToken) {
     try {
       Logger.log("---------------------");
       Logger.log("ENTER getCurrentUser()");
       Logger.log("Session Token: " + sessionToken);
-      
+
       var session = this.getSession(sessionToken);
       Logger.log("Session Object: " + (session ? JSON.stringify(session) : "null/undefined"));
-      
+
       if (!session) {
         Logger.log("getCurrentUser FAILED: Session object not found");
         Logger.log("EXIT getCurrentUser()");
@@ -601,13 +585,13 @@ const SessionService = {
       }
 
       Logger.log("Session Keys: " + JSON.stringify(Object.keys(session)));
-      
+
       var configUserIdCol = (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.USER_ID) ? CONFIG.COLUMNS.USER_ID : 'User ID';
       Logger.log("CONFIG USER_ID Column: " + configUserIdCol);
-      
+
       var sessionUserIdColVal = session["User ID"];
       Logger.log("session[\"User ID\"]: " + sessionUserIdColVal);
-      
+
       var sessionConfigColVal = session[configUserIdCol];
       Logger.log("session[CONFIG.COLUMNS.USER_ID]: " + sessionConfigColVal);
 
@@ -635,7 +619,7 @@ const SessionService = {
     }
   },
 
-  getUserContext: function(sessionToken) {
+  getUserContext: function (sessionToken) {
     try {
       if (!sessionToken) return null;
       if (sessionToken === "TOKEN_SUPER_ADMIN" || sessionToken === "SUPER_ADMIN_TOKEN") {
@@ -660,7 +644,7 @@ const SessionService = {
         const cached = CacheManager.get(cacheKey);
         if (cached) return cached;
       }
-      
+
       var userId = this.getCurrentUser(sessionToken);
       if (!userId) return null;
 
@@ -675,14 +659,14 @@ const SessionService = {
 
       var role = String(user[roleCol] || user.role || user['User Role'] || 'Coordinator').trim();
       var department = String(
-        user[deptCol] || 
-        user['Department'] || 
-        user['Department ID'] || 
-        user['department'] || 
-        user['department_id'] || 
-        user['Dept'] || 
-        user.department || 
-        user.departmentId || 
+        user[deptCol] ||
+        user['Department'] ||
+        user['Department ID'] ||
+        user['department'] ||
+        user['department_id'] ||
+        user['Dept'] ||
+        user.department ||
+        user.departmentId ||
         ''
       ).trim();
       var status = String(user[statusCol] || user.status || 'Active').trim();
@@ -693,6 +677,8 @@ const SessionService = {
       var hodRole = (CONFIG.ROLES ? CONFIG.ROLES.HOD : 'HOD');
       var coordRole = (CONFIG.ROLES ? CONFIG.ROLES.COORDINATOR : 'Coordinator');
 
+      var normRole = role.toUpperCase().replace(/[\s_]+/g, '');
+
       const result = {
         userId: userId,
         role: role,
@@ -700,16 +686,21 @@ const SessionService = {
         employeeId: employeeId,
         status: status,
         active: status.toLowerCase() === 'active',
-        isSuperAdmin: role.toUpperCase() === superAdminRole.toUpperCase() || role.toUpperCase() === 'SUPER ADMIN',
-        isAdmin: role.toUpperCase() === adminRole.toUpperCase() || role.toUpperCase() === superAdminRole.toUpperCase() || role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'SUPER ADMIN',
-        isEventAdmin: role.toUpperCase() === 'EVENT ADMIN' || role.toUpperCase() === 'EVENT_ADMIN' || role.toUpperCase() === 'ADMIN',
-        isHOD: role.toUpperCase() === hodRole.toUpperCase() || role.toUpperCase() === 'HOD',
-        isCoordinator: role.toUpperCase() === coordRole.toUpperCase() || role.toUpperCase() === 'COORDINATOR'
+        isSuperAdmin: normRole === 'SUPERADMIN' || role.toUpperCase() === superAdminRole.toUpperCase() || role.toUpperCase() === 'SUPER ADMIN',
+        isAdmin: normRole === 'SUPERADMIN' || normRole === 'ADMIN' || normRole === 'EVENTADMIN' || role.toUpperCase() === adminRole.toUpperCase() || role.toUpperCase() === superAdminRole.toUpperCase() || role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'SUPER ADMIN',
+        isEventAdmin: normRole === 'EVENTADMIN' || normRole === 'ADMIN' || normRole === 'SUPERADMIN' || role.toUpperCase() === 'EVENT ADMIN' || role.toUpperCase() === 'EVENT_ADMIN' || role.toUpperCase() === 'ADMIN',
+        isHOD: normRole === 'HOD' || role.toUpperCase() === hodRole.toUpperCase() || role.toUpperCase() === 'HOD',
+        isCoordinator: normRole === 'COORDINATOR' || role.toUpperCase() === coordRole.toUpperCase() || role.toUpperCase() === 'COORDINATOR',
+        isFaculty: normRole === 'FACULTY' || role.toUpperCase() === 'FACULTY'
       };
+
+      Logger.log("========== USER CONTEXT ==========");
+      Logger.log(JSON.stringify(result, null, 2));
 
       if (typeof CacheManager !== 'undefined' && result) {
         CacheManager.put(cacheKey, result, 300);
       }
+
       return result;
     } catch (e) {
       Logger.log('SessionService.getUserContext error: ' + (e && e.message ? e.message : e));
@@ -717,7 +708,7 @@ const SessionService = {
     }
   },
 
-  isLoggedIn: function(sessionToken) {
+  isLoggedIn: function (sessionToken) {
     try {
       return this.validateSession(sessionToken);
     } catch (error) {
@@ -726,7 +717,7 @@ const SessionService = {
     }
   },
 
-  isUserLoggedIn: function(userId) {
+  isUserLoggedIn: function (userId) {
     try {
       var userIdCol = this._col('SESSION_USER_ID', 'User ID', 'SESSION_USER_ID');
       var statusCol = this._col('SESSION_STATUS', 'Session Status', 'SESSION_STATUS');
@@ -756,7 +747,7 @@ const SessionService = {
     }
   },
 
-  cleanupExpiredSessions: function() {
+  cleanupExpiredSessions: function () {
     try {
       var sessionSheet = (CONFIG && CONFIG.SHEETS && CONFIG.SHEETS.SESSIONS) ? CONFIG.SHEETS.SESSIONS : 'Sessions';
       var statusCol = this._col('SESSION_STATUS', 'Session Status', 'SESSION_STATUS');
@@ -766,8 +757,8 @@ const SessionService = {
       var activeStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.ACTIVE) ? CONFIG.SESSION_STATUS.ACTIVE : 'Active';
       var expiredStatus = (CONFIG && CONFIG.SESSION_STATUS && CONFIG.SESSION_STATUS.EXPIRED) ? CONFIG.SESSION_STATUS.EXPIRED : 'Expired';
 
-      if (typeof DatabaseService !== 'undefined' && DatabaseService && typeof DatabaseService.readAllRows === 'function') {
-        var sessions = DatabaseService.readAllRows(sessionSheet) || [];
+      if (typeof DatabaseService !== 'undefined' && DatabaseService && typeof DatabaseService.findByColumn === 'function') {
+        var sessions = DatabaseService.findByColumn(sessionSheet, statusCol, activeStatus) || [];
         var currentTime = new Date().getTime();
 
         for (var i = 0; i < sessions.length; i++) {
@@ -791,7 +782,7 @@ const SessionService = {
     }
   },
 
-  logoutAllSessions: function(userId) {
+  logoutAllSessions: function (userId) {
     try {
       var userIdCol = this._col('SESSION_USER_ID', 'User ID', 'SESSION_USER_ID');
       var statusCol = this._col('SESSION_STATUS', 'Session Status', 'SESSION_STATUS');
@@ -830,7 +821,7 @@ const SessionService = {
     }
   },
 
-  refreshSession: function(sessionToken) {
+  refreshSession: function (sessionToken) {
     try {
       var session = this.getSession(sessionToken);
       if (!session) return false;
@@ -870,7 +861,7 @@ const SessionService = {
     }
   },
 
-  hasRole: function(sessionToken, role) {
+  hasRole: function (sessionToken, role) {
     try {
       var userId = this.getCurrentUser(sessionToken);
       if (!userId) return false;
@@ -908,7 +899,7 @@ const SessionService = {
    *  - Supports role aliasing (Admin and Super Admin are equivalent).
    *  - Restricts Coordinators to assigned events via CoordinatorService.canManageEvent.
    */
-  authorize: function(sessionToken, options, callback) {
+  authorize: function (sessionToken, options, callback) {
     try {
       if (!sessionToken || String(sessionToken).trim() === '') {
         return Utils.buildResponse(false, 'Authentication required.');
@@ -921,7 +912,7 @@ const SessionService = {
 
       var userSheet = (CONFIG && CONFIG.SHEETS && CONFIG.SHEETS.USERS) ? CONFIG.SHEETS.USERS : 'Users';
       var userIdCol = this._col('USER_ID', 'User ID', 'USER_ID');
-      
+
       var user = null;
       if (typeof UserService !== 'undefined' && UserService && typeof UserService.getUserById === 'function') {
         user = UserService.getUserById(userId);
@@ -934,7 +925,12 @@ const SessionService = {
         return Utils.buildResponse(false, 'User not found.');
       }
 
-      var isCompleted = user[CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'ProfileCompleted'];
+      // Check profile_completed using actual Supabase snake_case key
+      var isCompleted = user['profile_completed'];
+      // Also check legacy camelCase keys for backward compatibility
+      if (isCompleted === undefined || isCompleted === null) {
+        isCompleted = user[CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'ProfileCompleted'];
+      }
       var isCompletingProfileAction = (options && options.action === 'completeProfile');
       if (!isCompletingProfileAction && (isCompleted === false || isCompleted === 'false' || isCompleted === 'FALSE' || isCompleted === '')) {
         return Utils.buildResponse(false, 'Profile completion is required.');
@@ -953,7 +949,7 @@ const SessionService = {
       if (options && options.allowedRoles) {
         var isSuperAdmin = role === 'Super Admin' || role === 'Admin';
         var allowedSuperAdmin = options.allowedRoles.indexOf('Super Admin') !== -1 || options.allowedRoles.indexOf('Admin') !== -1;
-        
+
         var isHOD = role === 'HOD';
         var allowedHOD = options.allowedRoles.indexOf('HOD') !== -1;
 
@@ -996,7 +992,7 @@ const SessionService = {
     }
   },
 
-  withSession: function(sessionToken, callback) {
+  withSession: function (sessionToken, callback) {
     try {
       Logger.log("=== ENTER withSession() ===");
       Logger.log("Incoming Token: " + sessionToken);

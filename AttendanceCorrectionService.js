@@ -84,7 +84,8 @@ const AttendanceCorrectionService = {
       });
 
       // Apply to original attendance
-      const success = DatabaseService.updateRow(CONFIG.SHEETS.ATTENDANCE, 'attendance_id', req.attendance_id, {
+      const attIdCol = (CONFIG && CONFIG.COLUMNS && CONFIG.COLUMNS.ATTENDANCE_ID) ? CONFIG.COLUMNS.ATTENDANCE_ID : 'Attendance ID';
+      const success = DatabaseService.updateRow(CONFIG.SHEETS.ATTENDANCE, attIdCol, req.attendance_id, {
         attendance_status: req.requested_status,
         correction_status: 'Approved',
         correction_handled_by: approverId,

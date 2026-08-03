@@ -3,39 +3,52 @@
    * ==========================================
    * PROFILE MODULE JAVASCRIPT CONTROLLER
    * ==========================================
+   * Performance Strategy:
+   *  1. Render INSTANTLY from App.State.currentUser (already in memory from session).
+   *  2. Fire a single background fetch (getUserById) to refresh with latest DB data.
+   *  3. Re-render silently if the background data differs — no loading spinner shown.
    */
   (function () {
     const Profile = {
       userId: null,
       currentUserData: null,
+      _departmentsCache: null,
 
       init: function () {
         console.log('Initializing Profile Module...');
-        
+
+        // Resolve userId — first try App.State (already in memory, zero cost)
         let currentUserId = null;
         if (typeof App !== 'undefined' && App.State && App.State.currentUser) {
-          console.log("Profile Current User Object:", App.State.currentUser);
-          currentUserId = App.State.currentUser['User ID'] || App.State.currentUser.user_id || App.State.currentUser.userId;
+          currentUserId = App.State.currentUser['User ID'] ||
+                          App.State.currentUser.user_id ||
+                          App.State.currentUser.userId;
         }
 
-        if (!currentUserId) {
-          console.log("User ID not found in App.State.currentUser. Resolving from session...");
+        if (currentUserId) {
+          // ✅ Fast path: user already in memory — render instantly
+          this.userId = currentUserId;
+          this.bindEvents();
+          this._renderFromState(App.State.currentUser);     // immediate render
+          this._backgroundRefresh();                        // silent background sync
+        } else {
+          // ⚠️ Slow path: no cached user — must call server once to authenticate
           const token = localStorage.getItem('sessionToken');
           if (!token) {
             App.UI.showError("Failed to identify current user session. Please log in again.");
             return;
           }
-          
           App.LoadingManager.show();
           App.API._call('authenticate', token)
             .then(res => {
+              App.LoadingManager.hide();
               if (res && res.success && res.user) {
                 App.State.currentUser = res.user;
                 this.userId = res.user['User ID'] || res.user.user_id || res.user.userId;
                 this.bindEvents();
-                this.loadProfileData();
+                this._renderFromState(res.user);
+                this._backgroundRefresh();
               } else {
-                App.LoadingManager.hide();
                 App.UI.showError("Session expired or invalid. Please log in again.");
               }
             })
@@ -44,17 +57,103 @@
               console.error("Session validation error", err);
               App.UI.showError("Error validating session: " + err.message);
             });
-          return;
+        }
+      },
+
+      /**
+       * Renders the profile UI from a user object — no network call needed.
+       * Called immediately on init using the cached App.State.currentUser.
+       */
+      _renderFromState: function (user) {
+        if (!user) return;
+        this.currentUserData = user;
+
+        // Resolve department name from what is already known
+        const deptVal = String(user['Department'] || user.department || '').trim();
+        let deptName = deptVal || '--';
+
+        // If departments are already cached, resolve the name
+        if (this._departmentsCache && deptVal) {
+          const matched = this._departmentsCache.find(d =>
+            String(d['Department ID'] || d.department_id || '').trim().toUpperCase() === deptVal.toUpperCase() ||
+            String(d['Department Code'] || d.department_code || '').trim().toUpperCase() === deptVal.toUpperCase()
+          );
+          if (matched) deptName = matched['Department Name'] || matched.department_name || deptVal;
         }
 
-        this.userId = currentUserId;
-        this.bindEvents();
-        this.loadProfileData();
+        user._resolvedDepartmentName = deptName;
+        this.renderProfile(user);
+
+        // Fetch departments in background to resolve department name if not yet cached
+        if (!this._departmentsCache && deptVal && deptVal !== '--') {
+          const token = localStorage.getItem('sessionToken');
+          App.API._call('getAllDepartments', token)
+            .then(deptsRes => {
+              let departmentsList = [];
+              if (Array.isArray(deptsRes)) {
+                departmentsList = deptsRes;
+              } else if (deptsRes && deptsRes.data && Array.isArray(deptsRes.data.departments)) {
+                departmentsList = deptsRes.data.departments;
+              } else if (deptsRes && deptsRes.data && Array.isArray(deptsRes.data)) {
+                departmentsList = deptsRes.data;
+              } else if (deptsRes && Array.isArray(deptsRes.departments)) {
+                departmentsList = deptsRes.departments;
+              }
+              this._departmentsCache = departmentsList;
+
+              const matched = departmentsList.find(d =>
+                String(d['Department ID'] || d.department_id || '').trim().toUpperCase() === deptVal.toUpperCase() ||
+                String(d['Department Code'] || d.department_code || '').trim().toUpperCase() === deptVal.toUpperCase()
+              );
+              if (matched) {
+                const resolvedName = matched['Department Name'] || matched.department_name || deptVal;
+                // Update just the department fields silently
+                const metaDept = document.getElementById('profileMetaDepartment');
+                const formDept = document.getElementById('profileDepartmentDisplay');
+                if (metaDept) metaDept.textContent = resolvedName;
+                if (formDept) formDept.value = resolvedName;
+                if (this.currentUserData) this.currentUserData._resolvedDepartmentName = resolvedName;
+              }
+            })
+            .catch(err => console.warn('Profile: department fetch error (non-blocking):', err));
+        }
+      },
+
+      /**
+       * Silently re-fetches user data from the server in the background.
+       * If the data changed, it re-renders without showing a loading spinner.
+       */
+      _backgroundRefresh: function () {
+        if (!this.userId) return;
+        // Small delay so the initial render is visible before background work starts
+        setTimeout(() => {
+          App.API._call('getUserById', this.userId)
+            .then(freshUser => {
+              if (!freshUser || !freshUser['User ID']) return; // server returned nothing useful
+              // Resolve dept name using cache if available
+              const deptVal = String(freshUser['Department'] || freshUser.department || '').trim();
+              let deptName = deptVal || '--';
+              if (this._departmentsCache && deptVal) {
+                const matched = this._departmentsCache.find(d =>
+                  String(d['Department ID'] || d.department_id || '').trim().toUpperCase() === deptVal.toUpperCase()
+                );
+                if (matched) deptName = matched['Department Name'] || matched.department_name || deptVal;
+              } else if (this.currentUserData && this.currentUserData._resolvedDepartmentName) {
+                deptName = this.currentUserData._resolvedDepartmentName;
+              }
+              freshUser._resolvedDepartmentName = deptName;
+              this.currentUserData = freshUser;
+              App.State.currentUser = freshUser; // update the shared state too
+              this.renderProfile(freshUser);
+            })
+            .catch(err => console.warn('Profile: background refresh error (non-blocking):', err));
+        }, 300);
       },
 
       bindEvents: function () {
         const detailsForm = document.getElementById('profileDetailsForm');
-        if (detailsForm) {
+        if (detailsForm && !detailsForm.dataset.bound) {
+          detailsForm.dataset.bound = "true";
           detailsForm.addEventListener('submit', (e) => {
             e.preventDefault();
             this.saveDetails();
@@ -62,98 +161,66 @@
         }
 
         const passwordForm = document.getElementById('profilePasswordForm');
-        if (passwordForm) {
+        if (passwordForm && !passwordForm.dataset.bound) {
+          passwordForm.dataset.bound = "true";
           passwordForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.changePassword();
+          });
+        }
+
+        const changeBtn = document.getElementById('changePasswordBtn');
+        if (changeBtn && !changeBtn.dataset.bound) {
+          changeBtn.dataset.bound = "true";
+          changeBtn.addEventListener('click', (e) => {
+            const passwordForm = document.getElementById('profilePasswordForm');
+            if (passwordForm && passwordForm.checkValidity && !passwordForm.checkValidity()) {
+              passwordForm.reportValidity();
+              return;
+            }
             e.preventDefault();
             this.changePassword();
           });
         }
       },
 
-      loadProfileData: function () {
-        App.LoadingManager.show();
-
-        const token = localStorage.getItem('sessionToken');
-        Promise.all([
-          App.API._call('getUserById', this.userId),
-          App.API._call('getAllDepartments', token)
-        ])
-        .then(([user, deptsRes]) => {
-          App.LoadingManager.hide();
-          if (!user || !user['User ID']) {
-            App.UI.showError("Failed to retrieve profile record from server.");
-            return;
-          }
-
-          let departmentsList = [];
-          if (Array.isArray(deptsRes)) {
-            departmentsList = deptsRes;
-          } else if (deptsRes && deptsRes.data && Array.isArray(deptsRes.data.departments)) {
-            departmentsList = deptsRes.data.departments;
-          } else if (deptsRes && deptsRes.data && Array.isArray(deptsRes.data)) {
-            departmentsList = deptsRes.data;
-          } else if (deptsRes && Array.isArray(deptsRes.departments)) {
-            departmentsList = deptsRes.departments;
-          }
-
-          const deptVal = String(user['Department'] || user.department || '').trim();
-          let deptName = deptVal || '--';
-          if (deptVal && deptVal !== '--') {
-            const matched = departmentsList.find(d => 
-              String(d['Department ID'] || d.department_id || d.id || '').trim().toUpperCase() === deptVal.toUpperCase() ||
-              String(d['Department Code'] || d.department_code || '').trim().toUpperCase() === deptVal.toUpperCase()
-            );
-            if (matched) {
-              deptName = matched['Department Name'] || matched.department_name || matched['Department Code'] || deptVal;
-            }
-          }
-          user._resolvedDepartmentName = deptName;
-
-          this.currentUserData = user;
-          this.renderProfile(user);
-        })
-        .catch(err => {
-          App.LoadingManager.hide();
-          console.error("Failed to load profile", err);
-          App.UI.showError("Error loading profile data: " + (err.message || ''));
-        });
-      },
-
       renderProfile: function (user) {
-        // Map spreadsheet columns with fallback checks
-        const firstName = user['First Name'] || user.first_name || '';
-        const lastName = user['Last Name'] || user.last_name || '';
-        const fullName = `${firstName} ${lastName}`.trim();
-        const designation = user['Title/Designation'] || user.designation || 'Staff Member';
-        const role = user['Role'] || user.role || 'User';
-        const username = user['Username'] || user.username || '--';
-        const employeeId = user['Employee ID'] || user.employee_id || '--';
-        const department = user._resolvedDepartmentName || user['Department'] || user.department || '--';
-        const lastLogin = user['Last Login Timestamp'] || user.last_login_timestamp || '--';
+        const firstName    = user['First Name'] || user.first_name || '';
+        const lastName     = user['Last Name'] || user.last_name || '';
+        const fullName     = `${firstName} ${lastName}`.trim();
+        const designation  = user['Title/Designation'] || user.designation || 'Staff Member';
+        const role         = user['Role'] || user.role || 'User';
+        const username     = user['Username'] || user.username || '--';
+        const employeeId   = user['Employee ID'] || user.employee_id || '--';
+        const department   = user._resolvedDepartmentName || user['Department'] || user.department || '--';
+        const lastLogin    = user['Last Login Timestamp'] || user.last_login_timestamp || '--';
 
-        // Render Summary Sidebar Card
-        document.getElementById('profileSummaryName').textContent = fullName || 'Unnamed User';
-        document.getElementById('profileSummaryTitle').textContent = designation;
-        document.getElementById('profileSummaryRole').textContent = role;
-        document.getElementById('profileMetaUsername').textContent = username;
-        document.getElementById('profileMetaEmployeeId').textContent = employeeId;
-        document.getElementById('profileMetaDepartment').textContent = department;
-        document.getElementById('profileMetaLastLogin').textContent = lastLogin !== '--' ? new Date(lastLogin).toLocaleString() : '--';
+        // Sidebar summary
+        const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 
-        // Render Details Fields
-        document.getElementById('profileFirstName').value = firstName;
-        document.getElementById('profileLastName').value = lastName;
-        document.getElementById('profileEmail').value = user['Email Address'] || user.email_address || user.email || '';
-        document.getElementById('profilePhone').value = user['Phone Number'] || user.phone_number || user.phone || '';
-        document.getElementById('profileDesignation').value = designation;
-        document.getElementById('profileDepartmentDisplay').value = department;
+        setEl('profileSummaryName',     fullName || 'Unnamed User');
+        setEl('profileSummaryTitle',    designation);
+        setEl('profileSummaryRole',     role);
+        setEl('profileMetaUsername',    username);
+        setEl('profileMetaEmployeeId',  employeeId);
+        setEl('profileMetaDepartment',  department);
+        setEl('profileMetaLastLogin',   lastLogin !== '--' ? new Date(lastLogin).toLocaleString() : '--');
+
+        // Edit form fields
+        setVal('profileFirstName',         firstName);
+        setVal('profileLastName',          lastName);
+        setVal('profileEmail',             user['Email Address'] || user.email_address || user.email || '');
+        setVal('profilePhone',             user['Phone Number'] || user.phone_number || user.phone || '');
+        setVal('profileDesignation',       designation);
+        setVal('profileDepartmentDisplay', department);
       },
 
       saveDetails: function () {
-        const email = document.getElementById('profileEmail').value.trim();
-        const phone = document.getElementById('profilePhone').value.trim();
-        const firstName = document.getElementById('profileFirstName').value.trim();
-        const lastName = document.getElementById('profileLastName').value.trim();
+        const email       = document.getElementById('profileEmail').value.trim();
+        const phone       = document.getElementById('profilePhone').value.trim();
+        const firstName   = document.getElementById('profileFirstName').value.trim();
+        const lastName    = document.getElementById('profileLastName').value.trim();
         const designation = document.getElementById('profileDesignation').value.trim();
 
         if (phone && phone.length !== 10) {
@@ -163,17 +230,16 @@
 
         const spinner = document.getElementById('saveProfileSpinner');
         const saveBtn = document.getElementById('saveProfileDetailsBtn');
-
         if (spinner) spinner.classList.remove('d-none');
         if (saveBtn) saveBtn.disabled = true;
 
-        // Construct update payload mapping precisely to spreadsheet headers
-        const payload = {};
-        payload['First Name'] = firstName;
-        payload['Last Name'] = lastName;
-        payload['Email Address'] = email;
-        payload['Phone Number'] = phone;
-        payload['Title/Designation'] = designation;
+        const payload = {
+          'First Name':       firstName,
+          'Last Name':        lastName,
+          'Email Address':    email,
+          'Phone Number':     phone,
+          'Title/Designation': designation
+        };
 
         App.API._call('updateUser', this.userId, payload)
           .then(res => {
@@ -182,18 +248,31 @@
 
             if (res && res.success) {
               App.UI.showSuccess("Profile details updated successfully.");
-              
-              // Dynamically refresh sidebar username display
-              const navbarFullnameEl = document.querySelector('.user-fullname');
-              if (navbarFullnameEl) {
-                navbarFullnameEl.textContent = `${firstName} ${lastName}`.trim();
-              }
-              const navbarRoleEl = document.querySelector('.user-role');
-              if (navbarRoleEl) {
-                navbarRoleEl.textContent = designation || 'Administrator';
+
+              // Update the local state so re-renders are instant
+              if (App.State.currentUser) {
+                App.State.currentUser['First Name']        = firstName;
+                App.State.currentUser['Last Name']         = lastName;
+                App.State.currentUser['Email Address']     = email;
+                App.State.currentUser['Phone Number']      = phone;
+                App.State.currentUser['Title/Designation'] = designation;
               }
 
-              this.loadProfileData();
+              // Refresh sidebar user display
+              const navbarFullnameEl = document.querySelector('.user-fullname');
+              if (navbarFullnameEl) navbarFullnameEl.textContent = `${firstName} ${lastName}`.trim();
+              const navbarRoleEl = document.querySelector('.user-role');
+              if (navbarRoleEl) navbarRoleEl.textContent = designation || 'Administrator';
+
+              // Re-render from updated local state (no server round-trip needed)
+              if (this.currentUserData) {
+                this.currentUserData['First Name']        = firstName;
+                this.currentUserData['Last Name']         = lastName;
+                this.currentUserData['Email Address']     = email;
+                this.currentUserData['Phone Number']      = phone;
+                this.currentUserData['Title/Designation'] = designation;
+                this.renderProfile(this.currentUserData);
+              }
             } else {
               App.UI.showError(res.message || "Failed to update profile details.");
             }
@@ -207,23 +286,37 @@
       },
 
       changePassword: function () {
-        const currentPassword = document.getElementById('profileCurrentPassword').value;
-        const newPassword = document.getElementById('profileNewPassword').value;
-        const confirmPassword = document.getElementById('profileConfirmPassword').value;
+        const currentPassEl = document.getElementById('profileCurrentPassword');
+        const newPassEl     = document.getElementById('profileNewPassword');
+        const confirmPassEl = document.getElementById('profileConfirmPassword');
 
-        if (newPassword !== confirmPassword) {
-          App.UI.showError("New passwords do not match.");
+        const currentPassword = currentPassEl ? currentPassEl.value : '';
+        const newPassword     = newPassEl ? newPassEl.value : '';
+        const confirmPassword = confirmPassEl ? confirmPassEl.value : '';
+
+        if (!currentPassword) {
+          App.UI.showError("Please enter your current password.");
+          if (currentPassEl) currentPassEl.focus();
           return;
         }
-
+        if (!newPassword) {
+          App.UI.showError("Please enter your new password.");
+          if (newPassEl) newPassEl.focus();
+          return;
+        }
         if (newPassword.length < 6) {
           App.UI.showError("New password must be at least 6 characters long.");
+          if (newPassEl) newPassEl.focus();
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          App.UI.showError("New password and confirm password do not match.");
+          if (confirmPassEl) confirmPassEl.focus();
           return;
         }
 
-        const spinner = document.getElementById('changePasswordSpinner');
+        const spinner   = document.getElementById('changePasswordSpinner');
         const changeBtn = document.getElementById('changePasswordBtn');
-
         if (spinner) spinner.classList.remove('d-none');
         if (changeBtn) changeBtn.disabled = true;
 
@@ -233,8 +326,9 @@
             if (changeBtn) changeBtn.disabled = false;
 
             if (res && res.success) {
-              App.UI.showSuccess("Password updated successfully.");
-              document.getElementById('profilePasswordForm').reset();
+              App.UI.showSuccess(res.message || "Password updated successfully.");
+              const passwordForm = document.getElementById('profilePasswordForm');
+              if (passwordForm) passwordForm.reset();
             } else {
               App.UI.showError(res.message || "Failed to update password.");
             }

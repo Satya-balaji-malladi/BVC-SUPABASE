@@ -25,6 +25,7 @@ const IdService = {
       const idCol = CONFIG.ID_COLUMNS && CONFIG.ID_COLUMNS[logicalKey === 'AUDITLOGS' ? 'AUDITLOGS' : logicalKey];
       // For this project, ID columns exist under these sheet keys.
       // We map logicalKey to sheet key name for DatabaseService reads.
+      const keyUpper = String(logicalKey || '').toUpperCase();
       const sheetKeyMap = {
         USERS: 'USERS',
         STUDENTS: 'STUDENTS',
@@ -35,12 +36,14 @@ const IdService = {
         EVENT_COORDINATORS: 'EVENT_COORDINATORS',
         GENERATED_REPORTS: 'GENERATED_REPORTS',
         NOTIFICATIONS: 'NOTIFICATIONS',
-        AUDITLOGS: 'AUDITLOGS'
+        AUDITLOGS: 'AUDITLOGS',
+        FACULTY: 'FACULTY',
+        GUEST_COORDINATORS: 'GUEST_COORDINATORS',
+        OTHER_COLLEGE_STUDENTS: 'OTHER_COLLEGE_STUDENTS'
       };
 
-      const sheetLogical = sheetKeyMap[logicalKey];
-      const sheetName = sheetLogical && CONFIG.SHEETS ? CONFIG.SHEETS[sheetLogical] : null;
-      if (!sheetName) throw new Error('Missing CONFIG.SHEETS mapping for ' + logicalKey);
+      const sheetLogical = sheetKeyMap[keyUpper] || keyUpper;
+      const sheetName = CONFIG.SHEETS ? (CONFIG.SHEETS[sheetLogical] || CONFIG.SHEETS[logicalKey] || sheetLogical) : sheetLogical;
 
       const resolvedPrefix = typeof prefixResolver === 'function' ? prefixResolver() : cfg.prefix;
       const records = (DatabaseService.readAllRowsIncludingDeleted ? DatabaseService.readAllRowsIncludingDeleted(sheetLogical) : DatabaseService.readAllRows(sheetLogical)) || [];

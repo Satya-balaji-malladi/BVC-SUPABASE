@@ -74,6 +74,12 @@
         }
       }
 
+      // Ensure Participants menu link is visible
+      const navParticipants = document.getElementById('nav-item-participants');
+      if (navParticipants) {
+        navParticipants.classList.remove('d-none');
+      }
+
       // Hide Students navigation specifically in Event Admin screen
       const navStudents = document.getElementById('nav-item-students');
       if (navStudents) {
@@ -81,6 +87,16 @@
           navStudents.classList.add('d-none');
         } else {
           navStudents.classList.remove('d-none');
+        }
+      }
+
+      // Hide Events navigation specifically for Event Admin
+      const navEvents = document.getElementById('nav-item-events');
+      if (navEvents) {
+        if (isEventAdmin) {
+          navEvents.classList.add('d-none');
+        } else {
+          navEvents.classList.remove('d-none');
         }
       }
 
@@ -129,14 +145,30 @@
           if (container) {
             container.innerHTML = html;
 
-            // Re-evaluate scripts in the injected HTML
-            const scripts = container.querySelectorAll('script');
+            // Re-evaluate scripts in the injected HTML safely without GAS iframe syntax errors
+            const scripts = Array.from(container.querySelectorAll('script'));
             scripts.forEach(oldScript => {
-              const newScript = document.createElement('script');
-              Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-              newScript.text = oldScript.text;
-              oldScript.parentNode.replaceChild(newScript, oldScript);
+              const code = oldScript.text || oldScript.textContent || '';
+              if (code.trim()) {
+                try {
+                  // Execute via Function constructor to isolate scope and prevent const redeclaration errors
+                  (new Function(code))();
+                } catch (err) {
+                  console.error('Error executing module script for ' + pageName + ':', err);
+                }
+              }
+              oldScript.remove();
             });
+
+            // Trigger module initialization if present
+            const moduleKey = pageName.toLowerCase();
+            if (typeof App !== 'undefined' && App.Modules && App.Modules[moduleKey] && typeof App.Modules[moduleKey].init === 'function') {
+              try {
+                App.Modules[moduleKey].init();
+              } catch (initErr) {
+                console.error('Error initializing module ' + moduleKey + ':', initErr);
+              }
+            }
           }
 
           setPageTitle(pageName);
@@ -311,6 +343,8 @@
 
       const commands = [
         { name: 'Go to Dashboard', action: () => loadPage('Dashboard'), icon: 'bi-grid-1x2-fill' },
+        { name: 'Manage Faculty Profiles', action: () => loadPage('Faculty'), icon: 'bi-person-workspace' },
+        { name: 'Manage Students List', action: () => loadPage('Students'), icon: 'bi-person-badge' },
         { name: 'Manage Events', action: () => loadPage('Events'), icon: 'bi-calendar-event-fill' },
         { name: 'Scan Event Attendance', action: () => loadPage('Attendance'), icon: 'bi-qr-code-scan' },
         { name: 'View Platform Reports', action: () => loadPage('Reports'), icon: 'bi-graph-up-arrow' },
@@ -394,7 +428,7 @@
     // Automatically load the appropriate component when the shell initializes based on userRole and URL
     const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
     let defaultPage = 'Dashboard';
-    if (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'EVENTADMIN') {
+    if (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'EVENTADMIN' || userRole === 'FACULTY') {
       defaultPage = 'EventAdmin';
     }
 

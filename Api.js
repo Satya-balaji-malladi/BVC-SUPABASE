@@ -275,15 +275,15 @@ function pingHeartbeat(sessionToken) {
 
 /**
  * Requests an OTP recovery token for a staff member.
- * @param {string} sessionToken - Prepended token (null before login).
+ * Pre-login flow — called directly via google.script.run without a session token.
  * @param {string} employeeId - Unique identifier of the staff.
  * @returns {object} Response containing OTP generation status.
  */
-function forgotPassword(sessionToken, employeeId) {
+function forgotPassword(employeeId) {
   try {
     const cleanEmpId = String(employeeId || "").trim();
     if (!cleanEmpId) {
-      return { success: false, message: "Invalid Employee ID format provided." };
+      return { success: false, message: "Employee ID is required." };
     }
     const user = DatabaseService.findOne(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_EMPLOYEE_ID, cleanEmpId);
     if (!user) {
@@ -453,6 +453,20 @@ function updateUser(sessionToken, userId, userData) {
 function deleteUser(sessionToken, userId) {
   try {
     return JSON.parse(JSON.stringify(Controller.User.deleteUser(sessionToken, userId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Restores a soft-deleted user.
+ * @param {string} sessionToken - Request session token.
+ * @param {string} userId - Target User ID.
+ * @returns {object} Response containing execution status.
+ */
+function restoreUser(sessionToken, userId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.User.restoreUser(sessionToken, userId) || {}));
   } catch (e) {
     return { success: false, message: e.message };
   }
@@ -732,7 +746,45 @@ function deleteEvent(sessionToken, eventId) {
     return { success: false, message: e.message };
   }
 }
+function changeEventStatus(sessionToken, eventId, newStatus) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Event.changeEventStatus(sessionToken, eventId, newStatus) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
 
+function stopEvent(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Event.stopEvent(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function cancelEvent(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Event.cancelEvent(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function resumeEvent(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Event.resumeEvent(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function completeEvent(sessionToken, eventId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Event.completeEvent(sessionToken, eventId) || {}));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
 function getEventDetailsWithTimeline(sessionToken, eventId) {
   try {
     const res = Controller.Event.getEventDetailsWithTimeline(sessionToken, eventId);
@@ -1177,6 +1229,21 @@ function getCrossDepartmentAttendance(sessionToken) {
     return JSON.parse(JSON.stringify(Controller.Report.getCrossDepartmentAttendance(sessionToken) || {}));
   } catch (error) {
     return Utils.buildResponse(false, "Failed to compile cross-department stats: " + error.message);
+  }
+}
+
+/**
+ * Retrieves Cross-Department Matrix & Ranking analytics.
+ * @param {string} sessionToken - Request session token.
+ * @returns {object} Response payload with matrix data.
+ */
+function getCrossDepartmentMatrix(sessionToken) {
+  try {
+    const userContext = SessionService.getUserContext(sessionToken);
+    if (!userContext || !userContext.userId) return Utils.buildResponse(false, 'Session is invalid or expired.');
+    return JSON.parse(JSON.stringify(AnalyticsService.getCrossDepartmentMatrix(userContext.userId)));
+  } catch (e) {
+    return Utils.buildResponse(false, "Failed to compute Cross-Department Matrix: " + e.message);
   }
 }
 
@@ -1900,6 +1967,38 @@ function createFaculty(sessionToken, facultyData) {
   }
 }
 
+function createGuest(sessionToken, guestData) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Guest.createGuest(sessionToken, guestData) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function getAllGuests(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Guest.getAllGuests(sessionToken) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
+function getFacultyMembers(sessionToken) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyMembers(sessionToken) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
+function getFacultyByDepartment(sessionToken, departmentId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyByDepartment(sessionToken, departmentId) || []));
+  } catch (e) {
+    return [];
+  }
+}
+
 function getFacultyListForUser(sessionToken) {
   try {
     return JSON.parse(JSON.stringify(Controller.Faculty.getFacultyListForUser(sessionToken) || []));
@@ -1907,3 +2006,39 @@ function getFacultyListForUser(sessionToken) {
     return [];
   }
 }
+
+function updateFaculty(sessionToken, facultyId, updates) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.updateFaculty(sessionToken, facultyId, updates) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function deactivateFaculty(sessionToken, facultyId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.deactivateFaculty(sessionToken, facultyId) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function deleteFaculty(sessionToken, facultyId) {
+  try {
+    return JSON.parse(JSON.stringify(Controller.Faculty.deleteFaculty(sessionToken, facultyId) || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+// ==========================================
+// System / Background Jobs API
+// ==========================================
+function syncAllStatuses() {
+  try {
+    return JSON.parse(JSON.stringify(Controller.System.syncAllStatuses() || { success: false }));
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+

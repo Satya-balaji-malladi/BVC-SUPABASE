@@ -1,431 +1,161 @@
 <script>
-/**
- * ==========================================
- * GLOBAL APPLICATION NAMESPACE
- * ==========================================
- * Centralized, scalable, and lightweight architecture.
- */
-window.App = {
-  Version: '1.0.0',
-  Environment: (typeof google !== 'undefined' && google.script) ? 'production' : 'development',
-  Features: { enableCache: true, enableMockFallback: true },
-  
-  // Storage Architecture (Interface)
-  Storage: {
-    get: function(key) { return localStorage.getItem(key); },
-    set: function(key, val) { localStorage.setItem(key, val); },
-    remove: function(key) { localStorage.removeItem(key); }
-  },
+  /**
+   * ==========================================
+   * GLOBAL APPLICATION NAMESPACE
+   * ==========================================
+   * Centralized, scalable, and lightweight architecture.
+   */
+  window.App = {
+    Version: '1.0.0',
+    Environment: (typeof google !== 'undefined' && google.script) ? 'production' : 'development',
+    Features: { enableCache: true, enableMockFallback: true },
 
-  // Events Architecture (Pub/Sub pattern interface)
-  Events: {
-    _listeners: {},
-    on: function(event, callback) {
-      if (!this._listeners[event]) this._listeners[event] = [];
-      this._listeners[event].push(callback);
-    },
-    emit: function(event, data) {
-      if (this._listeners[event]) {
-        this._listeners[event].forEach(cb => cb(data));
-      }
-    }
-  },
-
-  // Config & Constants (No hardcoded values)
-  Constants: {
-    MODULES: { DASHBOARD: 'dashboard', USERS: 'users', STUDENTS: 'students', EVENTS: 'events', ATTENDANCE: 'attendance', REPORTS: 'reports', SETTINGS: 'settings', MONITORING: 'monitoring', TESTCENTER: 'testcenter' },
-    ROLES: { ADMIN: 'Admin', EVENT_ADMIN: 'Event Admin', SUPER_ADMIN: 'Super Admin', HOD: 'HOD', COORDINATOR: 'Coordinator' },
-    EVENT_STATUS: { DRAFT: 'Draft', UPCOMING: 'Upcoming', ACTIVE: 'Active', STOPPED: 'Stopped', COMPLETED: 'Completed', CANCELLED: 'Cancelled' },
-    ATTENDANCE_STATUS: { PRESENT: 'Present', ABSENT: 'Absent' },
-    MSGS: { ERR_SERVER: 'Server error occurred', ERR_NOT_FOUND: 'Method not found' }
-  },
-
-  // State (Minimal footprint)
-  State: {
-    activeModule: null,
-    currentUser: null
-  },
-
-  // Utils
-  Utils: {
-    escapeHtml: function(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.appendChild(document.createTextNode(str));
-      return div.innerHTML;
-    },
-    formatDate: function(dateStr) {
-      if (!dateStr || dateStr === 'N/A') return 'N/A';
-      if (typeof dateStr === 'string' && dateStr.includes('T')) {
-        dateStr = dateStr.split('T')[0];
-      }
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}-${month}-${year}`;
-    },
-    formatTime: function(timeStr) {
-      if (!timeStr || timeStr === 'N/A') return 'N/A';
-      const s = String(timeStr).trim();
-      const match = s.match(/^(\d{1,2}):(\d{2})/);
-      if (match) {
-        let hrs = parseInt(match[1], 10);
-        const mins = match[2];
-        const ampm = hrs >= 12 ? 'PM' : 'AM';
-        let displayHrs = hrs % 12;
-        if (displayHrs === 0) displayHrs = 12;
-        return `${String(displayHrs).padStart(2, '0')}:${mins} ${ampm}`;
-      }
-      const d = new Date(timeStr);
-      if (!isNaN(d.getTime())) {
-        const hrs = d.getHours();
-        const mins = String(d.getMinutes()).padStart(2, '0');
-        const ampm = hrs >= 12 ? 'PM' : 'AM';
-        let displayHrs = hrs % 12;
-        if (displayHrs === 0) displayHrs = 12;
-        return `${String(displayHrs).padStart(2, '0')}:${mins} ${ampm}`;
-      }
-      return timeStr;
+    // Storage Architecture (Interface)
+    Storage: {
+      get: function (key) { return localStorage.getItem(key); },
+      set: function (key, val) { localStorage.setItem(key, val); },
+      remove: function (key) { localStorage.removeItem(key); }
     },
 
-    formatLastSeen: function(dateStr) {
-      if (!dateStr || dateStr === 'N/A' || dateStr === '') return 'Never';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      
-      const now = new Date();
-      const diffMs = now.getTime() - d.getTime();
-      if (diffMs < 60000) return 'Just now';
-      if (diffMs < 3600000) {
-        const mins = Math.floor(diffMs / 60000);
-        return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
-      }
-      
-      const pad = (n) => String(n).padStart(2, '0');
-      const formatTimeText = (dateObj) => {
-        let hrs = dateObj.getHours();
-        const mins = pad(dateObj.getMinutes());
-        const ampm = hrs >= 12 ? 'PM' : 'AM';
-        hrs = hrs % 12;
-        if (hrs === 0) hrs = 12;
-        return `${pad(hrs)}:${mins} ${ampm}`;
-      };
-
-      const isSameDay = d.getDate() === now.getDate() &&
-                        d.getMonth() === now.getMonth() &&
-                        d.getFullYear() === now.getFullYear();
-      
-      if (isSameDay) {
-        return `Today ${formatTimeText(d)}`;
-      }
-
-      const yesterday = new Date(now);
-      yesterday.setDate(now.getDate() - 1);
-      const isYesterday = d.getDate() === yesterday.getDate() &&
-                          d.getMonth() === yesterday.getMonth() &&
-                          d.getFullYear() === yesterday.getFullYear();
-
-      if (isYesterday) {
-        return `Yesterday ${formatTimeText(d)}`;
-      }
-
-      return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${formatTimeText(d)}`;
-    }
-  },
-
-  // Logger
-  Logger: {
-    info: function(...args) { console.info('[INFO]', ...args); },
-    warn: function(...args) { console.warn('[WARN]', ...args); },
-    error: function(...args) { console.error('[ERROR]', ...args); }
-  },
-
-  // Loading Manager (Reference Counting to prevent flicker)
-  LoadingManager: {
-    _activeRequests: 0,
-    show: function() {
-      this._activeRequests++;
-      if (this._activeRequests === 1) {
-        const loader = document.getElementById('page-loader');
-        if (loader) loader.classList.remove('d-none');
+    // Events Architecture (Pub/Sub pattern interface)
+    Events: {
+      _listeners: {},
+      on: function (event, callback) {
+        if (!this._listeners[event]) this._listeners[event] = [];
+        this._listeners[event].push(callback);
+      },
+      emit: function (event, data) {
+        if (this._listeners[event]) {
+          this._listeners[event].forEach(cb => cb(data));
+        }
       }
     },
-    hide: function(force = false) {
-      if (force) this._activeRequests = 0;
-      else if (this._activeRequests > 0) this._activeRequests--;
-      
-      if (this._activeRequests === 0) {
-        const loader = document.getElementById('page-loader');
-        if (loader) loader.classList.add('d-none');
-      }
-    }
-  },
 
-  // Error Handler
-  ErrorHandler: {
-    handle: function(error, customMsg) {
-      App.Logger.error(error);
-      App.LoadingManager.hide(true); // Force hide loader on major error
-      const msg = customMsg || error.message || App.Constants.MSGS.ERR_SERVER;
-      App.UI.showError(msg);
-    }
-  },
-
-  // UI Singleton
-  UI: {
-    _confirmModal: null,
-    init: function() {
-      const el = document.getElementById('confirmationModal');
-      if (el && typeof bootstrap !== 'undefined') this._confirmModal = new bootstrap.Modal(el);
+    // Config & Constants (No hardcoded values)
+    Constants: {
+      MODULES: { DASHBOARD: 'dashboard', USERS: 'users', STUDENTS: 'students', EVENTS: 'events', ATTENDANCE: 'attendance', REPORTS: 'reports', SETTINGS: 'settings', MONITORING: 'monitoring', TESTCENTER: 'testcenter' },
+      ROLES: { ADMIN: 'Admin', EVENT_ADMIN: 'Event Admin', SUPER_ADMIN: 'Super Admin', HOD: 'HOD', COORDINATOR: 'Coordinator' },
+      EVENT_STATUS: { DRAFT: 'Draft', UPCOMING: 'Upcoming', ACTIVE: 'Active', STOPPED: 'Stopped', COMPLETED: 'Completed', CANCELLED: 'Cancelled' },
+      ATTENDANCE_STATUS: { PRESENT: 'Present', ABSENT: 'Absent' },
+      MSGS: { ERR_SERVER: 'Server error occurred', ERR_NOT_FOUND: 'Method not found' }
     },
-    _toast: function(msg, type) {
-      const c = document.getElementById('toast-container');
-      if (!c) return;
-      const id = 'toast-' + Date.now();
-      let icon = 'bi-check-circle', bg = 'text-bg-success';
-      if (type === 'error') { icon = 'bi-x-circle'; bg = 'text-bg-danger'; }
-      else if (type === 'info') { icon = 'bi-info-circle'; bg = 'text-bg-info'; }
-      c.insertAdjacentHTML('beforeend', `<div id="${id}" class="toast align-items-center ${bg} border-0 shadow" role="alert"><div class="d-flex"><div class="toast-body"><i class="bi ${icon} me-2"></i><span>${App.Utils.escapeHtml(msg)}</span></div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`);
-      const el = document.getElementById(id);
-      const t = new bootstrap.Toast(el, { delay: 3000 });
-      t.show();
-      el.addEventListener('hidden.bs.toast', () => el.remove());
+
+    // State (Minimal footprint)
+    State: {
+      activeModule: null,
+      currentUser: null
     },
-    showSuccess: function(msg) { this._toast(msg, 'success'); },
-    showError: function(msg) { this._toast(msg, 'error'); },
-    showInfo: function(msg) { this._toast(msg, 'info'); },
-    updateBreadcrumb: function(parent, current) {
-      const p = document.getElementById('breadcrumb-parent');
-      if (p) p.innerText = parent;
-      const h = document.getElementById('page-heading');
-      if (h) h.innerText = current;
-      const t = document.getElementById('current-page-title');
-      if (t) t.innerText = current;
-    }
-  },
 
-  // Client-Side Cache with TTL (prevents redundant google.script.run calls on tab switches)
-  Cache: {
-    _store: {},
-    // Methods that are safe to cache (read-only, no side effects)
-    _cacheable: [
-      'getDashboardData', 'getAllEvents', 'getAllUsers', 'getAllStudents',
-      'getActiveDepartments', 'getAllDepartments', 'getAnalyticsSummary',
-      'getTrendData', 'getDepartmentData', 'getEventWiseData',
-      'getCheckInPatterns', 'getPerformanceDistribution', 'getDefaulterDistribution',
-      'getLeaderboard', 'getReportsDashboardSummary'
-    ],
-    _ttlMs: 120000, // 2 minutes client-side TTL
-    get: function(key) {
-      const entry = this._store[key];
-      if (!entry) return null;
-      if (Date.now() > entry.expiresAt) { delete this._store[key]; return null; }
-      return entry.data;
-    },
-    set: function(key, data, ttlMs) {
-      this._store[key] = { data: data, expiresAt: Date.now() + (ttlMs || this._ttlMs) };
-    },
-    isCacheable: function(method) { return this._cacheable.indexOf(method) !== -1; },
-    clear: function(key) { if (key) delete this._store[key]; else this._store = {}; }
-  },
-
-  // Session (Basic role guards interface)
-  Session: {
-    hasPermission: function(moduleName) {
-      const userRole = localStorage.getItem('userRole') || (App.State.currentUser && App.State.currentUser.role) || '';
-      const role = String(userRole).toUpperCase().trim();
-      const mod = String(moduleName).toLowerCase();
-      if (role === 'ADMIN' || role === 'HOD') {
-        const allowed = ['dashboard', 'users', 'students', 'events', 'attendance', 'reports', 'logout'];
-        return allowed.indexOf(mod) !== -1;
-      }
-      if (mod === 'monitoring') {
-        return role !== 'HOD' && role !== 'COORDINATOR' && role !== 'ADMIN';
-      }
-      if (mod === 'testcenter') {
-        return role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'DEVELOPER';
-      }
-      return true; 
-    }
-  },
-
-  // API Layer (Centralized google.script.run wrapper with client-side cache)
-  API: {
-    _call: function(serverMethod, ...args) {
-      // Check client-side cache for read-only methods (avoids redundant round trips)
-      if (args.length === 0 && App.Cache.isCacheable(serverMethod)) {
-        const cached = App.Cache.get(serverMethod);
-        if (cached !== null) return Promise.resolve(cached);
-      }
-
-      return new Promise((resolve, reject) => {
-        try { App.LoadingManager.show(); } catch (e) {}
-
-        if (App.Environment === 'production') {
-          if (typeof google.script.run[serverMethod] === 'function') {
-            const token = localStorage.getItem('sessionToken');
-            const callArgs = (serverMethod !== 'login' && serverMethod !== 'authenticate') ? [token, ...args] : args;
-
-            if (serverMethod === 'createDepartment') {
-              console.log("[DEPT-08] calling google.script.run.createDepartment with args:", callArgs);
-            }
-
-            google.script.run
-              .withSuccessHandler((res) => {
-                if (serverMethod === 'createDepartment') {
-                  console.log("[DEPT-13] google.script.run successHandler received raw res:", res);
-                }
-                App.LoadingManager.hide();
-                let resolvedData = null;
-                if (Array.isArray(res)) {
-                  resolvedData = res;
-                } else if (res && res.success === false) {
-                  return reject(new Error(res.message || 'Operation failed'));
-                } else if (res && res.success === true) {
-                  resolvedData = res;
-                } else if (res && Array.isArray(res.data)) {
-                  resolvedData = res.data;
-                } else if (res && res.data !== undefined) {
-                  resolvedData = res.data;
-                } else {
-                  resolvedData = res;
-                }
-                // Store in client-side cache for cacheable read-only methods
-                if (args.length === 0 && App.Cache.isCacheable(serverMethod)) {
-                  App.Cache.set(serverMethod, resolvedData);
-                }
-                resolve(resolvedData);
-              })
-              .withFailureHandler((err) => {
-                App.LoadingManager.hide();
-                console.error('[API ERROR] ' + serverMethod + ':', err);
-                reject(err);
-              })
-              [serverMethod](...callArgs);
+    // Utils
+    Utils: {
+      showToast: function (msg, isError) {
+        if (window.App && window.App.UI && typeof window.App.UI.showSuccess === 'function') {
+          if (isError) {
+            window.App.UI.showError(msg);
           } else {
-            App.LoadingManager.hide();
-            reject(new Error(`${App.Constants.MSGS.ERR_NOT_FOUND}: ${serverMethod}`));
+            window.App.UI.showSuccess(msg);
           }
+        } else if (typeof showToast === 'function') {
+          showToast(isError ? 'error' : 'success', msg);
         } else {
-          setTimeout(() => {
-            App.LoadingManager.hide();
-            resolve(this._getMock(serverMethod, ...args));
-          }, 500);
+          console.log((isError ? 'ERROR: ' : 'SUCCESS: ') + msg);
         }
-      });
-    },
-    // Warmup: Fire a cheap ping immediately after login to keep Apps Script instance hot
-    warmup: function() {
-      if (App.Environment !== 'production') return;
-      try {
-        if (typeof google.script.run.ping === 'function') {
-          google.script.run.withSuccessHandler(function(){}).withFailureHandler(function(){}).ping();
+      },
+      escapeHtml: function (str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+      },
+      formatDate: function (dateStr) {
+        if (!dateStr || dateStr === 'N/A') return 'N/A';
+        if (typeof dateStr === 'string' && dateStr.includes('T')) {
+          dateStr = dateStr.split('T')[0];
         }
-      } catch(e) {}
-    },
-    completeFirstTimeSetup: function(setupData) { return this._call('completeFirstTimeSetup', setupData); },
-    getTotalUsers: function() { return this._call('getTotalUsers'); },
-    getTotalStudents: function() { return this._call('getTotalStudents'); },
-    getTotalEvents: function() { return this._call('getTotalEvents'); },
-    getActiveEvents: function() { return this._call('getActiveEvents'); },
-    getUpcomingEvents: function() { return this._call('getUpcomingEvents'); },
-    getTotalParticipants: function() { return this._call('getTotalParticipants'); },
-    getAttendanceToday: function() { return this._call('getAttendanceToday'); },
-    getRecentEvents: function() { return this._call('getRecentEvents'); },
-    getDashboardSummary: function() { return this._call('getDashboardSummary'); },
-    getCrossDepartmentAttendance: function() { return this._call('getCrossDepartmentAttendance'); },
-    getReportsDashboardSummary: function() { return this._call('getReportsDashboardSummary'); },
-    getEventReport: function(filters) { return this._call('getEventReport', filters); },
-    getStudentReport: function(rollNumber) { return this._call('getStudentReport', rollNumber); },
-    getDepartmentReport: function(department) { return this._call('getDepartmentReport', department); },
-    getCoordinatorReport: function(coordinatorId) { return this._call('getCoordinatorReport', coordinatorId); },
-    getDateRangeReport: function(fromDate, toDate) { return this._call('getDateRangeReport', fromDate, toDate); },
-    getAttendanceDefaulters: function(filters) { return this._call('getAttendanceDefaulters', filters); },
-    getTopParticipants: function(filters) { return this._call('getTopParticipants', filters); },
-    getAbsentStudents: function(filters) { return this._call('getAbsentStudents', filters); },
-    getYearWiseReport: function(year) { return this._call('getYearWiseReport', year); },
-    getDepartmentComparison: function() { return this._call('getDepartmentComparison'); },
-    getMonthlyReport: function(filters) { return this._call('getMonthlyReport', filters); },
-    getEventTrendReport: function(filters) { return this._call('getEventTrendReport', filters); },
-    getCancelledEvents: function(filters) { return this._call('getCancelledEvents', filters); },
-    getCoordinatorPerformance: function(coordinatorId) { return this._call('getCoordinatorPerformance', coordinatorId); },
-    getStudentEventHistory: function(rollNumber) { return this._call('getStudentEventHistory', rollNumber); },
-    getAnalyticsSummary: function() { return this._call('getAnalyticsSummary'); },
-    getTrendData: function() { return this._call('getTrendData'); },
-    getDepartmentData: function() { return this._call('getDepartmentData'); },
-    getEventWiseData: function() { return this._call('getEventWiseData'); },
-    getCheckInPatterns: function() { return this._call('getCheckInPatterns'); },
-    getPerformanceDistribution: function() { return this._call('getPerformanceDistribution'); },
-    getDefaulterDistribution: function() { return this._call('getDefaulterDistribution'); },
-    getLeaderboard: function() { return this._call('getLeaderboard'); },
-    getDashboardData: function() { return this._call('getDashboardData'); },
-    getAllEvents: function() { return this._call('getAllEvents'); },
-    createEvent: function(eventData) { return this._call('createEvent', eventData); },
-    updateEvent: function(eventId, eventData) { return this._call('updateEvent', eventId, eventData); },
-    deleteEvent: function(eventId) { return this._call('deleteEvent', eventId); },
-    getEventById: function(eventId) { return this._call('getEventById', eventId); },
-    getEventDetailsWithTimeline: function(eventId) { return this._call('getEventDetailsWithTimeline', eventId); },
-    getEventDayAttendance: function(eventId, dayNumber) { return this._call('getEventDayAttendance', eventId, dayNumber); },
-    markAttendanceFast: function(attendanceData) { return this._call('markAttendanceFast', attendanceData); },
-    getQueueStatus: function() { return this._call('getQueueStatus'); },
-    processQueueBatch: function() { return this._call('processQueueBatch'); },
-    generatePrintablePdfHtml: function(title, filters, columns, dataRows, summary) { return this._call('generatePrintablePdfHtml', title, filters, columns, dataRows, summary); },
-    exportToCsv: function(columns, dataRows) { return this._call('exportToCsv', columns, dataRows); },
-    getAllUsers: function() { return this._call('getAllUsers'); },
-    createUser: function(userData) { return this._call('createUser', userData); },
-    updateUser: function(userId, userData) { return this._call('updateUser', userId, userData); },
-    deleteUser: function(userId) { return this._call('deleteUser', userId); },
-    resetPassword: function(userId) { return this._call('resetPassword', userId); },
-    getUserById: function(userId) { return this._call('getUserById', userId); },
-    importUsers: function(usersDataArray) { return this._call('importUsers', usersDataArray); },
-    getAllStudents: function() { return this._call('getAllStudents'); },
-    getActiveDepartments: function() { return this._call('getActiveDepartments'); },
-    createDepartment: function(departmentData) { return this._call('createDepartment', departmentData); },
-    updateDepartment: function(departmentId, updateData) { return this._call('updateDepartment', departmentId, updateData); },
-    deleteDepartment: function(departmentId) { return this._call('deleteDepartment', departmentId); },
-    getDepartmentById: function(departmentId) { return this._call('getDepartmentById', departmentId); },
-    getAllDepartments: function() { return this._call('getAllDepartments'); },
-    deleteAttendance: function(attendanceId) { return this._call('deleteAttendance', attendanceId); },
-    getAttendanceById: function(attendanceId) { return this._call('getAttendanceById', attendanceId); },
-    getStudentAttendanceCount: function(rollNumber) { return this._call('getStudentAttendanceCount', rollNumber); },
-    createStudent: function(studentData) { return this._call('createStudent', studentData); },
-    updateStudent: function(rollNumber, studentData) { return this._call('updateStudent', rollNumber, studentData); },
-    deleteStudent: function(rollNumber) { return this._call('deleteStudent', rollNumber); },
-    getStudentById: function(rollNumber) { return this._call('getStudentByRollNumber', rollNumber); },
-    getSettings: function() { return this._call('getSettings'); },
-    saveSettings: function(payload) { return this._call('saveSettings', payload); },
-    clearAttendanceLogs: function() { return this._call('clearAttendanceLogs'); },
-    resetSystem: function() { return this._call('resetSystem'); },
-    getAuditLogs: function() { return this._call('getAuditLogs'); },
-    login: function(credentials) { return this._call('login', credentials); },
-    logout: function() { return this._call('logout'); },
-    authenticate: function(sessionToken) { return this._call('authenticate', sessionToken); },
-    getAttendanceByEvent: function(eventId) { return this._call('getAttendanceByEvent', eventId); },
-    getAllEnrichedParticipants: function() { return this._call('getAllEnrichedParticipants'); },
-    getEventParticipants: function(eventId) { return this._call('getEventParticipants', eventId); },
-    addParticipant: function(eventId, rollNumber) { return this._call('addParticipant', eventId, rollNumber); },
-    removeParticipant: function(eventId, rollNumber) { return this._call('removeParticipant', eventId, rollNumber); },
-    restoreParticipant: function(eventId, rollNumber) { return this._call('restoreParticipant', eventId, rollNumber); },
-    checkEligibility: function(eventId, rollNumber) { return this._call('checkEligibility', eventId, rollNumber); },
-    bulkAddParticipants: function(eventId, rollNumbers) { return this._call('bulkAddParticipants', eventId, rollNumbers); },
-    bulkRemoveParticipants: function(eventId, rollNumbers) { return this._call('bulkRemoveParticipants', eventId, rollNumbers); },
-    _getMock: function(m) {
-      if (m === 'getDashboardSummary') return { report: { totalStudents: 1250, totalEvents: 45, totalAttendance: 15420, totalPresent: 14200, totalAbsent: 1220, attendancePercentage: 92.08 } };
-      if (m === 'getAllEvents') return [{ event_id: 'EVT-01', event_name: 'Tech Symposium', event_date: '2026-07-15', status: App.Constants.EVENT_STATUS.COMPLETED, coordinator_id: 'USR-01' }];
-      if (m === 'getAllUsers') return [{ user_id: 'USR-01', full_name: 'John Doe', role: App.Constants.ROLES.COORDINATOR }];
-      if (m === 'getAllStudents') return [{ roll_number: 'CSE001', student_name: 'Alice', department: 'CSE' }];
-      if (m === 'getAttendanceByEvent') return [{ roll_number: 'CSE001', event_id: 'EVT-01', status: App.Constants.ATTENDANCE_STATUS.PRESENT, timestamp: '2026-07-15 10:00' }];
-      if (m === 'getReportsDashboardSummary') return { success: true, report: { totalEvents: 45, totalStudents: 1250, totalAttendance: 15420, attendancePercentage: 92.08, activeEvents: 3, completedEvents: 38, highestEvent: 'Tech Symposium', lowestEvent: 'Workshop A' } };
-      if (m === 'getEventReport') return [{ event_name: 'Tech Symposium', coordinator: 'John Doe', venue: 'Main Hall', start_date: '2026-07-15', end_date: '2026-07-15', participants: 120, present: 110, absent: 10, attendance_percentage: 91.67, status: 'Completed' }];
-      if (m === 'getDepartmentReport' || m === 'getDepartmentComparison') return [{ department: 'CSE', total_students: 320, events_conducted: 12, attendance_percentage: 88.5, rank: 1 }];
-      if (m === 'getAttendanceDefaulters') return [{ roll_number: 'CSE001', student_name: 'Alice', department: 'CSE', year: '3', events_enrolled: 5, present: 2, absent: 3, attendance_percentage: 40, status: 'Critical' }];
-      if (m === 'getTopParticipants') return [{ roll_number: 'CSE002', student_name: 'Bob', department: 'CSE', year: '2', events_attended: 15, unique_events: 12 }];
-      return {};
-    }
-  },
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      },
+      formatTime: function (timeStr) {
+        if (!timeStr || timeStr === 'N/A') return 'N/A';
+        const s = String(timeStr).trim();
+        const match = s.match(/^(\d{1,2}):(\d{2})/);
+        if (match) {
+          let hrs = parseInt(match[1], 10);
+          const mins = match[2];
+          const ampm = hrs >= 12 ? 'PM' : 'AM';
+          let displayHrs = hrs % 12;
+          if (displayHrs === 0) displayHrs = 12;
+          return `${String(displayHrs).padStart(2, '0')}:${mins} ${ampm}`;
+        }
+        const d = new Date(timeStr);
+        if (!isNaN(d.getTime())) {
+          const hrs = d.getHours();
+          const mins = String(d.getMinutes()).padStart(2, '0');
+          const ampm = hrs >= 12 ? 'PM' : 'AM';
+          let displayHrs = hrs % 12;
+          if (displayHrs === 0) displayHrs = 12;
+          return `${String(displayHrs).padStart(2, '0')}:${mins} ${ampm}`;
+        }
+        return timeStr;
+      },
 
+      formatLastSeen: function (dateStr) {
+        if (!dateStr || dateStr === 'N/A' || dateStr === '') return 'Never';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        if (diffMs < 60000) return 'Just now';
+        if (diffMs < 3600000) {
+          const mins = Math.floor(diffMs / 60000);
+          return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+        }
+
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatTimeText = (dateObj) => {
+          let hrs = dateObj.getHours();
+          const mins = pad(dateObj.getMinutes());
+          const ampm = hrs >= 12 ? 'PM' : 'AM';
+          hrs = hrs % 12;
+          if (hrs === 0) hrs = 12;
+          return `${pad(hrs)}:${mins} ${ampm}`;
+        };
+
+        const isSameDay = d.getDate() === now.getDate() &&
+          d.getMonth() === now.getMonth() &&
+          d.getFullYear() === now.getFullYear();
+
+        if (isSameDay) {
+          return `Today ${formatTimeText(d)}`;
+        }
+
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        const isYesterday = d.getDate() === yesterday.getDate() &&
+          d.getMonth() === yesterday.getMonth() &&
+          d.getFullYear() === yesterday.getFullYear();
+
+        if (isYesterday) {
+          return `Yesterday ${formatTimeText(d)}`;
+        }
+
+        return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${formatTimeText(d)}`;
+      }
+    },
+
+    // Logger
+    Logger: {
+      info: function (...args) { console.info('[INFO]', ...args); },
+      warn: function (...args) { console.warn('[WARN]', ...args); },
+      error: function (...args) { console.error('[ERROR]', ...args); }
+    },
+
+<<<<<<< Updated upstream
   // Router
   Router: {
     navigate: function(pageName) {
@@ -475,335 +205,819 @@ window.App = {
     }
   }
   },
+=======
+    // Loading Manager (Reference Counting to prevent flicker with fail-safe safety timeout)
+    LoadingManager: {
+      _activeRequests: 0,
+      _timeoutTimer: null,
+      show: function () {
+        this._activeRequests++;
+        if (this._activeRequests === 1) {
+          const loader = document.getElementById('page-loader');
+          if (loader) loader.classList.remove('d-none');
+        }
+        // Fail-safe safety timer: Force hide loader after 10s if request hangs
+        if (this._timeoutTimer) clearTimeout(this._timeoutTimer);
+        this._timeoutTimer = setTimeout(() => {
+          if (this._activeRequests > 0) {
+            console.warn("[LoadingManager] Fail-safe timer triggered: force-hiding loader overlay");
+            this.hide(true);
+          }
+        }, 10000);
+      },
+      hide: function (force = false) {
+        if (force) {
+          this._activeRequests = 0;
+        } else if (this._activeRequests > 0) {
+          this._activeRequests--;
+        }
 
-  // UI Components Architecture (Interfaces only, as requested)
-  Components: {
-    Table: { render: function(containerId, config) { /* implementation pending */ } },
-    Modal: { create: function(config) { /* implementation pending */ } },
-    Pagination: { render: function(containerId, config) { /* implementation pending */ } },
-    Search: { bind: function(inputId, callback) { /* implementation pending */ } },
-    Filters: { render: function(containerId, config) { /* implementation pending */ } }
-  },
-
-  // Modules Registry
-  Modules: {},
-
-  // Services Registry
-  Services: {},
-
-  // Authentication Flow Manager
-  Auth: {
-    init: function() {
-      const token = localStorage.getItem('sessionToken');
-      if (!token) {
-        setTimeout(() => this.showLogin(), 500);
-        return;
+        if (this._activeRequests <= 0) {
+          this._activeRequests = 0;
+          if (this._timeoutTimer) {
+            clearTimeout(this._timeoutTimer);
+            this._timeoutTimer = null;
+          }
+          const loader = document.getElementById('page-loader');
+          if (loader) loader.classList.add('d-none');
+        }
       }
+    },
+>>>>>>> Stashed changes
 
-      // Timeout guard: if server takes too long (cold start), don't immediately
-      // kick the user to login — retry once before giving up
-      let authSettled = false;
-      const authTimeout = setTimeout(() => {
-        if (!authSettled) {
-          console.warn('[Auth] authenticate timed out — retrying once...');
-          App.API.authenticate(token).then(res => {
-            authSettled = true;
-            if (res && res.success && res.user) {
-              App.State.currentUser = res.user;
-              const isCompleted = res.user.ProfileCompleted || res.user['ProfileCompleted'];
-              if (isCompleted === false || isCompleted === 'false' || isCompleted === 'FALSE' || isCompleted === '') {
-                this.transitionToCompleteProfile();
-              } else {
-                this.transitionToApp(false);
+    // Error Handler
+    ErrorHandler: {
+      handle: function (error, customMsg) {
+        App.Logger.error(error);
+        App.LoadingManager.hide(true); // Force hide loader on major error
+        const msg = customMsg || error.message || App.Constants.MSGS.ERR_SERVER;
+        App.UI.showError(msg);
+      }
+    },
+
+    // UI Singleton
+    UI: {
+      _confirmModal: null,
+      init: function () {
+        const el = document.getElementById('confirmationModal');
+        if (el && typeof bootstrap !== 'undefined') this._confirmModal = new bootstrap.Modal(el);
+      },
+      _toast: function (msg, type) {
+        const c = document.getElementById('toast-container');
+        if (!c) return;
+        const id = 'toast-' + Date.now();
+        let icon = 'bi-check-circle', bg = 'text-bg-success';
+        if (type === 'error') { icon = 'bi-x-circle'; bg = 'text-bg-danger'; }
+        else if (type === 'info') { icon = 'bi-info-circle'; bg = 'text-bg-info'; }
+        c.insertAdjacentHTML('beforeend', `<div id="${id}" class="toast align-items-center ${bg} border-0 shadow" role="alert"><div class="d-flex"><div class="toast-body"><i class="bi ${icon} me-2"></i><span>${App.Utils.escapeHtml(msg)}</span></div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`);
+        const el = document.getElementById(id);
+        const t = new bootstrap.Toast(el, { delay: 3000 });
+        t.show();
+        el.addEventListener('hidden.bs.toast', () => el.remove());
+      },
+      showSuccess: function (msg) { this._toast(msg, 'success'); },
+      showError: function (msg) { this._toast(msg, 'error'); },
+      showInfo: function (msg) { this._toast(msg, 'info'); },
+      updateBreadcrumb: function (parent, current) {
+        const p = document.getElementById('breadcrumb-parent');
+        if (p) p.innerText = parent;
+        const h = document.getElementById('page-heading');
+        if (h) h.innerText = current;
+        const t = document.getElementById('current-page-title');
+        if (t) t.innerText = current;
+      }
+    },
+
+    // Client-Side Cache with TTL (prevents redundant google.script.run calls on tab switches)
+    Cache: {
+      _store: {},
+      // Methods that are safe to cache (read-only, no side effects)
+      _cacheable: [
+        'getDashboardData', 'getAllEvents', 'getAllUsers', 'getAllStudents',
+        'getActiveDepartments', 'getAllDepartments', 'getAnalyticsSummary',
+        'getTrendData', 'getDepartmentData', 'getEventWiseData',
+        'getCheckInPatterns', 'getPerformanceDistribution', 'getDefaulterDistribution',
+        'getLeaderboard', 'getReportsDashboardSummary', 'getUserById'
+      ],
+      _ttlMs: 120000, // 2 minutes client-side TTL
+      get: function (key) {
+        const entry = this._store[key];
+        if (!entry) return null;
+        if (Date.now() > entry.expiresAt) { delete this._store[key]; return null; }
+        return entry.data;
+      },
+      set: function (key, data, ttlMs) {
+        this._store[key] = { data: data, expiresAt: Date.now() + (ttlMs || this._ttlMs) };
+      },
+      isCacheable: function (method) { return this._cacheable.indexOf(method) !== -1; },
+      clear: function (key) { if (key) delete this._store[key]; else this._store = {}; }
+    },
+
+    // Session (Basic role guards interface)
+    Session: {
+      hasPermission: function (moduleName) {
+        const userRole = localStorage.getItem('userRole') || (App.State.currentUser && App.State.currentUser.role) || '';
+        const roleClean = String(userRole).toUpperCase().trim().replace(/[\s_]+/g, '');
+        const mod = String(moduleName).toLowerCase();
+
+        if (roleClean === 'SUPERADMIN') {
+          return true; // Super Admin can access everything
+        }
+        if (roleClean === 'ADMIN' || roleClean === 'HOD') {
+          const allowed = ['dashboard', 'users', 'faculty', 'students', 'events', 'attendance', 'reports', 'analytics', 'settings', 'profile', 'logout'];
+          return allowed.indexOf(mod) !== -1;
+        }
+        if (roleClean === 'EVENTADMIN') {
+          const allowed = ['dashboard', 'events', 'attendance', 'reports', 'analytics', 'profile', 'logout'];
+          return allowed.indexOf(mod) !== -1;
+        }
+        if (roleClean === 'COORDINATOR') {
+          const allowed = ['dashboard', 'attendance', 'profile', 'logout'];
+          return allowed.indexOf(mod) !== -1;
+        }
+        if (mod === 'monitoring') {
+          return roleClean === 'SUPERADMIN' || roleClean === 'DEVELOPER';
+        }
+        if (mod === 'testcenter') {
+          return roleClean === 'SUPERADMIN' || roleClean === 'DEVELOPER';
+        }
+        return false; // Fail closed by default
+      }
+    },
+
+    // API Layer (Centralized google.script.run wrapper with client-side cache)
+    API: {
+      _call: function (serverMethod, ...args) {
+        // Check client-side cache for read-only methods (avoids redundant round trips)
+        if (args.length === 0 && App.Cache.isCacheable(serverMethod)) {
+          const cached = App.Cache.get(serverMethod);
+          if (cached !== null) return Promise.resolve(cached);
+        }
+
+        return new Promise((resolve, reject) => {
+          try { App.LoadingManager.show(); } catch (e) { }
+
+          if (App.Environment === 'production') {
+            if (typeof google.script.run[serverMethod] === 'function') {
+              const token = localStorage.getItem('sessionToken');
+              const callArgs = (serverMethod !== 'login' && serverMethod !== 'authenticate') ? [token, ...args] : args;
+
+              if (serverMethod === 'createDepartment') {
+                console.log("[DEPT-08] calling google.script.run.createDepartment with args:", callArgs);
               }
-            } else {
-              this.logout(true);
-            }
-          }).catch(() => this.logout(true));
-        }
-      }, 12000); // wait 12s before retry
 
-      App.API.authenticate(token).then(res => {
-        authSettled = true;
-        clearTimeout(authTimeout);
-        if (res && res.success && res.user) {
-          App.State.currentUser = res.user;
-          const isCompleted = res.user.ProfileCompleted || res.user['ProfileCompleted'];
-          if (isCompleted === false || isCompleted === 'false' || isCompleted === 'FALSE' || isCompleted === '') {
-            this.transitionToCompleteProfile();
+              google.script.run
+                .withSuccessHandler((res) => {
+                  if (serverMethod === 'createDepartment') {
+                    console.log("[DEPT-13] google.script.run successHandler received raw res:", res);
+                  }
+                  App.LoadingManager.hide();
+                  let resolvedData = null;
+                  if (Array.isArray(res)) {
+                    resolvedData = res;
+                  } else if (res && res.success === false) {
+                    App.LoadingManager.hide(true);
+                    return reject(new Error(res.message || 'Operation failed'));
+                  } else if (res && res.success === true) {
+                    resolvedData = res;
+                  } else if (res && Array.isArray(res.data)) {
+                    resolvedData = res.data;
+                  } else if (res && res.data !== undefined) {
+                    resolvedData = res.data;
+                  } else {
+                    resolvedData = res;
+                  }
+                  // Store in client-side cache for cacheable read-only methods
+                  if (args.length === 0 && App.Cache.isCacheable(serverMethod)) {
+                    App.Cache.set(serverMethod, resolvedData);
+                  }
+                  resolve(resolvedData);
+                })
+                .withFailureHandler((err) => {
+                  App.LoadingManager.hide(true);
+                  console.error('[API ERROR] ' + serverMethod + ':', err);
+                  reject(err);
+                })
+              [serverMethod](...callArgs);
+            } else {
+              App.LoadingManager.hide(true);
+              reject(new Error(`${App.Constants.MSGS.ERR_NOT_FOUND}: ${serverMethod}`));
+            }
           } else {
-            this.transitionToApp(false);
+            setTimeout(() => {
+              App.LoadingManager.hide();
+              resolve(this._getMock(serverMethod, ...args));
+            }, 500);
+          }
+        });
+      },
+      // Warmup: Fire a cheap ping immediately after login to keep Apps Script instance hot
+      warmup: function () {
+        if (App.Environment !== 'production') return;
+        try {
+          if (typeof google.script.run.ping === 'function') {
+            google.script.run.withSuccessHandler(function () { }).withFailureHandler(function () { }).ping();
+          }
+        } catch (e) { }
+      },
+      syncAllStatuses: function () { return this._call('syncAllStatuses'); },
+      completeFirstTimeSetup: function (setupData) { return this._call('completeFirstTimeSetup', setupData); },
+      getTotalUsers: function () { return this._call('getTotalUsers'); },
+      getTotalStudents: function () { return this._call('getTotalStudents'); },
+      getTotalEvents: function () { return this._call('getTotalEvents'); },
+      getActiveEvents: function () { return this._call('getActiveEvents'); },
+      getUpcomingEvents: function () { return this._call('getUpcomingEvents'); },
+      getTotalParticipants: function () { return this._call('getTotalParticipants'); },
+      getAttendanceToday: function () { return this._call('getAttendanceToday'); },
+      getRecentEvents: function () { return this._call('getRecentEvents'); },
+      getDashboardSummary: function () { return this._call('getDashboardSummary'); },
+      getCrossDepartmentAttendance: function () { return this._call('getCrossDepartmentAttendance'); },
+      getReportsDashboardSummary: function () { return this._call('getReportsDashboardSummary'); },
+      getEventReport: function (filters) { return this._call('getEventReport', filters); },
+      getStudentReport: function (rollNumber) { return this._call('getStudentReport', rollNumber); },
+      getDepartmentReport: function (department) { return this._call('getDepartmentReport', department); },
+      getCoordinatorReport: function (coordinatorId) { return this._call('getCoordinatorReport', coordinatorId); },
+      getDateRangeReport: function (fromDate, toDate) { return this._call('getDateRangeReport', fromDate, toDate); },
+      getAttendanceDefaulters: function (filters) { return this._call('getAttendanceDefaulters', filters); },
+      getTopParticipants: function (filters) { return this._call('getTopParticipants', filters); },
+      getAbsentStudents: function (filters) { return this._call('getAbsentStudents', filters); },
+      getYearWiseReport: function (year) { return this._call('getYearWiseReport', year); },
+      getDepartmentComparison: function () { return this._call('getDepartmentComparison'); },
+      getMonthlyReport: function (filters) { return this._call('getMonthlyReport', filters); },
+      getEventTrendReport: function (filters) { return this._call('getEventTrendReport', filters); },
+      getCancelledEvents: function (filters) { return this._call('getCancelledEvents', filters); },
+      getCoordinatorPerformance: function (coordinatorId) { return this._call('getCoordinatorPerformance', coordinatorId); },
+      getStudentEventHistory: function (rollNumber) { return this._call('getStudentEventHistory', rollNumber); },
+      getAnalyticsSummary: function () { return this._call('getAnalyticsSummary'); },
+      getTrendData: function () { return this._call('getTrendData'); },
+      getDepartmentData: function () { return this._call('getDepartmentData'); },
+      getEventWiseData: function () { return this._call('getEventWiseData'); },
+      getCheckInPatterns: function () { return this._call('getCheckInPatterns'); },
+      getPerformanceDistribution: function () { return this._call('getPerformanceDistribution'); },
+      getDefaulterDistribution: function () { return this._call('getDefaulterDistribution'); },
+      getLeaderboard: function () { return this._call('getLeaderboard'); },
+      getCrossDepartmentMatrix: function () { return this._call('getCrossDepartmentMatrix'); },
+      getDashboardData: function () { return this._call('getDashboardData'); },
+      getAllEvents: function () { return this._call('getAllEvents'); },
+      createEvent: function (eventData) { return this._call('createEvent', eventData); },
+      updateEvent: function (eventId, eventData) { return this._call('updateEvent', eventId, eventData); },
+      deleteEvent: function (eventId) { return this._call('deleteEvent', eventId); },
+      changeEventStatus: function (eventId, newStatus) { return this._call('changeEventStatus', eventId, newStatus); },
+      stopEvent: function (eventId) { return this._call('stopEvent', eventId); },
+      cancelEvent: function (eventId) { return this._call('cancelEvent', eventId); },
+      resumeEvent: function (eventId) { return this._call('resumeEvent', eventId); },
+      completeEvent: function (eventId) { return this._call('completeEvent', eventId); },
+      getEventById: function (eventId) { return this._call('getEventById', eventId); },
+      getEventDetailsWithTimeline: function (eventId) { return this._call('getEventDetailsWithTimeline', eventId); },
+      getEventDayAttendance: function (eventId, dayNumber) { return this._call('getEventDayAttendance', eventId, dayNumber); },
+      markAttendanceFast: function (attendanceData) { return this._call('markAttendanceFast', attendanceData); },
+      getQueueStatus: function () { return this._call('getQueueStatus'); },
+      processQueueBatch: function () { return this._call('processQueueBatch'); },
+      generatePrintablePdfHtml: function (title, filters, columns, dataRows, summary) { return this._call('generatePrintablePdfHtml', title, filters, columns, dataRows, summary); },
+      exportToCsv: function (columns, dataRows) { return this._call('exportToCsv', columns, dataRows); },
+      getAllUsers: function () { return this._call('getAllUsers'); },
+      createUser: function (userData) { return this._call('createUser', userData); },
+      updateUser: function (userId, userData) { return this._call('updateUser', userId, userData); },
+      deleteUser: function (userId) { return this._call('deleteUser', userId); },
+      resetPassword: function (userId) { return this._call('resetPassword', userId); },
+      changePassword: function (userId, oldPassword, newPassword) { return this._call('changePassword', userId, oldPassword, newPassword); },
+      getUserById: function (userId) { return this._call('getUserById', userId); },
+      importUsers: function (usersDataArray) { return this._call('importUsers', usersDataArray); },
+      getAllStudents: function () { return this._call('getAllStudents'); },
+      getActiveDepartments: function () { return this._call('getActiveDepartments'); },
+      createDepartment: function (departmentData) { return this._call('createDepartment', departmentData); },
+      updateDepartment: function (departmentId, updateData) { return this._call('updateDepartment', departmentId, updateData); },
+      deleteDepartment: function (departmentId) { return this._call('deleteDepartment', departmentId); },
+      getDepartmentById: function (departmentId) { return this._call('getDepartmentById', departmentId); },
+      getAllDepartments: function () { return this._call('getAllDepartments'); },
+      deleteAttendance: function (attendanceId) { return this._call('deleteAttendance', attendanceId); },
+      getAttendanceById: function (attendanceId) { return this._call('getAttendanceById', attendanceId); },
+      getStudentAttendanceCount: function (rollNumber) { return this._call('getStudentAttendanceCount', rollNumber); },
+      createStudent: function (studentData) { return this._call('createStudent', studentData); },
+      updateStudent: function (rollNumber, studentData) { return this._call('updateStudent', rollNumber, studentData); },
+      deleteStudent: function (rollNumber) { return this._call('deleteStudent', rollNumber); },
+      getStudentById: function (rollNumber) { return this._call('getStudentByRollNumber', rollNumber); },
+      getFacultyMembers: function () { return this._call('getFacultyMembers'); },
+      createFaculty: function (facultyData) { return this._call('createFaculty', facultyData); },
+      createGuest: function (guestData) { return this._call('createGuest', guestData); },
+      getAllGuests: function () { return this._call('getAllGuests'); },
+      updateFaculty: function (facultyId, updates) { return this._call('updateFaculty', facultyId, updates); },
+      deactivateFaculty: function (facultyId) { return this._call('deactivateFaculty', facultyId); },
+      deleteFaculty: function (facultyId) { return this._call('deleteFaculty', facultyId); },
+      getSettings: function () { return this._call('getSettings'); },
+      saveSettings: function (payload) { return this._call('saveSettings', payload); },
+      clearAttendanceLogs: function () { return this._call('clearAttendanceLogs'); },
+      resetSystem: function () { return this._call('resetSystem'); },
+      getAuditLogs: function () { return this._call('getAuditLogs'); },
+      login: function (credentials) { return this._call('login', credentials); },
+      logout: function () { return this._call('logout'); },
+      authenticate: function (sessionToken) { return this._call('authenticate', sessionToken); },
+      getAttendanceByEvent: function (eventId) { return this._call('getAttendanceByEvent', eventId); },
+      getAllEnrichedParticipants: function () { return this._call('getAllEnrichedParticipants'); },
+      getEventParticipants: function (eventId) { return this._call('getEventParticipants', eventId); },
+      addParticipant: function (eventId, rollNumber) { return this._call('addParticipant', eventId, rollNumber); },
+      removeParticipant: function (eventId, rollNumber) { return this._call('removeParticipant', eventId, rollNumber); },
+      restoreParticipant: function (eventId, rollNumber) { return this._call('restoreParticipant', eventId, rollNumber); },
+      checkEligibility: function (eventId, rollNumber) { return this._call('checkEligibility', eventId, rollNumber); },
+      bulkAddParticipants: function (eventId, rollNumbers) { return this._call('bulkAddParticipants', eventId, rollNumbers); },
+      bulkRemoveParticipants: function (eventId, rollNumbers) { return this._call('bulkRemoveParticipants', eventId, rollNumbers); },
+      _getMock: function (m) {
+        if (m === 'getDashboardSummary') return { report: { totalStudents: 1250, totalEvents: 45, totalAttendance: 15420, totalPresent: 14200, totalAbsent: 1220, attendancePercentage: 92.08 } };
+        if (m === 'getAllEvents') return [{ event_id: 'EVT-01', event_name: 'Tech Symposium', event_date: '2026-07-15', status: App.Constants.EVENT_STATUS.COMPLETED, coordinator_id: 'USR-01' }];
+        if (m === 'getAllUsers') return [{ user_id: 'USR-01', full_name: 'John Doe', role: App.Constants.ROLES.COORDINATOR }];
+        if (m === 'getAllStudents') return [{ roll_number: 'CSE001', student_name: 'Alice', department: 'CSE' }];
+        if (m === 'getAttendanceByEvent') return [{ roll_number: 'CSE001', event_id: 'EVT-01', status: App.Constants.ATTENDANCE_STATUS.PRESENT, timestamp: '2026-07-15 10:00' }];
+        if (m === 'getReportsDashboardSummary') return { success: true, report: { totalEvents: 45, totalStudents: 1250, totalAttendance: 15420, attendancePercentage: 92.08, activeEvents: 3, completedEvents: 38, highestEvent: 'Tech Symposium', lowestEvent: 'Workshop A' } };
+        if (m === 'getEventReport') return [{ event_name: 'Tech Symposium', coordinator: 'John Doe', venue: 'Main Hall', start_date: '2026-07-15', end_date: '2026-07-15', participants: 120, present: 110, absent: 10, attendance_percentage: 91.67, status: 'Completed' }];
+        if (m === 'getDepartmentReport' || m === 'getDepartmentComparison') return [{ department: 'CSE', total_students: 320, events_conducted: 12, attendance_percentage: 88.5, rank: 1 }];
+        if (m === 'getAttendanceDefaulters') return [{ roll_number: 'CSE001', student_name: 'Alice', department: 'CSE', year: '3', events_enrolled: 5, present: 2, absent: 3, attendance_percentage: 40, status: 'Critical' }];
+        if (m === 'getTopParticipants') return [{ roll_number: 'CSE002', student_name: 'Bob', department: 'CSE', year: '2', events_attended: 15, unique_events: 12 }];
+        if (m === 'changePassword') return { success: true, message: 'Password updated successfully' };
+        return {};
+      }
+    },
+
+    // Router
+    Router: {
+      navigate: function (pageName) {
+        if (!pageName || pageName === 'logout') return;
+        if (!App.Session.hasPermission(pageName)) {
+          App.UI.showError('Access Denied');
+          return;
+        }
+
+        // Delegate to Index page loadPage if available
+        if (typeof loadPage === 'function') {
+          loadPage(pageName);
+          App.State.activeModule = pageName;
+          // Persist current page so it survives a browser refresh
+          try { localStorage.setItem('lastActivePage', pageName); } catch (e) { }
+          return;
+        }
+
+        // Cleanup previous module
+        if (App.State.activeModule && App.Modules[App.State.activeModule] && typeof App.Modules[App.State.activeModule].destroy === 'function') {
+          App.Modules[App.State.activeModule].destroy();
+        }
+
+        const emptyEl = document.getElementById('module-empty');
+        if (emptyEl) emptyEl.classList.add('d-none');
+
+        document.querySelectorAll('.app-module').forEach(el => el.classList.add('d-none'));
+
+        const targetModule = document.getElementById(`module-${pageName}`);
+        if (targetModule) {
+          targetModule.classList.remove('d-none');
+          App.State.activeModule = pageName;
+          // Persist current page so it survives a browser refresh
+          try { localStorage.setItem('lastActivePage', pageName); } catch (e) { }
+          const mod = App.Modules[pageName];
+          if (mod) {
+            if (typeof mod.init === 'function') mod.init();
+          } else {
+            console.error('[ROUTER] Module JS not registered for:', pageName, '| App.Modules keys:', Object.keys(App.Modules));
+            App.Logger.warn(`Module ${pageName} logic not found.`);
           }
         } else {
+          console.error('[ROUTER] DOM element not found: #module-' + pageName);
+          App.ErrorHandler.handle(new Error(`Template module-${pageName} missing.`));
+        }
+      }
+    },
+
+    // UI Components Architecture (Interfaces only, as requested)
+    Components: {
+      Table: { render: function (containerId, config) { /* implementation pending */ } },
+      Modal: { create: function (config) { /* implementation pending */ } },
+      Pagination: { render: function (containerId, config) { /* implementation pending */ } },
+      Search: { bind: function (inputId, callback) { /* implementation pending */ } },
+      Filters: { render: function (containerId, config) { /* implementation pending */ } }
+    },
+
+    // Modules Registry
+    Modules: {},
+
+    // Services Registry
+    Services: {},
+
+    // Authentication Flow Manager
+    Auth: {
+      init: function () {
+        const token = localStorage.getItem('sessionToken');
+        if (!token) {
+          setTimeout(() => this.showLogin(), 500);
+          return;
+        }
+
+        // Timeout guard: if server takes too long (cold start), don't immediately
+        // kick the user to login — retry once before giving up
+        let authSettled = false;
+        const authTimeout = setTimeout(() => {
+          if (!authSettled) {
+            console.warn('[Auth] authenticate timed out — retrying once...');
+            App.API.authenticate(token).then(res => {
+              authSettled = true;
+              if (res && res.success && res.user) {
+                App.State.currentUser = res.user;
+                const isCompleted = res.user.ProfileCompleted || res.user['ProfileCompleted'];
+                if (isCompleted === false || isCompleted === 'false' || isCompleted === 'FALSE' || isCompleted === '') {
+                  this.transitionToCompleteProfile();
+                } else {
+                  this.transitionToApp(false);
+                }
+              } else {
+                this.logout(true);
+              }
+            }).catch(() => this.logout(true));
+          }
+        }, 12000); // wait 12s before retry
+
+        App.API.authenticate(token).then(res => {
+          authSettled = true;
+          clearTimeout(authTimeout);
+          if (res && res.success && res.user) {
+            App.State.currentUser = res.user;
+            const isCompleted = res.user.ProfileCompleted || res.user['ProfileCompleted'];
+            if (isCompleted === false || isCompleted === 'false' || isCompleted === 'FALSE' || isCompleted === '') {
+              this.transitionToCompleteProfile();
+            } else {
+              this.transitionToApp(false);
+            }
+          } else {
+            this.logout(true);
+          }
+        }).catch(err => {
+          authSettled = true;
+          clearTimeout(authTimeout);
+          console.error('[Auth] authenticate error:', err);
           this.logout(true);
-        }
-      }).catch(err => {
-        authSettled = true;
-        clearTimeout(authTimeout);
-        console.error('[Auth] authenticate error:', err);
-        this.logout(true);
-      });
-    },
+        });
+      },
 
-    transitionToCompleteProfile: function() {
-      const splash = document.getElementById('splash-screen');
-      if (splash) splash.classList.add('d-none');
-      const bg = document.getElementById('auth-bg');
-      if (bg) bg.classList.add('d-none');
-      const loginContainer = document.getElementById('login-container');
-      if (loginContainer) loginContainer.classList.add('d-none');
-      
-      App.LoadingManager.show();
-      google.script.run
-        .withSuccessHandler(function(html) {
-          App.LoadingManager.hide();
-          if (google.script.history && google.script.history.replace) {
-            google.script.history.replace(null, { page: 'completeprofile' }, null);
-          }
-          document.open();
-          document.write(html);
-          document.close();
-        })
-        .withFailureHandler(function(err) {
-          App.LoadingManager.hide();
-          console.error("Failed to load Complete Profile view:", err);
-          App.UI.showError("Failed to load Complete Profile view.");
-        })
-        .getPageContent('completeprofile');
-    },
+      transitionToCompleteProfile: function () {
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.classList.add('d-none');
+        const bg = document.getElementById('auth-bg');
+        if (bg) bg.classList.add('d-none');
+        const loginContainer = document.getElementById('login-container');
+        if (loginContainer) loginContainer.classList.add('d-none');
 
-    setSession: function(token, user) {
-      localStorage.setItem('sessionToken', token);
-      App.State.currentUser = user;
-    },
-
-    transitionToApp: function(fromLogin = true) {
-      const splash = document.getElementById('splash-screen');
-      if (splash) splash.classList.add('d-none');
-      const bg = document.getElementById('auth-bg');
-      if (bg) bg.classList.add('d-none');
-      const loginContainer = document.getElementById('login-container');
-      if (loginContainer) loginContainer.classList.add('d-none');
-      const errorContainer = document.getElementById('error-container');
-      if (errorContainer) errorContainer.classList.add('d-none');
-      
-      const appWrapper = document.getElementById('app-wrapper');
-      if (appWrapper) appWrapper.classList.remove('d-none');
-      
-      // Update UI Header
-      const userNameEl = document.getElementById('user-name');
-      if (userNameEl && App.State.currentUser) {
-        userNameEl.innerText = App.State.currentUser.full_name || App.State.currentUser.username || App.State.currentUser.Username || 'User';
-      }
-      const userRoleEl = document.getElementById('user-role-label');
-      if (userRoleEl && App.State.currentUser) {
-        userRoleEl.innerText = App.State.currentUser.role || App.State.currentUser.Role || 'Role';
-      }
-
-      // Role Routing
-      const role = App.State.currentUser && String(App.State.currentUser.role || App.State.currentUser.Role || '').trim().toUpperCase();
-
-      // Dynamic sidebar link visibility based on Role
-      document.querySelectorAll('.sidebar-nav .nav-link[data-page]').forEach(link => {
-        const pageName = link.getAttribute('data-page');
-        const navItem = link.closest('.nav-item');
-        if (!navItem) return;
-
-        if (role === 'ADMIN' || role === 'HOD') {
-          const allowed = ['dashboard', 'students', 'events', 'attendance', 'reports', 'logout'];
-          if (allowed.indexOf(pageName) === -1) {
-            navItem.classList.add('d-none');
-          } else {
-            navItem.classList.remove('d-none');
-          }
-        } else {
-          // Super Admin or Developer
-          if (pageName === 'testcenter') {
-            if (role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'DEVELOPER') {
-              navItem.classList.remove('d-none');
-            } else {
-              navItem.classList.add('d-none');
-            }
-          } else {
-            navItem.classList.remove('d-none');
-          }
-        }
-      });
-
-      if (role === 'COORDINATOR') {
-        // Force redirect to standalone Coordinator terminal page to enable camera access
         App.LoadingManager.show();
         google.script.run
-          .withSuccessHandler(function(scriptUrl) {
-            const token = localStorage.getItem('sessionToken');
-            const coordUrl = scriptUrl + '?page=coordinator&token=' + encodeURIComponent(token);
-            try {
-              window.top.location.href = coordUrl;
-            } catch (e) {
-              window.location.href = coordUrl;
+          .withSuccessHandler(function (html) {
+            App.LoadingManager.hide();
+            if (google.script.history && google.script.history.replace) {
+              google.script.history.replace(null, { page: 'completeprofile' }, null);
             }
+            document.open();
+            document.write(html);
+            document.close();
           })
-          .withFailureHandler(function(err) {
-            console.error('Failed to get script URL during auth transition:', err);
-            App.Router.navigate(App.Constants.MODULES.DASHBOARD);
+          .withFailureHandler(function (err) {
+            App.LoadingManager.hide();
+            console.error("Failed to load Complete Profile view:", err);
+            App.UI.showError("Failed to load Complete Profile view.");
           })
-          .getScriptUrl();
-      } else {
-        if (fromLogin) {
-          App.Router.navigate(App.Constants.MODULES.DASHBOARD);
-        } else {
-          // Refresh: restore last visited page from localStorage (survives page reload)
-          let lastPage = '';
-          try { lastPage = localStorage.getItem('lastActivePage') || ''; } catch(e) {}
-          const restorePage = lastPage || App.State.activeModule || App.Constants.MODULES.DASHBOARD;
-          App.Router.navigate(restorePage);
-        }
-      }
-    },
+          .getPageContent('completeprofile');
+      },
 
-    showLogin: function(sessionExpired = false) {
-      const splash = document.getElementById('splash-screen');
-      if (splash) splash.classList.add('d-none');
-      const appWrapper = document.getElementById('app-wrapper');
-      if (appWrapper) appWrapper.classList.add('d-none');
-      const errorContainer = document.getElementById('error-container');
-      if (errorContainer) errorContainer.classList.add('d-none');
-      
-      const bg = document.getElementById('auth-bg');
-      if (bg) bg.classList.remove('d-none');
-      const loginContainer = document.getElementById('login-container');
-      if (loginContainer) {
-        loginContainer.classList.remove('d-none');
-        if (App.Modules.login) App.Modules.login.init();
-        if (sessionExpired) {
-          App.UI.showError('Session Expired. Please login again.');
+      setSession: function (token, user) {
+        localStorage.setItem('sessionToken', token);
+        App.State.currentUser = user;
+      },
+
+      transitionToApp: function (fromLogin = true) {
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.classList.add('d-none');
+        const bg = document.getElementById('auth-bg');
+        if (bg) bg.classList.add('d-none');
+        const loginContainer = document.getElementById('login-container');
+        if (loginContainer) loginContainer.classList.add('d-none');
+        const errorContainer = document.getElementById('error-container');
+        if (errorContainer) errorContainer.classList.add('d-none');
+
+        const appWrapper = document.getElementById('app-wrapper');
+        if (appWrapper) appWrapper.classList.remove('d-none');
+
+        // Update UI Header
+        const userNameEl = document.getElementById('user-name');
+        if (userNameEl && App.State.currentUser) {
+          userNameEl.innerText = App.State.currentUser.full_name || App.State.currentUser.username || App.State.currentUser.Username || 'User';
         }
-      } else {
-        console.log('Not on Login page. Redirecting to Login URL...');
-        const scriptUrl = window.APP_SCRIPT_URL || '';
-        if (scriptUrl) {
-          try {
-            window.top.location.href = scriptUrl + "?page=login" + (sessionExpired ? "&expired=true" : "");
-          } catch (e) {
-            window.location.href = scriptUrl + "?page=login" + (sessionExpired ? "&expired=true" : "");
+        const userRoleEl = document.getElementById('user-role-label');
+        if (userRoleEl && App.State.currentUser) {
+          userRoleEl.innerText = App.State.currentUser.role || App.State.currentUser.Role || 'Role';
+        }
+
+        // Role Routing
+        const role = App.State.currentUser && String(App.State.currentUser.role || App.State.currentUser.Role || '').trim().toUpperCase();
+
+        // Dynamic sidebar link visibility based on Role
+        document.querySelectorAll('.sidebar-nav .nav-link[data-page]').forEach(link => {
+          const pageName = String(link.getAttribute('data-page')).toLowerCase();
+          const targetEl = link.closest('.nav-item') || link;
+          if (!targetEl) return;
+
+          const roleClean = String(role || '').trim().toUpperCase().replace(/[\s_]+/g, '');
+
+          if (roleClean === 'ADMIN' || roleClean === 'HOD') {
+            const allowed = ['dashboard', 'users', 'faculty', 'students', 'events', 'attendance', 'reports', 'analytics', 'settings', 'profile', 'logout'];
+            if (allowed.indexOf(pageName) === -1) {
+              targetEl.classList.add('d-none');
+            } else {
+              targetEl.classList.remove('d-none');
+            }
+          } else if (roleClean === 'EVENTADMIN') {
+            const allowed = ['dashboard', 'events', 'attendance', 'reports', 'analytics', 'profile', 'logout'];
+            if (allowed.indexOf(pageName) === -1) {
+              targetEl.classList.add('d-none');
+            } else {
+              targetEl.classList.remove('d-none');
+            }
+          } else {
+            // Super Admin or Developer
+            if (pageName === 'monitoring' || pageName === 'testcenter') {
+              if (roleClean === 'SUPERADMIN' || roleClean === 'DEVELOPER') {
+                targetEl.classList.remove('d-none');
+              } else {
+                targetEl.classList.add('d-none');
+              }
+            } else {
+              targetEl.classList.remove('d-none');
+            }
+          }
+        });
+
+        if (role === 'COORDINATOR') {
+          // Force redirect to standalone Coordinator terminal page to enable camera access
+          App.LoadingManager.show();
+          google.script.run
+            .withSuccessHandler(function (scriptUrl) {
+              const token = localStorage.getItem('sessionToken');
+              const coordUrl = scriptUrl + '?page=coordinator&token=' + encodeURIComponent(token);
+              try {
+                window.top.location.href = coordUrl;
+              } catch (e) {
+                window.location.href = coordUrl;
+              }
+            })
+            .withFailureHandler(function (err) {
+              console.error('Failed to get script URL during auth transition:', err);
+              App.Router.navigate(App.Constants.MODULES.DASHBOARD);
+            })
+            .getScriptUrl();
+        } else {
+          if (fromLogin) {
+            App.Router.navigate(App.Constants.MODULES.DASHBOARD);
+          } else {
+            // Refresh: restore last visited page from localStorage (survives page reload)
+            let lastPage = '';
+            try { lastPage = localStorage.getItem('lastActivePage') || ''; } catch (e) { }
+            const restorePage = lastPage || App.State.activeModule || App.Constants.MODULES.DASHBOARD;
+            App.Router.navigate(restorePage);
           }
         }
-      }
-    },
+      },
 
-    logout: function(isExpired = false) {
-      console.log('=== LOGOUT STARTED ===');
-      
-      const token = localStorage.getItem('sessionToken');
-      
-      // Call backend API to destroy session (async, non-blocking) before clearing local state
-      if (token) {
-        console.log('Calling backend logout API...');
-        App.API.logout().then((res) => {
-          console.log('Backend logout response:', res);
-        }).catch(err => {
-          console.error('Backend logout failed (non-critical):', err);
-        });
-      }
-      
-      // Immediately clear local state and show login
-      localStorage.removeItem('sessionToken');
-      try { localStorage.removeItem('lastActivePage'); } catch(e) {}
-      App.State.currentUser = null;
-      App.LoadingManager.hide(true);
-      
-      console.log('Local state cleared, showing login screen');
-      this.showLogin(isExpired);
-    },
+      showLogin: function (sessionExpired = false) {
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.classList.add('d-none');
+        const appWrapper = document.getElementById('app-wrapper');
+        if (appWrapper) appWrapper.classList.add('d-none');
+        const errorContainer = document.getElementById('error-container');
+        if (errorContainer) errorContainer.classList.add('d-none');
 
-    _clearLocalState: function(isExpired) {
-      // This is now handled in logout() directly
-      console.log('Clearing local state...');
-    }
-  }
-};
-
-/**
- * ==========================================
- * CORE EVENT LISTENERS
- * ==========================================
- */
-document.addEventListener('DOMContentLoaded', () => {
-  App.UI.init();
-  const body = document.body;
-  
-  // Layout toggles
-  document.getElementById('toggle-sidebar')?.addEventListener('click', () => {
-    if (window.innerWidth < 768) body.classList.add('sidebar-open');
-    else body.classList.toggle('sidebar-collapsed');
-  });
-  
-  document.getElementById('close-sidebar')?.addEventListener('click', () => body.classList.remove('sidebar-open'));
-  
-  // Sidebar auto-close on mobile outside click
-  document.addEventListener('click', (e) => {
-    if (window.innerWidth < 768 && body.classList.contains('sidebar-open')) {
-      const sidebar = document.getElementById('sidebar');
-      const toggleBtn = document.getElementById('toggle-sidebar');
-      if (!sidebar.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) body.classList.remove('sidebar-open');
-    }
-  });
-
-  // Global Navigation Delegation
-  document.querySelectorAll('.sidebar-nav .nav-link[data-page]').forEach(link => {
-    link.addEventListener('click', function(e) {
-      e.preventDefault();
-      const pageName = this.getAttribute('data-page');
-      console.log('Navigation clicked:', pageName);
-      
-      if (pageName === 'logout') {
-        console.log('Logout button clicked');
-        if (confirm('Are you sure you want to logout?')) {
-          console.log('Logout confirmed by user');
-          App.Auth.logout();
+        const bg = document.getElementById('auth-bg');
+        if (bg) bg.classList.remove('d-none');
+        const loginContainer = document.getElementById('login-container');
+        if (loginContainer) {
+          loginContainer.classList.remove('d-none');
+          if (App.Modules.login) App.Modules.login.init();
+          if (sessionExpired) {
+            App.UI.showError('Session Expired. Please login again.');
+          }
         } else {
-          console.log('Logout cancelled by user');
+          console.log('Not on Login page. Redirecting to Login URL...');
+          const scriptUrl = window.APP_SCRIPT_URL || '';
+          if (scriptUrl) {
+            try {
+              window.top.location.href = scriptUrl + "?page=login" + (sessionExpired ? "&expired=true" : "");
+            } catch (e) {
+              window.location.href = scriptUrl + "?page=login" + (sessionExpired ? "&expired=true" : "");
+            }
+          }
         }
-        return;
+      },
+
+      logout: function (isExpired = false) {
+        console.log('=== LOGOUT STARTED ===');
+
+        const token = localStorage.getItem('sessionToken');
+
+        // Call backend API to destroy session (async, non-blocking) before clearing local state
+        if (token) {
+          console.log('Calling backend logout API...');
+          App.API.logout().then((res) => {
+            console.log('Backend logout response:', res);
+          }).catch(err => {
+            console.error('Backend logout failed (non-critical):', err);
+          });
+        }
+
+        // Immediately clear local state and show login
+        localStorage.removeItem('sessionToken');
+        try { localStorage.removeItem('lastActivePage'); } catch (e) { }
+        App.State.currentUser = null;
+        App.LoadingManager.hide(true);
+
+        console.log('Local state cleared, showing login screen');
+        this.showLogin(isExpired);
+      },
+
+      _clearLocalState: function (isExpired) {
+        // This is now handled in logout() directly
+        console.log('Clearing local state...');
       }
-      if (!pageName) return;
-      document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.remove('active'));
-      this.classList.add('active');
-      const textEl = this.querySelector('.nav-text') || this.querySelector('span');
-      const textVal = textEl ? textEl.innerText : pageName;
-      App.UI.updateBreadcrumb('Home', textVal);
-      if (window.innerWidth < 768) body.classList.remove('sidebar-open');
-      App.Router.navigate(pageName);
+    }
+  };
+
+  /**
+   * ==========================================
+   * CORE EVENT LISTENERS
+   * ==========================================
+   */
+  document.addEventListener('DOMContentLoaded', () => {
+    App.UI.init();
+    const body = document.body;
+
+    // Layout toggles
+    document.getElementById('toggle-sidebar')?.addEventListener('click', () => {
+      if (window.innerWidth < 768) body.classList.add('sidebar-open');
+      else body.classList.toggle('sidebar-collapsed');
     });
+
+    document.getElementById('close-sidebar')?.addEventListener('click', () => body.classList.remove('sidebar-open'));
+
+    // Sidebar auto-close on mobile outside click
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth < 768 && body.classList.contains('sidebar-open')) {
+        const sidebar = document.getElementById('sidebar');
+        const toggleBtn = document.getElementById('toggle-sidebar');
+        if (!sidebar.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) body.classList.remove('sidebar-open');
+      }
+    });
+
+    // Global Navigation Delegation
+    document.querySelectorAll('.sidebar-nav .nav-link[data-page]').forEach(link => {
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        const pageName = this.getAttribute('data-page');
+        console.log('Navigation clicked:', pageName);
+
+        if (pageName === 'logout') {
+          console.log('Logout button clicked');
+          if (confirm('Are you sure you want to logout?')) {
+            console.log('Logout confirmed by user');
+            App.Auth.logout();
+          } else {
+            console.log('Logout cancelled by user');
+          }
+          return;
+        }
+        if (!pageName) return;
+        document.querySelectorAll('.sidebar-nav .nav-link').forEach(l => l.classList.remove('active'));
+        this.classList.add('active');
+        const textEl = this.querySelector('.nav-text') || this.querySelector('span');
+        const textVal = textEl ? textEl.innerText : pageName;
+        App.UI.updateBreadcrumb('Home', textVal);
+        if (window.innerWidth < 768) body.classList.remove('sidebar-open');
+        App.Router.navigate(pageName);
+      });
+    });
+
+    // Live Clock
+    setInterval(() => {
+      const d = document.getElementById('current-date');
+      const t = document.getElementById('current-time');
+      if (d && t) {
+        const now = new Date();
+        d.innerText = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        t.innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      }
+    }, 1000);
+
+    /**
+     * Universal Enterprise Export Engine
+     * Seamless client & server CSV, Excel & PDF exporter across all modules.
+     */
+    App.ExportEngine = {
+      open: function (moduleType) {
+        if (typeof App !== 'undefined' && App.ExportBuilder && typeof App.ExportBuilder.open === 'function') {
+          App.ExportBuilder.open(moduleType);
+        } else {
+          console.warn(`[Export Engine] ExportBuilder modal not loaded for ${moduleType}, using direct CSV fallback`);
+          this.fallbackExport(moduleType);
+        }
+      },
+
+      downloadCSV: function (filename, columns, dataRows) {
+        if (!Array.isArray(columns) || !Array.isArray(dataRows)) {
+          App.UI.showError("Invalid export data provided");
+          return;
+        }
+        const headerRow = columns.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',');
+        const bodyRows = dataRows.map(row => {
+          return columns.map(col => {
+            let val = (row[col] !== undefined && row[col] !== null) ? String(row[col]) : '';
+            return `"${val.replace(/"/g, '""')}"`;
+          }).join(',');
+        }).join('\n');
+
+        const csvString = '\uFEFF' + headerRow + '\n' + bodyRows;
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${filename}_${new Date().getTime()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        if (typeof App !== 'undefined' && App.UI && typeof App.UI.showSuccess === 'function') {
+          App.UI.showSuccess("Export downloaded successfully!");
+        }
+      },
+
+      downloadExcel: function (filename, columns, dataRows) {
+        if (!Array.isArray(columns) || !Array.isArray(dataRows)) {
+          App.UI.showError("Invalid export data provided");
+          return;
+        }
+        const headerRow = columns.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',');
+        const bodyRows = dataRows.map(row => {
+          return columns.map(col => {
+            let val = (row[col] !== undefined && row[col] !== null) ? String(row[col]) : '';
+            return `"${val.replace(/"/g, '""')}"`;
+          }).join(',');
+        }).join('\n');
+
+        const csvString = '\uFEFF' + headerRow + '\n' + bodyRows;
+        const blob = new Blob([csvString], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${filename}_${new Date().getTime()}.xls`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        if (typeof App !== 'undefined' && App.UI && typeof App.UI.showSuccess === 'function') {
+          App.UI.showSuccess("Excel export downloaded successfully!");
+        }
+      },
+
+      downloadPDF: function (title, columns, dataRows, summary) {
+        App.API._call('generatePrintablePdfHtml', title, {}, columns, dataRows, summary || {})
+          .then(htmlStr => {
+            const printWin = window.open('', '_blank');
+            if (printWin) {
+              setTimeout(() => {
+                printWin.document.write(htmlStr);
+                printWin.document.close();
+              }, 150);
+            } else {
+              App.UI.showError("Popup blocked. Please allow popups to view PDF report.");
+            }
+          })
+          .catch(err => {
+            App.UI.showError("Failed to generate PDF: " + err.message);
+          });
+      },
+
+      fallbackExport: function (moduleType) {
+        let activeMod = App.Modules[moduleType];
+        if (activeMod && typeof activeMod.exportToCSV === 'function') {
+          activeMod.exportToCSV();
+        } else {
+          App.UI.showToast("Export module currently initializing.", "warning");
+        }
+      }
+    };
+
+    // Boot Auth flow instead of default route
+    App.Auth.init();
+
+    // Presence Heartbeat Ping Timer (run every 60s)
+    setInterval(function () {
+      var token = localStorage.getItem('sessionToken');
+      if (token) {
+        google.script.run
+          .withSuccessHandler(function () {
+            // Heartbeat success
+          })
+          .withFailureHandler(function (err) {
+            console.warn("Heartbeat ping failed:", err);
+          })
+          .pingHeartbeat(token);
+      }
+    }, 60000);
   });
-
-  // Live Clock
-  setInterval(() => {
-    const d = document.getElementById('current-date');
-    const t = document.getElementById('current-time');
-    if (d && t) {
-      const now = new Date();
-      d.innerText = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      t.innerText = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    }
-  }, 1000);
-
-  // Boot Auth flow instead of default route
-  App.Auth.init();
-
-  // Presence Heartbeat Ping Timer (run every 60s)
-  setInterval(function() {
-    var token = localStorage.getItem('sessionToken');
-    if (token) {
-      google.script.run
-        .withSuccessHandler(function() {
-          // Heartbeat success
-        })
-        .withFailureHandler(function(err) {
-          console.warn("Heartbeat ping failed:", err);
-        })
-        .pingHeartbeat(token);
-    }
-  }, 60000);
-});
 </script>

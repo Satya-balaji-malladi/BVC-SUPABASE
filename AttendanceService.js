@@ -404,17 +404,15 @@ const AttendanceService = {
           return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_NOT_FOUND) ? CONFIG.MESSAGES.EVENT_NOT_FOUND : 'Event not found.');
         }
 
-        // Reject completed/cancelled events
-        const eventStatus = String(event.status || event['Status'] || '').toUpperCase();
-        const completedStatus = CONFIG && CONFIG.EVENT_STATUS && CONFIG.EVENT_STATUS.COMPLETED ? String(CONFIG.EVENT_STATUS.COMPLETED).toUpperCase() : 'COMPLETED';
-        const cancelledStatus = CONFIG && CONFIG.EVENT_STATUS && CONFIG.EVENT_STATUS.CANCELLED ? String(CONFIG.EVENT_STATUS.CANCELLED).toUpperCase() : 'CANCELLED';
-
-        if (eventStatus === completedStatus) {
-          return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED) ? CONFIG.MESSAGES.EVENT_ALREADY_COMPLETED : 'Event is already completed.');
-        }
-        if (eventStatus === cancelledStatus) {
-          const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.EVENT_CANCELLED) ? CONFIG.MESSAGES.EVENT_CANCELLED : 'Attendance cannot be recorded for cancelled events.';
-          return Utils.buildResponse(false, msg);
+        // Reject based on event lifecycle status
+        if (typeof EventService !== 'undefined' && !EventService.canMarkAttendance(event)) {
+          const currentStatus = event.status || event['Event Status'] || 'N/A';
+          return Utils.buildResponse(false, `Attendance cannot be marked because the event is in "${currentStatus}" status.`);
+        } else if (typeof EventService === 'undefined') {
+          const st = String(event.status || event['Status'] || '').toUpperCase().trim();
+          if (st !== 'ACTIVE') {
+            return Utils.buildResponse(false, `Attendance cannot be marked because the event is in "${event.status || 'N/A'}" status.`);
+          }
         }
 
         // Attendance window validation (Fail Closed)
@@ -510,14 +508,6 @@ const AttendanceService = {
         const student = StudentService.getStudentByRollNumber(rollNumber);
         if (!student) {
           return Utils.buildResponse(false, (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.STUDENT_NOT_FOUND) ? CONFIG.MESSAGES.STUDENT_NOT_FOUND : 'Student record not found.');
-        }
-        if (student && student.status) {
-          const studentStatus = String(student.status).toUpperCase();
-          const activeUserStatus = CONFIG && CONFIG.USER_STATUS && CONFIG.USER_STATUS.ACTIVE ? String(CONFIG.USER_STATUS.ACTIVE).toUpperCase() : 'ACTIVE';
-          if (studentStatus !== activeUserStatus) {
-            const msg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.STUDENT_INACTIVE) ? CONFIG.MESSAGES.STUDENT_INACTIVE : 'Student is inactive.';
-            return Utils.buildResponse(false, msg);
-          }
         }
 
         // Registration Eligibility Rules aligned with CoordinatorService
@@ -726,6 +716,9 @@ const AttendanceService = {
 
           if (success) {
             this._addEventScannedRoll(eventId, rollNumber);
+            if (typeof StatusService !== 'undefined') {
+              StatusService.refreshUserStatus(rollNumber, 'STUDENT', true);
+            }
 
             const studentRec = StudentService.getStudentByRollNumber(rollNumber);
             let studentInfo = null;
@@ -857,6 +850,9 @@ const AttendanceService = {
         if (success) {
           const attendanceRoll = this._getRecordRollNumber(attendanceRecord);
           this._removeEventScannedRoll(attendanceEventId, attendanceRoll);
+          if (typeof StatusService !== 'undefined') {
+            StatusService.refreshUserStatus(attendanceRoll, 'STUDENT', true);
+          }
 
           const successMsg = (CONFIG && CONFIG.MESSAGES && CONFIG.MESSAGES.ATTENDANCE_DELETED) ? CONFIG.MESSAGES.ATTENDANCE_DELETED : 'Attendance deleted successfully.';
           const resp = Utils.buildResponse(true, successMsg);

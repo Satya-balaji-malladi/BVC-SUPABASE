@@ -126,7 +126,13 @@ const ExportService = {
 
       // 2. Enforce Department Isolation & Role restrictions
       if (!isSuper) {
-        if (config.module_type === 'students' || config.module_type === 'participants' || config.module_type === 'attendance') {
+        if (config.module_type === 'students') {
+          rawData = typeof SecurityUtils !== 'undefined' ? SecurityUtils.applyStudentRLS(rawData, userContext) : rawData;
+        } else if (config.module_type === 'events') {
+          rawData = typeof SecurityUtils !== 'undefined' ? SecurityUtils.applyEventRLS(rawData, userContext) : rawData;
+        } else if (config.module_type === 'users') {
+          rawData = typeof SecurityUtils !== 'undefined' ? SecurityUtils.applyUserRLS(rawData, userContext) : rawData;
+        } else if (config.module_type === 'participants' || config.module_type === 'attendance') {
           if (role === 'HOD' && userDept) {
             // HOD can only see their own department's students/scans
             rawData = rawData.filter(r => {
@@ -147,40 +153,19 @@ const ExportService = {
           } else {
             // Coordinator can only see their own assigned event details
             const coordinators = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
-            const activeAssignments = coordinators.filter(c => 
-              String(c.user_id).trim() === String(userId).trim() && 
-              c.assignment_status === 'Active' && 
-              !c[CONFIG.COLUMNS.DELETION_FLAG]
-            ).map(c => String(c.event_id).trim());
+            const activeAssignments = coordinators.filter(c => {
+              const uId = c['User ID'] || c.user_id;
+              const status = c['Assignment Status'] || c.assignment_status;
+              const deleted = c['Deletion Flag'] === true || c['Deletion Flag'] === 'true' || c.deletion_flag === true || c.deletion_flag === 'true';
+              return String(uId || '').trim() === String(userId).trim() && 
+                     String(status || '').trim().toLowerCase() === 'active' && 
+                     !deleted;
+            }).map(c => String(c['Event ID'] || c.event_id || '').trim());
 
             rawData = rawData.filter(r => {
-              const rowEventId = String(r.event_id || '').trim();
+              const rowEventId = String(r.event_id || r['Event ID'] || '').trim();
               return activeAssignments.indexOf(rowEventId) !== -1;
             });
-          }
-        } else if (config.module_type === 'events') {
-          if (role === 'HOD' && userDept) {
-            // HOD can only see events hosted by/for their department
-            rawData = rawData.filter(r => {
-              const rowDept = String(r.departments || r.department || '').toUpperCase().trim();
-              return rowDept.indexOf(userDept) !== -1 || userDept.indexOf(rowDept) !== -1;
-            });
-          } else if (role === 'ADMIN') {
-            // Admin can only see assigned events
-            const assignments = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_ASSIGNMENTS) || [];
-            const assignedEventIds = assignments
-              .filter(a => String(a.user_id).trim() === String(userId).trim() && !a[CONFIG.COLUMNS.DELETION_FLAG])
-              .map(a => String(a.event_id).trim());
-            rawData = rawData.filter(r => assignedEventIds.indexOf(String(r.event_id).trim()) !== -1);
-          } else {
-            // Coordinator
-            const coordinators = DatabaseService.readAllRows(CONFIG.SHEETS.EVENT_COORDINATORS) || [];
-            const activeAssignments = coordinators.filter(c => 
-              String(c.user_id).trim() === String(userId).trim() && 
-              c.assignment_status === 'Active' && 
-              !c[CONFIG.COLUMNS.DELETION_FLAG]
-            ).map(c => String(c.event_id).trim());
-            rawData = rawData.filter(r => activeAssignments.indexOf(String(r.event_id).trim()) !== -1);
           }
         }
       }

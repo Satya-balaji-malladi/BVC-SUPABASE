@@ -29,41 +29,38 @@ const CONFIG = {
     API_KEYS: "ApiKeys",
     ARCHIVES_ATTENDANCE: "Archives_Attendance",
     ARCHIVES_AUDITLOGS: "Archives_AuditLogs",
-    ATTENDANCE: "Attendance",
+    ATTENDANCE: "attendance",
     ATTENDANCE_QUEUE: "AttendanceQueue",
     AUDITLOGS: "AuditLogs",
     CERTIFICATES: "Certificates",
-    DEPARTMENTS: "Departments",
-    DIAGNOSTICS: "Diagnostics",
-    EVENT_COORDINATORS: "EventCoordinators",
-    EVENT_PARTICIPANTS: "EventParticipants",
+    DEPARTMENTS: "departments",
+    DIAGNOSTICS: "diagnostics",
+    EVENT_COORDINATORS: "event_coordinators",
+    EVENT_PARTICIPANTS: "event_participants",
     EVENT_SESSIONS: "EventSessions",
-    EVENTS: "Events",
-    GENERATED_REPORTS: "GeneratedReports",
+    EVENTS: "events",
+    GENERATED_REPORTS: "generated_reports",
     LMS_INTEGRATIONS: "LMS_Integrations",
     NOTIFICATION_TEMPLATES: "NotificationTemplates",
-    NOTIFICATIONS: "Notifications",
-    USER_PERMISSIONS: "UserPermissions",
-    EVENT_ASSIGNMENTS: "EventAssignments",
-    EXPORT_TEMPLATES: "ExportTemplates",
-    EVENT_TEMPLATES: "EventTemplates",
-    ATTENDANCE_CORRECTIONS: "AttendanceCorrections",
-    TEST_HISTORY: "TestHistory",
-    SESSIONS: "Sessions",
-    SETTINGS: "Settings",
-    STUDENTS: "Students",
-    OTHER_COLLEGE_STUDENTS: "OtherCollegeStudents",
+    NOTIFICATIONS: "notifications",
+    USER_PERMISSIONS: "user_permissions",
+    EVENT_ASSIGNMENTS: "event_assignments",
+    EXPORT_TEMPLATES: "export_templates",
+    EVENT_TEMPLATES: "event_templates",
+    ATTENDANCE_CORRECTIONS: "attendance_corrections",
+    TEST_HISTORY: "test_history",
+    SESSIONS: "sessions",
+    SETTINGS: "settings",
+    STUDENTS: "students",
+    OTHER_COLLEGE_STUDENTS: "other_college_students",
     SYSTEM_HEALTH_LOGS: "SystemHealthLogs",
-    USERS: "Users",
-    FACULTY: "Faculty",
+    USERS: "users",
+    FACULTY: "faculty",
     ROLES: "roles",
     PERMISSIONS: "permissions",
-    DEPARTMENT_HODS: "department_hods",
-    EVENT_ASSIGNMENTS: "event_assignments",
     AUDIT_LOGS: "audit_logs",
-    NOTIFICATIONS: "notifications",
-    FACULTY: "faculty",
-    GUEST_COORDINATORS: "guest_coordinators"
+    GUEST_COORDINATORS: "guest_coordinators",
+    GUESTS: "guests"
   },
 
   /**
@@ -77,6 +74,7 @@ const CONFIG = {
     USER_EMAIL_ADDRESS: 'Email Address',
     USER_USERNAME: 'Username',
     USER_PASSWORD_HASH: 'Password Hash',
+    USER_SALT: 'salt',
     USER_ROLE: 'Role',
     USER_STATUS: 'Status',
     USER_EMPLOYEE_ID: "Employee ID",
@@ -585,3 +583,27 @@ CONFIG.COLUMNS.SETTING_STATUS = CONFIG.COLUMNS.SETTING_STATUS || 'Status';
 
 CONFIG.EXPORT_FORMATS = CONFIG.EXPORT_FORMATS || (CONFIG.EXPORT && CONFIG.EXPORT.FORMATS ? CONFIG.EXPORT.FORMATS : ['PDF', 'Excel', 'CSV', 'Print']);
 CONFIG.SETTING_STATUS = CONFIG.SETTING_STATUS || { ACTIVE: 'Active', INACTIVE: 'Inactive' };
+
+// Additional missing messages
+CONFIG.MESSAGES.SESSION_CREATE_FAILED = CONFIG.MESSAGES.SESSION_CREATE_FAILED || 'Session creation failed.';
+CONFIG.MESSAGES.PREFERENCES_UPDATED = CONFIG.MESSAGES.PREFERENCES_UPDATED || 'Preferences updated successfully.';
+CONFIG.MESSAGES.PREFERENCES_UPDATE_FAILED = CONFIG.MESSAGES.PREFERENCES_UPDATE_FAILED || 'Preferences update failed.';
+CONFIG.MESSAGES.PROFILE_UPDATED = CONFIG.MESSAGES.PROFILE_UPDATED || 'Profile updated successfully.';
+CONFIG.MESSAGES.PROFILE_UPDATE_FAILED = CONFIG.MESSAGES.PROFILE_UPDATE_FAILED || 'Profile update failed.';
+CONFIG.MESSAGES.USER_CREATED = CONFIG.MESSAGES.USER_CREATED || 'User created successfully.';
+CONFIG.MESSAGES.USER_CREATE_FAILED = CONFIG.MESSAGES.USER_CREATE_FAILED || 'User creation failed.';
+CONFIG.MESSAGES.USER_UPDATED = CONFIG.MESSAGES.USER_UPDATED || 'User updated successfully.';
+CONFIG.MESSAGES.USER_UPDATE_FAILED = CONFIG.MESSAGES.USER_UPDATE_FAILED || 'User update failed.';
+CONFIG.MESSAGES.USER_DELETED = CONFIG.MESSAGES.USER_DELETED || 'User deleted successfully.';
+CONFIG.MESSAGES.USER_DELETE_FAILED = CONFIG.MESSAGES.USER_DELETE_FAILED || 'User deletion failed.';
+CONFIG.MESSAGES.USER_ACTIVATED = CONFIG.MESSAGES.USER_ACTIVATED || 'User activated successfully.';
+CONFIG.MESSAGES.USER_ACTIVATE_FAILED = CONFIG.MESSAGES.USER_ACTIVATE_FAILED || 'User activation failed.';
+CONFIG.MESSAGES.USER_DEACTIVATED = CONFIG.MESSAGES.USER_DEACTIVATED || 'User deactivated successfully.';
+CONFIG.MESSAGES.USER_DEACTIVATE_FAILED = CONFIG.MESSAGES.USER_DEACTIVATE_FAILED || 'User deactivation failed.';
+CONFIG.MESSAGES.USER_NOT_FOUND = CONFIG.MESSAGES.USER_NOT_FOUND || 'User not found.';
+CONFIG.MESSAGES.USERNAME_REQUIRED = CONFIG.MESSAGES.USERNAME_REQUIRED || 'Username is required.';
+CONFIG.MESSAGES.EMAIL_REQUIRED = CONFIG.MESSAGES.EMAIL_REQUIRED || 'Email is required.';
+CONFIG.MESSAGES.USERNAME_EXISTS = CONFIG.MESSAGES.USERNAME_EXISTS || 'Username already exists.';
+CONFIG.MESSAGES.EMAIL_EXISTS = CONFIG.MESSAGES.EMAIL_EXISTS || 'Email already exists.';
+CONFIG.MESSAGES.PROFILE_COMPLETION_REQUIRED = CONFIG.MESSAGES.PROFILE_COMPLETION_REQUIRED || 'Please complete your profile first.';
+CONFIG.COLUMNS.USER_PROFILE_COMPLETED = CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'profile_completed';

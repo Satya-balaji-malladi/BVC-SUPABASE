@@ -39,8 +39,8 @@
       // Hide Add Student button for Admin and Super Admin roles
       const currentUser = App.State && App.State.currentUser;
       if (currentUser) {
-        const role = String(currentUser.role || '').toUpperCase().trim();
-        const isAdminOrSuper = role === 'ADMIN' || role === 'SUPER ADMIN' || role === 'SUPER_ADMIN' || role === 'SUPERADMIN';
+        const role = String(currentUser.role || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+        const isAdminOrSuper = role === 'ADMIN' || role === 'SUPERADMIN';
         const addBtn = document.getElementById('students-add-btn');
         if (addBtn) {
           if (isAdminOrSuper) {
@@ -101,44 +101,57 @@
           `;
         }
 
-        // Collect branches / sub-departments of HOD's department
-        const branchSet = new Set();
-        (this.studentsData || []).forEach(s => {
-          if (s.branch) branchSet.add(s.branch);
-        });
-
-        filterHtml = '<option value="">All Branches</option>';
-        branchSet.forEach(b => {
-          filterHtml += `<option value="${App.Utils.escapeHtml(b)}">${App.Utils.escapeHtml(b)} Branch</option>`;
-        });
-
-        const hodDepts = this.departmentsList.filter(d => {
-          const code = String(d['Department Code'] || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
-          const id   = String(d['Department ID'] || '').toUpperCase().trim();
-          const name = String(d['Department Name'] || '').toUpperCase().trim();
+        const matched = (this.departmentsList || []).find(d => {
+          const c = String(d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+          const id   = String(d['Department ID'] || d.department_id || '').toUpperCase().trim();
+          const n = String(d['Department Name'] || d.department_name || '').toUpperCase().trim();
           const target = String(userDept).toUpperCase().trim();
-          return code === target || id === target || name === target || name.includes(target) || target.includes(code);
+          return c === target || id === target || n === target || n.includes(target) || target.includes(c);
         });
-        const deptsToRender = hodDepts.length > 0 ? hodDepts : this.departmentsList;
-        deptsToRender.forEach(d => {
-          const code = d['Department Code'] || d['Short Name'] || d['Department ID'];
-          const name = d['Department Name'] || code;
-          const id = d['Department ID'];
-          selectHtml += `<option value="${id}">${code} - ${name}</option>`;
-        });
+
+        let deptCode = userDept;
+        let deptName = userDept;
+        let deptId = userDept;
+        if (matched) {
+          deptCode = matched['Department Code'] || matched.department_code || userDept;
+          deptName = matched['Department Name'] || matched.department_name || deptCode;
+          deptId = matched['Department ID'] || matched.department_id || deptCode;
+        }
+
+        const displayText = (deptName && deptCode && deptName.toUpperCase() !== deptCode.toUpperCase())
+          ? `${deptName} (${deptCode})`
+          : deptCode;
+
+        if (deptFilter) {
+          deptFilter.innerHTML = `<option value="${deptId}">${displayText}</option>`;
+          deptFilter.value = deptId;
+          deptFilter.disabled = true;
+        }
+        if (deptSelect) {
+          deptSelect.innerHTML = `<option value="${deptId}">${displayText}</option>`;
+          deptSelect.value = deptId;
+          deptSelect.disabled = true;
+        }
       } else {
+        if (deptFilter) {
+          deptFilter.disabled = false;
+          deptFilter.removeAttribute('disabled');
+        }
+        if (deptSelect) {
+          deptSelect.disabled = false;
+          deptSelect.removeAttribute('disabled');
+        }
         this.departmentsList.forEach(d => {
-          const code = d['Department Code'] || d['Short Name'] || d['Department ID'];
-          const name = d['Department Name'] || code;
-          const id = d['Department ID'];
+          const code = d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '';
+          const name = d['Department Name'] || d.department_name || code;
+          const id = d['Department ID'] || d.department_id || code;
 
           filterHtml += `<option value="${id}">${code}</option>`;
           selectHtml += `<option value="${id}">${code} - ${name}</option>`;
         });
+        if (deptFilter) deptFilter.innerHTML = filterHtml;
+        if (deptSelect) deptSelect.innerHTML = selectHtml;
       }
-
-      if (deptFilter) deptFilter.innerHTML = filterHtml;
-      if (deptSelect) deptSelect.innerHTML = selectHtml;
     },
 
     /**

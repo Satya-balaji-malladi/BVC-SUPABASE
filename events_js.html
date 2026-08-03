@@ -30,16 +30,46 @@
 
     loadDependencies: function () {
       return Promise.all([
+        App.API.getFacultyMembers().catch(() => []),
         App.API.getAllUsers().catch(() => []),
         App.API.getAllStudents().catch(() => []),
         App.API.getAllDepartments().catch(() => [])
-      ]).then(([users, students, departments]) => {
+      ]).then(([facultyList, users, students, departments]) => {
         const uData = (users && (users.users || users.data || (Array.isArray(users) ? users : []))) || [];
-        // Users from sheet have 'Role' key (Config.COLUMNS.USER_ROLE = 'Role'), not lowercase 'role'
-        this.coordinatorsData = (Array.isArray(uData) ? uData : []).filter(u => {
-          if (!u) return false;
-          const role = String(u.role || u['Role'] || u['User Role'] || '').toUpperCase().trim();
-          return role === 'EVENT ADMIN' || role === 'EVENT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR';
+        const fData = (facultyList && (facultyList.faculty || facultyList.data || (Array.isArray(facultyList) ? facultyList : []))) || [];
+
+        // Build active Event Admin user map (keyed by user_id and employee_id)
+        const activeEventAdminUserMap = new Map();
+        (Array.isArray(uData) ? uData : []).forEach(u => {
+          if (!u) return;
+          const role = String(u.role || u['Role'] || u['User Role'] || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+          const status = String(u.status || u['Status'] || 'ACTIVE').toUpperCase().trim();
+          const isEventAdminRole = (role === 'EVENTADMIN' || role === 'EVENT_ADMIN' || role === 'ADMIN' || role === 'COORDINATOR');
+          const isActiveStatus = (status === 'ACTIVE' || status === '1' || status === 'TRUE');
+
+          if (isEventAdminRole && isActiveStatus) {
+            const uid = String(u.user_id || u['User ID'] || u.userId || '').trim();
+            const empId = String(u.employee_id || u['Employee ID'] || u.employeeId || '').trim().toUpperCase();
+            if (uid) activeEventAdminUserMap.set(uid, u);
+            if (empId) activeEventAdminUserMap.set('EMP_' + empId, u);
+          }
+        });
+
+        // Match Faculty members and include all active faculty
+        this.coordinatorsData = (Array.isArray(fData) ? fData : []).filter(f => {
+          if (!f) return false;
+          const isDeleted = f.deletion_flag || f['Deletion Flag'] === true || f['Deletion Flag'] === 'true';
+          const status = String(f.status || f['Status'] || 'Active').toUpperCase().trim();
+          if (isDeleted || status === 'INACTIVE') return false;
+
+          const fUserId = String(f.user_id || f['User ID'] || f.userId || '').trim();
+          const fEmpId = String(f.employee_id || f['Employee ID'] || f.employeeId || '').trim().toUpperCase();
+
+          const linkedUser = (fUserId && activeEventAdminUserMap.get(fUserId)) || (fEmpId && activeEventAdminUserMap.get('EMP_' + fEmpId));
+
+          // Attach resolved_user_id (prefer linked user_id, fallback to fUserId, fEmpId, or email)
+          f.resolved_user_id = (linkedUser && (linkedUser.user_id || linkedUser['User ID'])) || fUserId || fEmpId || f.email_address || f.email || f.employee_id || f.employeeId || '';
+          return true;
         });
 
         this.departmentsData = new Set();
@@ -68,13 +98,17 @@
         this.populateDependencyDropdowns();
       });
     },
+    populateDepartmentOptions: function () {
+      return this.populateDependencyDropdowns();
+    },
     populateDependencyDropdowns: function () {
       const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
       const isEventAdmin = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN' || currentUserRole === 'ADMIN');
-      // Determine if current user is HOD or Super Admin — they cannot create inline coordinator accounts
       const isHOD = (currentUserRole === 'HOD');
       const isSuperAdmin = (currentUserRole === 'SUPER ADMIN' || currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'SUPERADMIN');
-      const canCreateCoordinator = isEventAdmin && !isHOD && !isSuperAdmin; // Only Event Admin role can create inline coordinator
+      const userDept = (localStorage.getItem('userDept') || '').trim().toUpperCase();
+
+      const canCreateCoordinator = isEventAdmin && !isHOD && !isSuperAdmin;
 
       // Update labels and placeholder text based on role
       const coordinatorLabelEl = document.querySelector('#eventCoordinatorGroup label[for="eventCoordinator"]');
@@ -82,16 +116,15 @@
       const feedbackEl = document.querySelector('#eventCoordinatorGroup .invalid-feedback');
       const inlineHeaderEl = document.querySelector('#new-coordinator-fields h6');
 
-      // Remove Create Admin for Event Admin, show Create Coordinator
       if (isEventAdmin) {
-        if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Event Coordinator <span class="text-danger">*</span>';
+        if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Select Faculty Event Coordinator <span class="text-danger">*</span>';
         if (createAdminInlineBtn) createAdminInlineBtn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>+ Create Coordinator';
-        if (feedbackEl) feedbackEl.textContent = 'Please assign an Event Coordinator.';
+        if (feedbackEl) feedbackEl.textContent = 'Please select a Faculty Event Coordinator.';
         if (inlineHeaderEl) inlineHeaderEl.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Create New Event Coordinator';
       } else {
-        if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Assign Event Admin <span class="text-danger">*</span>';
+        if (coordinatorLabelEl) coordinatorLabelEl.innerHTML = 'Select Faculty Event Admin <span class="text-danger">*</span>';
         if (createAdminInlineBtn) createAdminInlineBtn.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>+ Create Admin';
-        if (feedbackEl) feedbackEl.textContent = 'Please assign an Event Admin.';
+        if (feedbackEl) feedbackEl.textContent = 'Please select a Faculty Event Admin.';
         if (inlineHeaderEl) inlineHeaderEl.innerHTML = '<i class="bi bi-person-plus-fill me-1"></i>Create New Event Admin / User';
       }
 
@@ -99,10 +132,10 @@
       const coordFilter = document.getElementById('events-coord-filter');
       const coordSelect = document.getElementById('eventCoordinator');
       let coordHtml = isEventAdmin
-        ? '<option value="">Select Event Coordinator</option>'
-        : '<option value="">Select Event Admin</option>';
+        ? '<option value="">Select Faculty Event Coordinator</option>'
+        : '<option value="">Select Faculty</option>';
 
-      let coordFilterHtml = isEventAdmin ? '<option value="">All Coordinators</option>' : '<option value="">All Admins</option>';
+      let coordFilterHtml = isEventAdmin ? '<option value="">All Faculty Coordinators</option>' : '<option value="">All Faculty Admins</option>';
 
       if (canCreateCoordinator) {
         coordHtml += isEventAdmin
@@ -110,33 +143,32 @@
           : '<option value="NEW_COORDINATOR">+ Create New Admin / User</option>';
       }
 
-      this.coordinatorsData.forEach(c => {
-        if (!c) return;
-        const role = String(c.role || c['Role'] || c['User Role'] || '').toUpperCase().trim();
+      // Filter candidate Faculty for HOD scoping
+      let candidateFacultyList = this.coordinatorsData || [];
+      if (isHOD && userDept) {
+        candidateFacultyList = candidateFacultyList.filter(f => {
+          const fDept = String(f.department_id || f.department || f['Department ID'] || f['Department'] || '').trim().toUpperCase();
+          return fDept === userDept || fDept.includes(userDept) || userDept.includes(fDept);
+        });
+      }
 
-        // If current user is Event Admin, show Coordinators and Event Admins
-        if (isEventAdmin) {
-          if (role !== 'COORDINATOR' && role !== 'EVENT ADMIN' && role !== 'EVENT_ADMIN' && role !== 'ADMIN') {
-            return;
-          }
-        } else {
-          // HOD or Super Admin: MUST show ONLY Event Admins / Admins in the dropdown
-          if (role !== 'EVENT ADMIN' && role !== 'EVENT_ADMIN' && role !== 'ADMIN') {
-            return;
-          }
-        }
+      candidateFacultyList.forEach(f => {
+        if (!f) return;
+        const uid = f.resolved_user_id || f.user_id || f['User ID'] || f.userId || '';
+        const facName = f.faculty_name || f['Faculty Name'] || f.name || 'Unnamed Faculty';
+        const facId = f.faculty_id || f['Faculty ID'] || '';
+        const empId = f.employee_id || f['Employee ID'] || '';
+        const dept = f.department_id || f.department || f['Department ID'] || '';
+        const email = f.email_address || f.email || f['Email Address'] || '';
 
-        // Support both sheet column keys ('User ID','First Name') and sanitized camelCase keys
-        const uid = c.user_id || c['User ID'] || c.userId || c.id || '';
-        const firstName = c.full_name || c['First Name'] || c.firstName || '';
-        const lastName = c['Last Name'] || c.lastName || '';
-        const displayName = firstName + (lastName ? ' ' + lastName : '') || uid || 'Unknown';
-        coordHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
-        coordFilterHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(displayName.trim())}</option>`;
+        // Display ONLY Faculty Name in the UI option text
+        coordHtml += `<option value="${App.Utils.escapeHtml(uid)}" data-faculty-id="${App.Utils.escapeHtml(facId)}" data-employee-id="${App.Utils.escapeHtml(empId)}" data-department="${App.Utils.escapeHtml(dept)}" data-email="${App.Utils.escapeHtml(email)}">${App.Utils.escapeHtml(facName.trim())}</option>`;
+        coordFilterHtml += `<option value="${App.Utils.escapeHtml(uid)}">${App.Utils.escapeHtml(facName.trim())}</option>`;
       });
 
       if (coordFilter) coordFilter.innerHTML = coordFilterHtml;
       if (coordSelect) coordSelect.innerHTML = coordHtml;
+      console.log("Dropdown HTML:", coordHtml);
       // Departments Filter and Custom Checkbox Form
       const deptFilter = document.getElementById('events-dept-filter');
       const deptList = document.getElementById('eventDepartmentsList');
@@ -144,11 +176,24 @@
       let deptFilterHtml = '<option value="">All Depts</option>';
       let deptCheckboxHtml = '';
 
-      Array.from(this.departmentsData).sort().forEach((d, idx) => {
+      let deptsToRender = Array.from(this.departmentsData);
+      if (isHOD) {
+        deptsToRender = deptsToRender.filter(d => {
+          const target = String(userDept).toUpperCase().trim();
+          const cleanD = String(d).toUpperCase().trim();
+          return cleanD === target || target.includes(cleanD) || cleanD.includes(target);
+        });
+        if (deptsToRender.length === 0) {
+          deptsToRender = [userDept];
+        }
+      }
+
+      deptsToRender.sort().forEach((d, idx) => {
         deptFilterHtml += `<option value="${App.Utils.escapeHtml(d)}">${App.Utils.escapeHtml(d)}</option>`;
+        const isChecked = isHOD ? 'checked disabled' : '';
         deptCheckboxHtml += `
         <div class="form-check event-department-item">
-          <input class="form-check-input event-dept-check" type="checkbox" value="${App.Utils.escapeHtml(d)}" id="deptCheck${idx}">
+          <input class="form-check-input event-dept-check" type="checkbox" value="${App.Utils.escapeHtml(d)}" id="deptCheck${idx}" ${isChecked}>
           <label class="form-check-label department-label" for="deptCheck${idx}">${App.Utils.escapeHtml(d)}</label>
         </div>
       `;
@@ -157,11 +202,10 @@
       if (deptFilter) deptFilter.innerHTML = deptFilterHtml;
       if (deptList) deptList.innerHTML = deptCheckboxHtml;
 
-      // Populate Access Restriction - Department Tick Checkboxes
       const allowedDeptsGroup = document.getElementById('allowedDeptsCheckboxGroup');
       if (allowedDeptsGroup) {
         let allowedDeptsHtml = '';
-        Array.from(this.departmentsData).sort().forEach((d, idx) => {
+        deptsToRender.sort().forEach((d, idx) => {
           allowedDeptsHtml += `
           <div class="form-check me-3">
             <input class="form-check-input allowed-dept-check" type="checkbox" value="${App.Utils.escapeHtml(d)}" id="allowDeptCheck${idx}">
@@ -170,6 +214,20 @@
         `;
         });
         allowedDeptsGroup.innerHTML = allowedDeptsHtml;
+      }
+
+      const newCoordDeptSelect = document.getElementById('newCoordDepartment');
+      if (newCoordDeptSelect) {
+        let newCoordDeptHtml = '<option value="">Select Department</option>';
+        deptsToRender.sort().forEach(d => {
+          newCoordDeptHtml += `<option value="${App.Utils.escapeHtml(d)}">${App.Utils.escapeHtml(d)}</option>`;
+        });
+        newCoordDeptSelect.innerHTML = newCoordDeptHtml;
+        const currentUser = (App.State && App.State.currentUser) || App.User || {};
+        const userDept = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || localStorage.getItem('userDept') || '';
+        if (userDept) {
+          newCoordDeptSelect.value = userDept;
+        }
       }
 
       // Populate Access Restriction - Specific Coordinators Tick Checkboxes List
@@ -312,12 +370,14 @@
           else if (action === 'manage-participants') this.openManageParticipantsModal(id);
           else if (action === 'stop-event') this.handleQuickStatusUpdate(id, 'Stopped');
           else if (action === 'cancel-event') this.handleQuickStatusUpdate(id, 'Cancelled');
+          else if (action === 'resume-event') this.handleQuickStatusUpdate(id, 'Active');
+          else if (action === 'complete-event') this.handleQuickStatusUpdate(id, 'Completed');
           else if (action === 'extend-duration') this.handleDurationAdjustment(id, 1);
           else if (action === 'shorten-duration') this.handleDurationAdjustment(id, -1);
         });
       }
 
-      const addBtn = document.querySelector('button[data-action="create-event"]');
+      const addBtn = document.getElementById('events-add-btn') || document.querySelector('button[data-action="create-event"]');
       if (addBtn) addBtn.addEventListener('click', () => this.openAddEventModal());
 
       const eventForm = document.getElementById('eventForm');
@@ -338,25 +398,16 @@
       if (createAdminInlineBtn) {
         createAdminInlineBtn.addEventListener('click', (e) => {
           e.preventDefault();
-          if (coordSelect) {
-            coordSelect.value = 'NEW_COORDINATOR';
-
-            // New Admin mode is a valid Event Admin choice
-            coordSelect.classList.remove('is-invalid');
-
-            // Clear any native validation message/state
-            coordSelect.setCustomValidity('');
-
-            // Trigger the same logic as manual dropdown selection
-            coordSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          const coordSelectEl = document.getElementById('eventCoordinator');
+          if (coordSelectEl) {
+            coordSelectEl.value = 'NEW_COORDINATOR';
+            coordSelectEl.classList.remove('is-invalid');
+            coordSelectEl.setCustomValidity('');
+            coordSelectEl.dispatchEvent(new Event('change', { bubbles: true }));
           }
-          if (newCoordFields) newCoordFields.classList.remove('d-none');
-          ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
-            const input = document.getElementById(id);
-            if (input) input.required = true;
-          });
         });
       }
+      this.setupInlineAdminForm();
 
       const coordSelect = document.getElementById('eventCoordinator');
       const newCoordFields = document.getElementById('new-coordinator-fields');
@@ -364,19 +415,9 @@
         coordSelect.addEventListener('change', (e) => {
           if (e.target.value === 'NEW_COORDINATOR') {
             if (newCoordFields) newCoordFields.classList.remove('d-none');
-            ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
-              const input = document.getElementById(id);
-              if (input) input.required = true;
-            });
+            this.toggleInlineAdminPersonType();
           } else {
             if (newCoordFields) newCoordFields.classList.add('d-none');
-            ['newCoordFirstName', 'newCoordLastName', 'newCoordEmail', 'newCoordEmployeeId'].forEach(id => {
-              const input = document.getElementById(id);
-              if (input) {
-                input.required = false;
-                input.value = '';
-              }
-            });
           }
         });
       }
@@ -560,6 +601,301 @@
             this.editingEventId = null;
           }
         });
+      }
+    },
+
+    setupInlineAdminForm: function () {
+      const typeSelect = document.getElementById('newAdminPersonType');
+      const btnCreateInline = document.getElementById('btnCreateAdminInline');
+      const btnCloseInline = document.getElementById('btnCloseInlineAdmin');
+      const btnCancelInline = document.getElementById('btnCancelInlineAdmin');
+      const btnSaveInline = document.getElementById('btnSaveInlineAdmin');
+      const panel = document.getElementById('new-coordinator-fields');
+
+      if (btnCreateInline) {
+        btnCreateInline.addEventListener('click', () => {
+          if (panel) panel.classList.remove('d-none');
+          this.toggleInlineAdminPersonType();
+        });
+      }
+
+      if (btnCloseInline) {
+        btnCloseInline.addEventListener('click', () => {
+          if (panel) panel.classList.add('d-none');
+        });
+      }
+
+      if (btnCancelInline) {
+        btnCancelInline.addEventListener('click', () => {
+          if (panel) panel.classList.add('d-none');
+        });
+      }
+
+      if (typeSelect) {
+        typeSelect.addEventListener('change', () => this.toggleInlineAdminPersonType());
+      }
+
+      if (btnSaveInline) {
+        btnSaveInline.addEventListener('click', () => this.handleSaveInlineAdmin());
+      }
+    },
+
+    toggleInlineAdminPersonType: function () {
+      const type = document.getElementById('newAdminPersonType')?.value || 'Faculty';
+      const facultyFields = document.querySelectorAll('.field-group-faculty');
+      const studentFields = document.querySelectorAll('.field-group-student');
+      const guestFields = document.querySelectorAll('.field-group-guest');
+      const deptGroup = document.getElementById('groupDepartment');
+
+      facultyFields.forEach(el => el.classList.add('d-none'));
+      studentFields.forEach(el => el.classList.add('d-none'));
+      guestFields.forEach(el => el.classList.add('d-none'));
+
+      if (type === 'Faculty') {
+        facultyFields.forEach(el => el.classList.remove('d-none'));
+        if (deptGroup) deptGroup.classList.remove('d-none');
+      } else if (type === 'Student') {
+        studentFields.forEach(el => el.classList.remove('d-none'));
+        if (deptGroup) deptGroup.classList.remove('d-none');
+      } else if (type === 'Guest') {
+        guestFields.forEach(el => el.classList.remove('d-none'));
+        if (deptGroup) deptGroup.classList.add('d-none');
+      }
+    },
+
+    handleSaveInlineAdmin: function () {
+      const type = document.getElementById('newAdminPersonType')?.value || 'Faculty';
+      const errBox = document.getElementById('inlineAdminError');
+      const saveBtn = document.getElementById('btnSaveInlineAdmin');
+      if (errBox) errBox.classList.add('d-none');
+
+      const firstName = (document.getElementById('newCoordFirstName')?.value || '').trim();
+      const lastName = (document.getElementById('newCoordLastName')?.value || '').trim();
+      const fullName = (firstName + ' ' + lastName).trim() || firstName;
+      const email = (document.getElementById('newCoordEmail')?.value || '').trim();
+      const mobile = (document.getElementById('newCoordMobile')?.value || '').trim();
+
+      // Retrieve current logged in user/HOD's department for auto-assignment
+      const currentUser = (App.State && App.State.currentUser) || App.User || {};
+      const creatorDept = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || localStorage.getItem('userDept') || (document.getElementById('newCoordDepartment')?.value || '').trim();
+
+      const empId = (document.getElementById('newCoordEmployeeId')?.value || '').trim();
+      const username = (document.getElementById('newCoordUsername')?.value || '').trim() || (email.split('@')[0] || empId.toLowerCase() || ('user_' + Date.now())).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const password = (document.getElementById('newCoordPassword')?.value || '').trim() || (empId ? empId + '123' : 'Bvc@1234');
+      const designation = (document.getElementById('newCoordDesignation')?.value || '').trim() || 'Assistant Professor';
+
+      if (!firstName || !email || !empId) {
+        if (errBox) {
+          errBox.textContent = 'Please fill in required fields (First Name, Employee ID, Email Address).';
+          errBox.classList.remove('d-none');
+        }
+        return;
+      }
+
+      if (!creatorDept) {
+        if (errBox) {
+          errBox.textContent = 'Department could not be determined. Please re-login or check department settings.';
+          errBox.classList.remove('d-none');
+        }
+        return;
+      }
+
+      let promise;
+      if (type === 'Faculty') {
+        const payload = {
+          name: fullName,
+          employeeId: empId,
+          departmentId: creatorDept,
+          designation: designation,
+          email: email,
+          mobile: mobile,
+          username: username,
+          password: password,
+          status: 'Active'
+        };
+        promise = App.API.createFaculty(payload);
+
+      } else if (type === 'Student') {
+        const rollNumber = (document.getElementById('newCoordRollNumber')?.value || '').trim();
+        const dept = (document.getElementById('newCoordDepartment')?.value || '').trim();
+        const year = (document.getElementById('newCoordYear')?.value || '3').trim();
+        const section = (document.getElementById('newCoordSection')?.value || 'A').trim();
+        if (!rollNumber || !dept) {
+          if (errBox) {
+            errBox.textContent = 'Roll Number and Department are required for Student.';
+            errBox.classList.remove('d-none');
+          }
+          return;
+        }
+        const payload = {
+          studentName: fullName,
+          rollNumber: rollNumber,
+          department: dept,
+          year: year,
+          section: section,
+          email: email,
+          mobile: mobile,
+          username: username,
+          password: password,
+          status: 'Active'
+        };
+        promise = App.API.createStudent(payload);
+
+      } else if (type === 'Guest') {
+        const organization = (document.getElementById('newCoordOrganization')?.value || '').trim();
+        const designation = (document.getElementById('newCoordGuestDesignation')?.value || '').trim();
+        if (!organization) {
+          if (errBox) {
+            errBox.textContent = 'Organization / Institution is required for Guest.';
+            errBox.classList.remove('d-none');
+          }
+          return;
+        }
+        const payload = {
+          firstName: firstName,
+          lastName: lastName,
+          organization: organization,
+          designation: designation,
+          email: email,
+          mobile: mobile,
+          username: username,
+          password: password
+        };
+        promise = App.API.createGuest(payload);
+      }
+
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        const spinner = saveBtn.querySelector('.spinner-border');
+        if (spinner) spinner.classList.remove('d-none');
+      }
+
+      promise
+        .then(res => {
+          if (res && res.success) {
+            const createdUserId = res.userId || (res.data ? res.data.userId : '') || ('USR_' + username);
+            const createdName = fullName || username;
+
+            App.Utils?.showToast ? App.Utils.showToast(`${type} Event Admin created and auto-selected successfully.`, false) : (App.UI?.showSuccess && App.UI.showSuccess(`${type} Event Admin created successfully.`));
+
+            // Instantly update Event Coordinator dropdown and set as selected
+            const coordSelect = document.getElementById('eventCoordinator');
+            if (coordSelect) {
+              const optText = `${createdName} (${type})`;
+              let existingOpt = Array.from(coordSelect.options).find(o => o.value === createdUserId);
+              if (!existingOpt) {
+                const newOpt = document.createElement('option');
+                newOpt.value = createdUserId;
+                newOpt.textContent = optText;
+                coordSelect.appendChild(newOpt);
+              }
+              coordSelect.value = createdUserId;
+              coordSelect.dispatchEvent(new Event('change'));
+            }
+
+            // Hide and reset inline panel
+            const panel = document.getElementById('new-coordinator-fields');
+            if (panel) panel.classList.add('d-none');
+            ['newCoordFirstName', 'newCoordLastName', 'newCoordEmployeeId', 'newCoordDesignation', 'newCoordRollNumber', 'newCoordOrganization', 'newCoordGuestDesignation', 'newCoordEmail', 'newCoordMobile', 'newCoordUsername', 'newCoordPassword'].forEach(id => {
+              const inp = document.getElementById(id);
+              if (inp) inp.value = '';
+            });
+          } else {
+            if (errBox) {
+              errBox.textContent = res ? res.message : 'Failed to create Event Admin.';
+              errBox.classList.remove('d-none');
+            }
+          }
+        })
+        .catch(err => {
+          if (errBox) {
+            errBox.textContent = 'Error: ' + (err?.message || 'Creation failed');
+            errBox.classList.remove('d-none');
+          }
+        })
+        .finally(() => {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            const spinner = saveBtn.querySelector('.spinner-border');
+            if (spinner) spinner.classList.add('d-none');
+          }
+        });
+    },
+
+    showModal: function () {
+      const modalEl = document.getElementById('eventModal');
+      if (modalEl) {
+        this.eventModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        this.eventModalInstance.show();
+      }
+    },
+
+    hideModal: function () {
+      const modalEl = document.getElementById('eventModal');
+      if (modalEl) {
+        const instance = bootstrap.Modal.getInstance(modalEl) || this.eventModalInstance;
+        if (instance) instance.hide();
+      }
+    },
+
+    openAddEventModal: function () {
+      const form = document.getElementById('eventForm');
+      if (form) form.reset();
+
+      this.currentStep = 1;
+      this.goToStep(1);
+
+      const titleEl = document.getElementById('eventModalLabel');
+      if (titleEl) titleEl.innerText = 'Create Event';
+
+      const errBox = document.getElementById('eventModalError');
+      if (errBox) errBox.classList.add('d-none');
+
+      const inlinePanel = document.getElementById('new-coordinator-fields');
+      if (inlinePanel) inlinePanel.classList.add('d-none');
+
+      this.populateDependencyDropdowns();
+      this.showModal();
+    },
+
+    openEditEventModal: function (eventId) {
+      if (!eventId) return;
+      const event = (this.eventsData || []).find(e => (e.event_id || e['Event ID']) === eventId);
+      if (!event) return;
+
+      const form = document.getElementById('eventForm');
+      if (form) form.reset();
+
+      this.populateDependencyDropdowns();
+
+      const getVal = (field) => event[field] || event[field.toLowerCase()] || '';
+      const eventIdInput = document.getElementById('eventId');
+      if (eventIdInput) eventIdInput.value = getVal('event_id') || getVal('Event ID');
+
+      const nameInput = document.getElementById('eventName');
+      if (nameInput) nameInput.value = getVal('event_name') || getVal('Event Name');
+
+      const titleEl = document.getElementById('eventModalLabel');
+      if (titleEl) titleEl.innerText = 'Edit Event';
+
+      this.currentStep = 1;
+      this.goToStep(1);
+      this.showModal();
+    },
+
+    openViewEventModal: function (eventId) {
+      this.openEditEventModal(eventId);
+      const titleEl = document.getElementById('eventModalLabel');
+      if (titleEl) titleEl.innerText = 'View Event Details';
+    },
+
+    openDeleteEventModal: function (eventId) {
+      const modalEl = document.getElementById('eventDeleteModal');
+      const hiddenInput = document.getElementById('deleteEventId');
+      if (hiddenInput) hiddenInput.value = eventId;
+      if (modalEl) {
+        const instance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        instance.show();
       }
     },
 
@@ -1039,11 +1375,11 @@
 
       const currentUser = App.State && App.State.currentUser;
       const rawRole = currentUser ? (currentUser.role || currentUser.Role || currentUser['User Role']) : (localStorage.getItem('userRole') || '');
-      const userRole = String(rawRole || '').toUpperCase().trim();
+      const userRole = String(rawRole || '').toUpperCase().trim().replace(/[\s_]+/g, '');
       const userDept = currentUser ? (currentUser.department || currentUser.Department) : (localStorage.getItem('userDept') || '');
       const isHOD = (userRole === 'HOD');
 
-      const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+      const isEventAdmin = (userRole === 'EVENTADMIN');
       const rawUid = currentUser ? (currentUser.user_id || currentUser['User ID'] || currentUser.userId || currentUser.id || currentUser.employee_id || currentUser['Employee ID']) : (localStorage.getItem('userId') || '');
       const currentUserId = String(rawUid || '').trim();
 
@@ -1183,27 +1519,56 @@
 
         const currentUser = App.State && App.State.currentUser;
         const roleStr = String(currentUser && (currentUser.role || currentUser['Role'] || '')).toUpperCase().trim();
+        const isSuper = (roleStr === 'SUPER ADMIN' || roleStr === 'SUPER_ADMIN' || roleStr === 'SUPERADMIN');
+        const isAdmin = (roleStr === 'ADMIN');
         const showManageParticipants = roleStr === 'COORDINATOR';
 
         let lifecycleControlHtml = '';
-        if (stat === 'active') {
-          lifecycleControlHtml += `<button class="btn btn-sm btn-outline-danger me-1" data-action="stop-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Stop Event"><i class="bi bi-stop-circle-fill"></i> Stop</button>`;
-        } else if (stat === 'upcoming') {
-          lifecycleControlHtml += `<button class="btn btn-sm btn-outline-warning me-1" data-action="cancel-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Cancel Event"><i class="bi bi-x-circle"></i> Cancel</button>`;
+        if (isSuper || isAdmin) {
+          if (stat === 'active') {
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-warning me-1" data-action="stop-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Stop Event"><i class="bi bi-pause-fill"></i> Stop</button>`;
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-success me-1" data-action="complete-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Complete Event"><i class="bi bi-check-circle-fill"></i> Complete</button>`;
+            if (isSuper) {
+              lifecycleControlHtml += `<button class="btn btn-sm btn-outline-danger me-1" data-action="cancel-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Cancel Event"><i class="bi bi-x-circle-fill"></i> Cancel</button>`;
+            }
+          } else if (stat === 'stopped') {
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-primary me-1" data-action="resume-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Resume Event"><i class="bi bi-play-fill"></i> Resume</button>`;
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-success me-1" data-action="complete-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Complete Event"><i class="bi bi-check-circle-fill"></i> Complete</button>`;
+            if (isSuper) {
+              lifecycleControlHtml += `<button class="btn btn-sm btn-outline-danger me-1" data-action="cancel-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Cancel Event"><i class="bi bi-x-circle-fill"></i> Cancel</button>`;
+            }
+          } else if (stat === 'upcoming') {
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-primary me-1" data-action="resume-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Start Event"><i class="bi bi-play-fill"></i> Start</button>`;
+            if (isSuper) {
+              lifecycleControlHtml += `<button class="btn btn-sm btn-outline-danger me-1" data-action="cancel-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Cancel Event"><i class="bi bi-x-circle-fill"></i> Cancel</button>`;
+            }
+          } else if (stat === 'draft') {
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-primary me-1" data-action="resume-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Publish Event"><i class="bi bi-cloud-upload-fill"></i> Publish</button>`;
+            if (isSuper) {
+              lifecycleControlHtml += `<button class="btn btn-sm btn-outline-danger me-1" data-action="cancel-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Cancel Event"><i class="bi bi-x-circle-fill"></i> Cancel</button>`;
+            }
+          } else if (stat === 'cancelled' && isSuper) {
+            lifecycleControlHtml += `<button class="btn btn-sm btn-outline-primary me-1" data-action="resume-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Restore Event"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>`;
+          }
         }
 
-        lifecycleControlHtml += `
-        <button class="btn btn-sm btn-light text-secondary me-1" data-action="extend-duration" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Extend Duration (+1 hr)"><i class="bi bi-plus-circle"></i> +1h</button>
-        <button class="btn btn-sm btn-light text-secondary me-1" data-action="shorten-duration" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Shorten Duration (-1 hr)"><i class="bi bi-dash-circle"></i> -1h</button>
-      `;
+        if (stat === 'active') {
+          lifecycleControlHtml += `
+            <button class="btn btn-sm btn-light text-secondary me-1" data-action="extend-duration" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Extend Duration (+1 hr)"><i class="bi bi-plus-circle"></i> +1h</button>
+            <button class="btn btn-sm btn-light text-secondary me-1" data-action="shorten-duration" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Shorten Duration (-1 hr)"><i class="bi bi-dash-circle"></i> -1h</button>
+          `;
+        }
+
+        const isEditable = (stat !== 'completed' && stat !== 'cancelled') || isSuper;
+        const isDeletable = isSuper || (isAdmin && stat !== 'completed' && stat !== 'cancelled');
 
         let actionsHtml = `
-        ${lifecycleControlHtml}
-        <button class="btn btn-sm btn-light text-primary me-1" data-action="view-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="View"><i class="bi bi-eye"></i></button>
-        <button class="btn btn-sm btn-light text-warning me-1" data-action="edit-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Edit"><i class="bi bi-pencil"></i></button>
-        ${showManageParticipants ? `<button class="btn btn-sm btn-light text-success me-1" data-action="manage-participants" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Manage Participants"><i class="bi bi-people"></i></button>` : ''}
-        <button class="btn btn-sm btn-light text-danger" data-action="delete-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Delete"><i class="bi bi-trash"></i></button>
-      `;
+          ${lifecycleControlHtml}
+          <button class="btn btn-sm btn-light text-primary me-1" data-action="view-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="View"><i class="bi bi-eye"></i></button>
+          ${isEditable ? `<button class="btn btn-sm btn-light text-warning me-1" data-action="edit-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Edit"><i class="bi bi-pencil"></i></button>` : ''}
+          ${showManageParticipants && stat === 'active' ? `<button class="btn btn-sm btn-light text-success me-1" data-action="manage-participants" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Manage Participants"><i class="bi bi-people"></i></button>` : ''}
+          ${isDeletable ? `<button class="btn btn-sm btn-light text-danger" data-action="delete-event" data-id="${App.Utils.escapeHtml(evt.event_id)}" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+        `;
 
         const resType = evt.access_restriction_type || evt['Access Restriction Type'] || 'ALL_COORDINATORS';
         let restBadge = '';
@@ -1311,6 +1676,16 @@
           attendanceTypeSelect.disabled = false;
           attendanceTypeSelect.value = 'Fixed';
         }
+      }
+
+      // Render required dropdowns & checkboxes immediately on modal open
+      this.populateDepartmentOptions();
+      this.populateDependencyDropdowns();
+      if (!this.coordinatorsData || this.coordinatorsData.length === 0 || !this.departmentsData || this.departmentsData.size === 0) {
+        this.loadDependencies().then(() => {
+          this.populateDepartmentOptions();
+          this.populateDependencyDropdowns();
+        }).catch(() => {});
       }
 
       // Reset custom form options
@@ -1753,13 +2128,13 @@
       }
 
       const btnPDF = document.getElementById('btnExportPDF');
-      if (btnPDF) btnPDF.onclick = () => App.ExportBuilder.open('attendance');
+      if (btnPDF) btnPDF.onclick = () => this.triggerReportExport('PDF');
 
       const btnExcel = document.getElementById('btnExportExcel');
-      if (btnExcel) btnExcel.onclick = () => App.ExportBuilder.open('attendance');
+      if (btnExcel) btnExcel.onclick = () => this.triggerReportExport('EXCEL');
 
       const btnCSV = document.getElementById('btnExportCSV');
-      if (btnCSV) btnCSV.onclick = () => App.ExportBuilder.open('attendance');
+      if (btnCSV) btnCSV.onclick = () => this.triggerReportExport('CSV');
 
       const btnPrint = document.getElementById('btnPrintReport');
       if (btnPrint) btnPrint.onclick = () => window.print();
@@ -1780,18 +2155,18 @@
         'Timestamp': r['Timestamp'] || r.timestamp || r.created_at || '--'
       }));
 
-      if (format === 'CSV' || format === 'EXCEL') {
-        App.API.exportToCsv(cols, rows)
-          .then(csvStr => {
-            const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.setAttribute('download', `${eventName}_${scopeLabel.replace(/\s+/g, '_')}_Report.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          })
-          .catch(err => alert('CSV export failed: ' + err.message));
+      if (format === 'CSV') {
+        if (typeof App !== 'undefined' && App.ExportEngine) {
+          App.ExportEngine.downloadCSV(`${eventName}_${scopeLabel.replace(/\s+/g, '_')}_Report`, cols, rows);
+        } else {
+          alert('Export Engine not loaded');
+        }
+      } else if (format === 'EXCEL') {
+        if (typeof App !== 'undefined' && App.ExportEngine) {
+          App.ExportEngine.downloadExcel(`${eventName}_${scopeLabel.replace(/\s+/g, '_')}_Report`, cols, rows);
+        } else {
+          alert('Export Engine not loaded');
+        }
       } else {
         App.API.generatePrintablePdfHtml(`${eventName} - ${scopeLabel} Report`, { scope: scopeLabel }, cols, rows, {
           'Total Scans': rows.length,
@@ -1800,8 +2175,10 @@
         }).then(htmlStr => {
           const printWin = window.open('', '_blank');
           if (printWin) {
-            printWin.document.write(htmlStr);
-            printWin.document.close();
+            setTimeout(() => {
+              printWin.document.write(htmlStr);
+              printWin.document.close();
+            }, 150);
           }
         }).catch(err => alert('PDF export failed: ' + err.message));
       }
@@ -2250,7 +2627,10 @@
     },
 
     handleEventSubmit: function (e) {
+      console.log("Coordinator Dropdown Value:", document.getElementById("eventCoordinator").value);
+      console.log("Selected Option:", document.getElementById("eventCoordinator").selectedOptions[0]?.text);
       e.preventDefault();
+
       const form = e.target;
       const errorAlert = document.getElementById('eventModalError');
 
@@ -2303,8 +2683,11 @@
 
       const originalId = document.getElementById('eventOriginalId').value;
 
-      const depts = Array.from(document.querySelectorAll('.event-dept-check:checked')).map(cb => cb.value).join(',');
-      const years = Array.from(document.querySelectorAll('.event-year-check:checked')).map(cb => cb.value).join(',');
+      const checkedDepts = Array.from(document.querySelectorAll('.event-dept-check:checked')).map(cb => cb.value).join(',');
+      const checkedYears = Array.from(document.querySelectorAll('.event-year-check:checked')).map(cb => cb.value).join(',');
+      const userDept = localStorage.getItem('userDept') || '';
+      const depts = checkedDepts || (isEdit ? (document.getElementById('eventDepartments')?.value || '') : (userDept || Array.from(this.departmentsData || []).join(',') || 'CSE'));
+      const years = checkedYears || '1,2,3,4';
 
       if (isEdit) {
         document.getElementById('eventDepartments').value = depts;
@@ -2319,18 +2702,16 @@
           return;
         }
       } else {
-        // Create path: default department to coordinator's or current HOD's department
-        const userDept = localStorage.getItem('userDept') || '';
-        document.getElementById('eventDepartments').value = userDept;
-        document.getElementById('eventYears').value = '1,2,3,4';
+        document.getElementById('eventDepartments').value = depts;
+        document.getElementById('eventYears').value = years;
       }
 
       let currentTargetStatus = 'Draft';
       if (!isEdit) {
         const selectedAction = document.getElementById('eventCreationAction') ? document.getElementById('eventCreationAction').value : 'Draft';
         const currentUser = App.State && App.State.currentUser;
-        const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim();
-        const isSuperOrHOD = (userRole === 'SUPER ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'SUPERADMIN' || userRole === 'HOD');
+        const userRole = String(currentUser ? currentUser.role : (localStorage.getItem('userRole') || '')).toUpperCase().trim().replace(/[\s_]+/g, '');
+        const isSuperOrHOD = (userRole === 'SUPERADMIN' || userRole === 'HOD');
 
         // Super Admin and HOD creations always default to Draft status
         if (isSuperOrHOD) {
@@ -2341,8 +2722,8 @@
       } else {
         const pendingAction = document.getElementById('eventSaveBtn').getAttribute('data-pending-action');
         const origStatus = document.getElementById('eventOriginalStatus').value || 'Draft';
-        const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
-        const isEventAdminUser = (currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN' || currentUserRole === 'ADMIN');
+        const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase().replace(/[\s_]+/g, '');
+        const isEventAdminUser = (currentUserRole === 'EVENTADMIN');
 
         if (pendingAction === 'Publish' || (isEventAdminUser && origStatus === 'Draft')) {
           currentTargetStatus = 'Upcoming';
@@ -2495,8 +2876,8 @@
       if (document.getElementById('eventCoordinator').value === 'NEW_COORDINATOR') {
         const emailVal = document.getElementById('newCoordEmail').value.trim();
         const usernameVal = (emailVal.split('@')[0] || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
-        const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase();
-        const inlineRole = (currentUserRole === 'ADMIN' || currentUserRole === 'EVENT ADMIN' || currentUserRole === 'EVENT_ADMIN') ? 'Coordinator' : 'Event Admin';
+        const currentUserRole = String(localStorage.getItem('userRole') || '').trim().toUpperCase().replace(/[\s_]+/g, '');
+        const inlineRole = (currentUserRole === 'ADMIN' || currentUserRole === 'EVENTADMIN') ? 'Coordinator' : 'Event Admin';
         const newCoordPayload = {
           first_name: document.getElementById('newCoordFirstName').value.trim().toUpperCase(),
           last_name: document.getElementById('newCoordLastName').value.trim().toUpperCase(),
@@ -2843,15 +3224,30 @@
       const event = this.eventsData.find(e => String(e.event_id) === String(eventId));
       if (!event) return;
 
-      if (!confirm(`Are you sure you want to mark event "${event.event_name}" as ${newStatus}?`)) return;
+      let actionVerb = 'mark';
+      if (newStatus === 'Active') {
+        actionVerb = event.status === 'Cancelled' ? 'restore' : (event.status === 'Stopped' ? 'resume' : 'start');
+      } else if (newStatus === 'Stopped') {
+        actionVerb = 'stop';
+      } else if (newStatus === 'Cancelled') {
+        actionVerb = 'cancel';
+      } else if (newStatus === 'Completed') {
+        actionVerb = 'complete';
+      }
 
-      event.status = newStatus;
+      if (!confirm(`Are you sure you want to ${actionVerb} event "${event.event_name}"?`)) return;
+
       App.LoadingManager.show();
-      App.API.updateEvent(event)
-        .then(() => {
+      App.API.changeEventStatus(eventId, newStatus)
+        .then((res) => {
           App.LoadingManager.hide();
-          App.UI.showSuccess(`Event marked as ${newStatus}.`);
-          this.applyFilters();
+          if (res && res.success) {
+            App.UI.showSuccess(res.message || `Event status updated to ${newStatus}.`);
+            event.status = newStatus;
+            this.applyFilters();
+          } else {
+            App.UI.showError(res ? res.message : `Failed to update status.`);
+          }
         })
         .catch(err => {
           App.LoadingManager.hide();

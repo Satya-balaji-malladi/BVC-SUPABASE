@@ -1,10 +1,12 @@
 <div class="card h-100 border-0 shadow-sm module-card" id="module-settings">
-  <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
-    <div>
-      <h5 class="fw-bold text-dark mb-1"><i class="bi bi-gear-fill text-primary me-2"></i>System Administration & Configurations</h5>
-      <p class="text-muted mb-0 small">Manage global constants, thresholds, audits, and maintenance procedures</p>
+  <!-- SYSTEM ADMIN SETTINGS CONTAINER -->
+  <div id="system-admin-settings-container">
+    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="fw-bold text-dark mb-1"><i class="bi bi-gear-fill text-primary me-2"></i>System Administration & Configurations</h5>
+        <p class="text-muted mb-0 small">Manage global constants, thresholds, audits, and maintenance procedures</p>
+      </div>
     </div>
-  </div>
 
   <div class="card-body p-4 pt-2">
     <!-- Tabs Header -->
@@ -161,7 +163,7 @@
             </div>
 
             <div class="d-flex justify-content-end border-top pt-3">
-              <button type="submit" class="btn btn-primary px-4"><i class="bi bi-save me-2"></i>Save Department Structure</button>
+              <button type="submit" class="btn btn-primary px-4" id="btnSaveDeptStructure"><i class="bi bi-save me-2"></i>Save Department Structure</button>
             </div>
           </form>
         </div>
@@ -274,7 +276,113 @@
 
     </div>
   </div>
-</div>
+  </div> <!-- End system-admin-settings-container -->
+
+  <!-- EVENT ADMIN SETTINGS CONTAINER -->
+  <div id="event-admin-settings-container" class="d-none">
+    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="fw-bold text-dark mb-1"><i class="bi bi-calendar-event-fill text-primary me-2"></i>Event Settings (Selected Event Only)</h5>
+        <p class="text-muted mb-0 small" id="eaSettingsSubTitle">Manage details, timings, capacity, and status for the selected event</p>
+      </div>
+    </div>
+
+    <div class="card-body p-4 pt-2">
+      <div id="eaSettingsError" class="alert alert-danger d-none"></div>
+
+      <form id="eventAdminSettingsForm" novalidate>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="eaSetEventName" class="form-label fw-semibold text-secondary">Event Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="eaSetEventName" required>
+            <div class="invalid-feedback">Event name is required.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetVenue" class="form-label fw-semibold text-secondary">Venue / Location <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="eaSetVenue" required placeholder="e.g. CSE Seminar Hall">
+            <div class="invalid-feedback">Venue is required.</div>
+          </div>
+
+          <div class="col-12">
+            <label for="eaSetDescription" class="form-label fw-semibold text-secondary">Event Description</label>
+            <textarea class="form-control" id="eaSetDescription" rows="3" placeholder="Detailed event description..."></textarea>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetAttendanceType" class="form-label fw-semibold text-secondary">Attendance Type <span class="text-danger">*</span></label>
+            <select class="form-select" id="eaSetAttendanceType">
+              <option value="Fixed">Fixed Attendance</option>
+              <option value="Open">Open Attendance</option>
+            </select>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetStatus" class="form-label fw-semibold text-secondary">Event Status <span class="text-danger">*</span></label>
+            <select class="form-select" id="eaSetStatus">
+              <option value="Draft">Draft</option>
+              <option value="Upcoming">Upcoming</option>
+              <option value="Active">Active</option>
+              <option value="Stopped">Stopped</option>
+              <option value="Completed">Completed</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetStartDate" class="form-label fw-semibold text-secondary">Event Start Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="eaSetStartDate" required>
+            <div class="invalid-feedback">Start Date is required.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetEndDate" class="form-label fw-semibold text-secondary">Event End Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="eaSetEndDate" required>
+            <div class="invalid-feedback">End Date is required.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetStartTime" class="form-label fw-semibold text-secondary">Start Time <span class="text-danger">*</span></label>
+            <input type="time" class="form-control" id="eaSetStartTime" required>
+            <div class="invalid-feedback">Start Time is required.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetEndTime" class="form-label fw-semibold text-secondary">End Time <span class="text-danger">*</span></label>
+            <input type="time" class="form-control" id="eaSetEndTime" required>
+            <div class="invalid-feedback">End Time is required.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetRegStartDate" class="form-label fw-semibold text-secondary">Registration Start Date</label>
+            <input type="date" class="form-control" id="eaSetRegStartDate">
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetRegEndDate" class="form-label fw-semibold text-secondary">Registration End Date</label>
+            <input type="date" class="form-control" id="eaSetRegEndDate">
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetCapacity" class="form-label fw-semibold text-secondary">Maximum Participants <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="eaSetCapacity" min="1" required placeholder="e.g. 200">
+            <div class="invalid-feedback">Capacity is required.</div>
+          </div>
+
+          <div class="col-md-6">
+            <label for="eaSetVisibility" class="form-label fw-semibold text-secondary">Target Departments / Visibility</label>
+            <input type="text" class="form-control" id="eaSetVisibility" placeholder="e.g. CSE, ECE, EEE (or ALL)">
+          </div>
+
+          <div class="col-12 d-flex justify-content-end border-top pt-3 mt-4">
+            <button type="submit" class="btn btn-primary btn-lg px-5 shadow-sm" id="btnSaveEaSettings">
+              <i class="bi bi-save me-2"></i>Save Event Settings
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 
 <!-- Super Admin Create/Edit Department Modal -->
 <div class="modal fade" id="departmentModal" tabindex="-1" aria-labelledby="departmentModalLabel" aria-hidden="true" style="z-index: 1060;">

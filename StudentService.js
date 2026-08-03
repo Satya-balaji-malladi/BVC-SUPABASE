@@ -131,7 +131,8 @@ var StudentService = {
       obj[CONFIG.COLUMNS.STUDENT_BRANCH] = normalizedData[CONFIG.COLUMNS.STUDENT_BRANCH] || '';
       obj[CONFIG.COLUMNS.STUDENT_YEAR] = normalizedData[CONFIG.COLUMNS.STUDENT_YEAR];
       obj[CONFIG.COLUMNS.STUDENT_SECTION] = normalizedData[CONFIG.COLUMNS.STUDENT_SECTION];
-      obj[CONFIG.COLUMNS.STUDENT_STATUS] = normalizedData[CONFIG.COLUMNS.STUDENT_STATUS] || CONFIG.STUDENT_STATUS.ACTIVE;
+      // Status is automatically calculated by StatusSyncService based on event participation.
+      obj[CONFIG.COLUMNS.STUDENT_STATUS] = CONFIG.STUDENT_STATUS.INACTIVE;
       if (normalizedData["College"] !== undefined) {
         obj["College"] = normalizedData["College"];
       }
@@ -287,7 +288,7 @@ var StudentService = {
   /**
    * Registers a new student to the tracking database.
    */
-  createStudent: function (studentData, createdBy) {
+  createStudent: function (studentData, createdBy, userContext) {
     try {
       Logger.log('[TRACE][createStudent][START] Incoming payload: ' + JSON.stringify(studentData) + ' | createdBy: ' + createdBy);
       var failMsg = CONFIG.MESSAGES.STUDENT_CREATE_FAILED || 'Student create failed';
@@ -299,6 +300,14 @@ var StudentService = {
       var normalized = this._normalizeStudentData(studentData);
       Logger.log('[TRACE][createStudent] Normalized payload: ' + JSON.stringify(normalized));
       Logger.log('[TRACE][createStudent] Extract departmentId: ' + normalized[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID]);
+
+      if (userContext && userContext.isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        const targetDept = String(normalized[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || '').trim().toUpperCase();
+        if (targetDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: HODs can only create students in their own department (' + callerDept + ').');
+        }
+      }
 
       // Centralized validation on normalized target payload
       var validationResult = ValidationService.validateStudent(normalized);
@@ -362,7 +371,7 @@ var StudentService = {
   /**
    * Updates an existing student tracking record details.
    */
-  updateStudent: function (rollNumber, studentData, updatedBy) {
+  updateStudent: function (rollNumber, studentData, updatedBy, userContext) {
     try {
       var failMsg = CONFIG.MESSAGES.STUDENT_UPDATE_FAILED || 'Student update failed';
       if (!rollNumber || !studentData) return Utils.buildResponse(false, failMsg);
@@ -373,12 +382,31 @@ var StudentService = {
         return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_NOT_FOUND || 'Student not found');
       }
 
+      if (userContext && userContext.isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        const existingDept = String(existing[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || existing.department_id || existing.department || '').trim().toUpperCase();
+        if (existingDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You can only edit students in your own department.');
+        }
+      }
+
       var inputNormalized = this._normalizeStudentData(studentData);
+
+      if (userContext && userContext.isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        const targetDept = String(inputNormalized[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || '').trim().toUpperCase();
+        if (targetDept && targetDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You cannot move students to another department.');
+        }
+      }
 
       // Prevent mutations to system key mappings or historical tracking data records
       delete inputNormalized[CONFIG.COLUMNS.STUDENT_ID];
       delete inputNormalized[CONFIG.COLUMNS.CREATED_BY];
       delete inputNormalized[CONFIG.COLUMNS.CREATED_AT];
+      
+      // Status is fully system-managed by StatusSyncService, prevent manual updates
+      delete inputNormalized[CONFIG.COLUMNS.STUDENT_STATUS];
 
       // Merge and evaluate validation parameters on complete finalized state
       var mergedState = Object.assign({}, existing, inputNormalized);
@@ -441,14 +469,23 @@ var StudentService = {
   /**
    * Triggers a secure soft delete lifecycle flag toggling.
    */
-  deleteStudent: function (rollNumber, updatedBy) {
+  deleteStudent: function (rollNumber, updatedBy, userContext) {
     try {
       var failMsg = CONFIG.MESSAGES.STUDENT_DELETE_FAILED || 'Student delete failed';
       if (!rollNumber) return Utils.buildResponse(false, failMsg);
 
       var searchRoll = String(rollNumber).trim().toUpperCase();
-      if (!this._studentExists(searchRoll)) {
+      var student = this._getStudent(searchRoll);
+      if (!student) {
         return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_NOT_FOUND || 'Student not found');
+      }
+
+      if (userContext && userContext.isHOD) {
+        const callerDept = String(userContext.department || '').trim().toUpperCase();
+        const studentDept = String(student[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || student.department_id || student.department || '').trim().toUpperCase();
+        if (studentDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You can only delete students in your own department.');
+        }
       }
 
       var success = DatabaseService.deleteRow(this._studentsSheet(), CONFIG.COLUMNS.STUDENT_ROLL_NUMBER, searchRoll);
@@ -549,18 +586,28 @@ var StudentService = {
   // Read / Query / Fetching Operations
   // ==========================================
 
-  getStudentByRollNumber: function (rollNumber) {
+  getStudentByRollNumber: function (rollNumber, userContext) {
     try {
       if (!rollNumber) return null;
       const normalizedRoll = String(rollNumber).trim().toUpperCase();
       const cacheKey = "student_roll_" + normalizedRoll;
       if (typeof CacheManager !== 'undefined') {
         const cached = CacheManager.get(cacheKey);
-        if (cached) return cached;
+        if (cached) {
+          if (userContext) {
+            const scoped = SecurityUtils.applyStudentRLS([cached], userContext);
+            if (scoped.length === 0) return null;
+          }
+          return cached;
+        }
       }
 
       var student = this._getStudent(rollNumber);
       const sanitized = student ? Utils.sanitizeStudent(student) : null;
+      if (sanitized && userContext) {
+        const scoped = SecurityUtils.applyStudentRLS([sanitized], userContext);
+        if (scoped.length === 0) return null;
+      }
 
       if (typeof CacheManager !== 'undefined' && sanitized) {
         CacheManager.put(cacheKey, sanitized, 1800);
@@ -605,12 +652,20 @@ var StudentService = {
     }
   },
 
-  getStudentBasicInfo: function (rollNumber) {
+  getStudentBasicInfo: function (rollNumber, userContext) {
     try {
       if (!rollNumber) return Utils.buildResponse(false, 'Missing roll number parameter');
       var student = this._getStudent(rollNumber);
       if (!student) {
         return Utils.buildResponse(false, CONFIG.MESSAGES.STUDENT_NOT_FOUND || 'Student not found');
+      }
+
+      var sanitized = Utils.sanitizeStudent(student);
+      if (userContext) {
+        const scoped = SecurityUtils.applyStudentRLS([sanitized], userContext);
+        if (scoped.length === 0) {
+          return Utils.buildResponse(false, 'Unauthorized: Access to this student record is denied.');
+        }
       }
 
       var basicInfo = {};
@@ -669,7 +724,7 @@ var StudentService = {
     }
   },
 
-  paginateStudents: function (page, pageSize, filterOptions) {
+  paginateStudents: function (page, pageSize, filterOptions, userContext) {
     try {
       var intPage = parseInt(page, 10);
       var intPageSize = parseInt(pageSize, 10);
@@ -685,6 +740,9 @@ var StudentService = {
       }
 
       var records = this._getStudents();
+      if (userContext) {
+        records = SecurityUtils.applyStudentRLS(records, userContext);
+      }
 
       // Apply Filter Options Dynamically
       if (filterOptions) {
@@ -804,6 +862,79 @@ var StudentService = {
     } catch (error) {
       Logger.log("StudentService.exportStudents error: " + (error && error.message ? error.message : error));
       return Utils.buildResponse(false, 'Export execution encountered an exception compiling files.');
+    }
+  },
+
+  searchStudents: function (keyword) {
+    try {
+      if (Utils.checkEmptyValue(keyword)) return [];
+      var query = String(keyword).trim().toUpperCase();
+      var records = DatabaseService.readAllRows(this._studentsSheet()) || [];
+      const active = records.filter(function (s) {
+        return !s.deletion_flag && !s['Deletion Flag'];
+      });
+      const results = active.filter(function (s) {
+        return String(s[CONFIG.COLUMNS.STUDENT_NAME] || '').toUpperCase().indexOf(query) !== -1 ||
+               String(s[CONFIG.COLUMNS.STUDENT_ROLL_NUMBER] || '').toUpperCase().indexOf(query) !== -1;
+      });
+      return results.map(s => Utils.sanitizeStudent(s));
+    } catch (e) {
+      Logger.log("StudentService.searchStudents error: " + e.message);
+      return [];
+    }
+  },
+
+  getStudentsByDepartment: function (department) {
+    try {
+      if (!department) return [];
+      var targetDept = String(department).trim().toUpperCase();
+      var records = DatabaseService.readAllRows(this._studentsSheet()) || [];
+      const active = records.filter(function (s) {
+        return !s.deletion_flag && !s['Deletion Flag'];
+      });
+      const results = active.filter(function (s) {
+        return String(s[CONFIG.COLUMNS.STUDENT_DEPARTMENT_ID] || '').toUpperCase() === targetDept;
+      });
+      return results.map(s => Utils.sanitizeStudent(s));
+    } catch (e) {
+      Logger.log("StudentService.getStudentsByDepartment error: " + e.message);
+      return [];
+    }
+  },
+
+  getStudentsByYear: function (year) {
+    try {
+      if (!year) return [];
+      var targetYear = String(year).trim();
+      var records = DatabaseService.readAllRows(this._studentsSheet()) || [];
+      const active = records.filter(function (s) {
+        return !s.deletion_flag && !s['Deletion Flag'];
+      });
+      const results = active.filter(function (s) {
+        return String(s[CONFIG.COLUMNS.STUDENT_YEAR] || '') === targetYear;
+      });
+      return results.map(s => Utils.sanitizeStudent(s));
+    } catch (e) {
+      Logger.log("StudentService.getStudentsByYear error: " + e.message);
+      return [];
+    }
+  },
+
+  getStudentsBySection: function (section) {
+    try {
+      if (!section) return [];
+      var targetSec = String(section).trim().toUpperCase();
+      var records = DatabaseService.readAllRows(this._studentsSheet()) || [];
+      const active = records.filter(function (s) {
+        return !s.deletion_flag && !s['Deletion Flag'];
+      });
+      const results = active.filter(function (s) {
+        return String(s[CONFIG.COLUMNS.STUDENT_SECTION] || '').toUpperCase() === targetSec;
+      });
+      return results.map(s => Utils.sanitizeStudent(s));
+    } catch (e) {
+      Logger.log("StudentService.getStudentsBySection error: " + e.message);
+      return [];
     }
   }
 };

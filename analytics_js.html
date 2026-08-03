@@ -53,7 +53,43 @@
       loadDashboardData: function () {
         App.LoadingManager.show();
         
-        // Load all datasets concurrently
+        const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
+        const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+        const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+
+        if (isEventAdmin && selectedEventId) {
+          Promise.all([
+            App.API.getEventById(selectedEventId),
+            App.API.getAttendanceByEvent(selectedEventId),
+            App.API.getEventParticipants(selectedEventId)
+          ]).then(([evt, att, parts]) => {
+            App.LoadingManager.hide();
+            const totalParts = Array.isArray(parts) ? parts.length : 0;
+            const attList = Array.isArray(att) ? att : [];
+            const present = attList.filter(a => String(a.status || a['Attendance Status'] || '').toLowerCase() === 'present').length;
+            const rate = totalParts > 0 ? (present / totalParts) * 100 : (attList.length > 0 ? 100 : 0);
+
+            const evtName = evt ? (evt.event_name || evt['Event Name'] || selectedEventId) : selectedEventId;
+            const summary = {
+              summary: {
+                totalEvents: 1,
+                totalParticipants: totalParts,
+                totalCheckIns: present || attList.length,
+                overallAttendanceRate: rate
+              }
+            };
+            this.renderSummary(summary);
+
+            const eventWise = {
+              eventWise: [{ eventName: evtName, attendanceRate: rate }]
+            };
+            this.renderEventChart(eventWise);
+          }).catch(err => {
+            App.LoadingManager.hide();
+            console.error("Event Admin analytics error:", err);
+          });
+          return;
+        }
         Promise.all([
           App.API.getAnalyticsSummary(),
           App.API.getTrendData(),

@@ -200,9 +200,6 @@ const UserService = {
   getAllUsers: function (userContext) {
     Logger.log("BACKEND STEP 8a: Entering UserService.getAllUsers");
     try {
-      if (typeof SessionService !== 'undefined' && typeof SessionService.sweepPresence === 'function' && (!CONFIG || !CONFIG.SKIP_EMAIL)) {
-        SessionService.sweepPresence();
-      }
       var usersSheet = this._mustUsersSheet();
       var records = DatabaseService.readAllRows(usersSheet) || [];
 
@@ -278,8 +275,10 @@ const UserService = {
       normalized[usernameCol] = rawUsername;
 
       // 5. Role & Status
+      // DEFAULT: All new user records start as Inactive.
+      // Status is controlled by StatusSyncService (event attendance-based).
       normalized[roleCol] = userData[roleCol] || userData.role || 'Coordinator';
-      normalized[statusCol] = userData[statusCol] || userData.status || 'Active';
+      normalized[statusCol] = userData.status || userData[statusCol] || (CONFIG.USER_STATUS && CONFIG.USER_STATUS.INACTIVE ? CONFIG.USER_STATUS.INACTIVE : 'Inactive');
 
       // 6. Copy over other keys
       for (var k in userData) {
@@ -303,7 +302,7 @@ const UserService = {
 
       var userToCreate = Object.assign({}, userData);
       userToCreate.role = userToCreate.role || (CONFIG.ROLES && CONFIG.ROLES.COORDINATOR ? CONFIG.ROLES.COORDINATOR : userToCreate[roleCol]);
-      userToCreate.status = userToCreate.status || (CONFIG.USER_STATUS && CONFIG.USER_STATUS.ACTIVE ? CONFIG.USER_STATUS.ACTIVE : userToCreate[statusCol]);
+      userToCreate.status = userToCreate.status || (CONFIG.USER_STATUS && CONFIG.USER_STATUS.INACTIVE ? CONFIG.USER_STATUS.INACTIVE : 'Inactive');
 
       // Security Enforcement:
       // Super Admin: can create Admin, HOD, Coordinator, Super Admin
@@ -338,9 +337,19 @@ const UserService = {
             return Utils.buildResponse(false, 'Unauthorized: Event Admins can only create Coordinator accounts.');
           }
         } else if (isCallerHOD) {
-          // HOD can create Event Admin and Coordinator accounts
-          if (requestedRole !== 'COORDINATOR' && requestedRole !== 'ADMIN' && requestedRole !== 'EVENT ADMIN' && requestedRole !== 'EVENT_ADMIN') {
+          // HOD can create Event Admin and Coordinator accounts for their own department
+          if (requestedRole !== 'COORDINATOR' && requestedRole !== 'ADMIN' && requestedRole !== 'EVENT ADMIN' && requestedRole !== 'EVENT_ADMIN' && requestedRole !== 'EVENT COORDINATOR') {
             return Utils.buildResponse(false, 'Unauthorized: HODs can only create Event Admin and Coordinator accounts.');
+          }
+          // Automatically use loggedInUser.department from session context (never trust untrusted frontend payload alone)
+          const callerDept = String(callerUserContext.department || '').trim();
+          if (callerDept) {
+            userToCreate[CONFIG.COLUMNS.USER_DEPARTMENT || 'Department'] = callerDept;
+            userToCreate.department = callerDept;
+            userData[CONFIG.COLUMNS.USER_DEPARTMENT || 'Department'] = callerDept;
+            userData.department = callerDept;
+          } else {
+            return Utils.buildResponse(false, 'Unauthorized: Logged in HOD has no department assigned.');
           }
         } else {
           // Coordinator or other roles cannot create users
@@ -400,7 +409,7 @@ const UserService = {
       newUser[usernameCol] = username;
       newUser[emailCol] = email;
       newUser[roleCol] = userToCreate.role || CONFIG.ROLES.COORDINATOR;
-      newUser[statusCol] = userToCreate.status || (CONFIG.USER_STATUS ? CONFIG.USER_STATUS.ACTIVE : userToCreate[statusCol]);
+      newUser[statusCol] = (CONFIG.USER_STATUS ? CONFIG.USER_STATUS.INACTIVE : 'Inactive');
       newUser[passCols.hashCol] = hashedPassword;
       if (passCols.saltCol) newUser[passCols.saltCol] = salt || "plain";
 
@@ -541,7 +550,7 @@ const UserService = {
     }
   },
 
-  updateUser: function (userId, userData) {
+  updateUser: function (userId, userData, callerUserContext) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
@@ -553,12 +562,33 @@ const UserService = {
       var existing = this._getUserByIdRecord(userId);
       if (!existing) return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_NOT_FOUND) ? CONFIG.MESSAGES.USER_NOT_FOUND : 'User not found');
 
+      if (callerUserContext && callerUserContext.isHOD) {
+        const callerDept = String(callerUserContext.department || '').trim().toUpperCase();
+        const existingDept = String(existing[CONFIG.COLUMNS.USER_DEPARTMENT] || existing.department || '').trim().toUpperCase();
+        if (existingDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You can only edit users in your own department.');
+        }
+        const targetDept = String(userData[CONFIG.COLUMNS.USER_DEPARTMENT] || userData.department || '').trim().toUpperCase();
+        if (targetDept && targetDept !== callerDept) {
+          return Utils.buildResponse(false, 'Unauthorized: You cannot move users to another department.');
+        }
+      }
+
       var usernameCol = this._mustUsernameCol();
       var emailCol = this._mustEmailCol();
       var roleCol = this._mustRoleCol();
       var statusCol = this._mustStatusCol();
 
       var editableData = Object.assign({}, userData);
+
+      // Explicitly map standard UI keys to backend configuration columns for reliable updating
+      // Note: userData.status is ignored because it is now automated via StatusSyncService
+      // if (userData.status !== undefined) editableData[statusCol] = userData.status;
+      if (userData.role !== undefined) editableData[roleCol] = userData.role;
+      if (userData.email !== undefined) editableData[emailCol] = userData.email;
+      if (userData.full_name !== undefined && CONFIG.COLUMNS.USER_FIRST_NAME) editableData[CONFIG.COLUMNS.USER_FIRST_NAME] = userData.full_name;
+      if (userData.employee_id !== undefined && CONFIG.COLUMNS.USER_EMPLOYEE_ID) editableData[CONFIG.COLUMNS.USER_EMPLOYEE_ID] = userData.employee_id;
+      if (userData.department !== undefined && CONFIG.COLUMNS.USER_DEPARTMENT) editableData[CONFIG.COLUMNS.USER_DEPARTMENT] = userData.department;
 
       // Prevent overwriting identity and sensitive values
       delete editableData[idCol];
@@ -626,13 +656,24 @@ const UserService = {
     }
   },
 
-  deleteUser: function (userId, updatedBy) {
+  deleteUser: function (userId, updatedBy, callerUserContext) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
 
       if (!DatabaseService.exists(usersSheet, idCol, userId)) {
         return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_NOT_FOUND) ? CONFIG.MESSAGES.USER_NOT_FOUND : 'User not found');
+      }
+
+      if (callerUserContext && callerUserContext.isHOD) {
+        var existing = this._getUserByIdRecord(userId);
+        if (existing) {
+          const callerDept = String(callerUserContext.department || '').trim().toUpperCase();
+          const existingDept = String(existing[CONFIG.COLUMNS.USER_DEPARTMENT] || existing.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only delete users in your own department.');
+          }
+        }
       }
 
       // Soft delete via DatabaseService
@@ -664,10 +705,78 @@ const UserService = {
     }
   },
 
-  activateUser: function (userId, updatedBy) {
+  restoreUser: function (userId, updatedBy, callerUserContext) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
+
+      if (callerUserContext && callerUserContext.isHOD) {
+        var existing = this._getUserByIdRecord(userId);
+        if (existing) {
+          const callerDept = String(callerUserContext.department || '').trim().toUpperCase();
+          const existingDept = String(existing[CONFIG.COLUMNS.USER_DEPARTMENT] || existing.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only restore users in your own department.');
+          }
+        }
+      }
+
+      var delCol = CONFIG.COLUMNS && CONFIG.COLUMNS.DELETION_FLAG ? CONFIG.COLUMNS.DELETION_FLAG : 'deletion_flag';
+      var statusCol = CONFIG.COLUMNS && (CONFIG.COLUMNS.STATUS || CONFIG.COLUMNS.USER_STATUS) ? (CONFIG.COLUMNS.STATUS || CONFIG.COLUMNS.USER_STATUS) : 'status';
+
+      var updates = {};
+      updates[delCol] = false;
+      // Status will be dynamically calculated
+      if (CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_AT) updates[CONFIG.COLUMNS.UPDATED_AT] = Utils.getCurrentTimestamp();
+      if (CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_BY && updatedBy !== undefined) updates[CONFIG.COLUMNS.UPDATED_BY] = updatedBy;
+      
+      var success = DatabaseService.updateRow(CONFIG.SHEETS.USERS, idCol, cleanId, updates);
+      if (success) {
+         StatusService.refreshUserStatus(cleanId, null, false);
+      }
+
+      var updated = DatabaseService.updateRow(usersSheet, idCol, userId, updates);
+      if (!updated) return Utils.buildResponse(false, 'Failed to restore user.');
+
+      try {
+        AuditService.logAction(
+          userId,
+          'UserService',
+          'RESTORE_USER',
+          userId,
+          'User',
+          'User restored from soft deletion',
+          '',
+          'SUCCESS',
+          updatedBy || ''
+        );
+      } catch (error) {
+        Logger.log(error);
+      }
+
+      return Utils.buildResponse(true, 'User restored successfully', { user: this._sanitizeUserSafe(updated) });
+    } catch (e) {
+      Logger.log('UserService.restoreUser error: ' + (e && e.message ? e.message : e));
+      return Utils.buildResponse(false, 'User restore failed');
+    }
+  },
+
+  activateUser: function (userId, updatedBy, callerUserContext) {
+    try {
+      var usersSheet = this._mustUsersSheet();
+      var idCol = this._mustUserIdCol();
+
+      if (callerUserContext && callerUserContext.isHOD) {
+        var existing = this._getUserByIdRecord(userId);
+        if (existing) {
+          const callerDept = String(callerUserContext.department || '').trim().toUpperCase();
+          const existingDept = String(existing[CONFIG.COLUMNS.USER_DEPARTMENT] || existing.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only activate users in your own department.');
+          }
+        }
+      }
+
       var statusCol = CONFIG.COLUMNS && (CONFIG.COLUMNS.STATUS || CONFIG.COLUMNS.USER_STATUS);
       if (!statusCol) throw new Error('Missing CONFIG.COLUMNS.STATUS/USER_STATUS');
 
@@ -676,10 +785,14 @@ const UserService = {
       }
 
       var updates = {};
-      updates[statusCol] = CONFIG.USER_STATUS && CONFIG.USER_STATUS.ACTIVE ? CONFIG.USER_STATUS.ACTIVE : 'Active';
+      // Approval no longer guarantees Active status natively; StatusService calculates it.
       if (CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_AT) updates[CONFIG.COLUMNS.UPDATED_AT] = Utils.getCurrentTimestamp();
       if (CONFIG.COLUMNS && CONFIG.COLUMNS.UPDATED_BY && updatedBy !== undefined) updates[CONFIG.COLUMNS.UPDATED_BY] = updatedBy;
 
+      var success = DatabaseService.updateRow(CONFIG.SHEETS.USERS, idCol, cleanId, updates);
+      if (success) {
+         StatusService.refreshUserStatus(cleanId, null, false);
+      }
       var updated = DatabaseService.updateRow(usersSheet, idCol, userId, updates);
       if (!updated) return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_ACTIVATE_FAILED) ? CONFIG.MESSAGES.USER_ACTIVATE_FAILED : 'Activation failed');
 
@@ -690,10 +803,21 @@ const UserService = {
     }
   },
 
-  deactivateUser: function (userId, updatedBy) {
+  deactivateUser: function (userId, updatedBy, callerUserContext) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
+
+      if (callerUserContext && callerUserContext.isHOD) {
+        var existing = this._getUserByIdRecord(userId);
+        if (existing) {
+          const callerDept = String(callerUserContext.department || '').trim().toUpperCase();
+          const existingDept = String(existing[CONFIG.COLUMNS.USER_DEPARTMENT] || existing.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only deactivate users in your own department.');
+          }
+        }
+      }
       var statusCol = CONFIG.COLUMNS && (CONFIG.COLUMNS.STATUS || CONFIG.COLUMNS.USER_STATUS);
       if (!statusCol) throw new Error('Missing CONFIG.COLUMNS.STATUS/USER_STATUS');
 
@@ -716,13 +840,24 @@ const UserService = {
     }
   },
 
-  resetPassword: function (userId, updatedBy) {
+  resetPassword: function (userId, updatedBy, callerUserContext) {
     try {
       var usersSheet = this._mustUsersSheet();
       var idCol = this._mustUserIdCol();
 
       if (!DatabaseService.exists(usersSheet, idCol, userId)) {
         return Utils.buildResponse(false, (CONFIG.MESSAGES && CONFIG.MESSAGES.USER_NOT_FOUND) ? CONFIG.MESSAGES.USER_NOT_FOUND : 'User not found');
+      }
+
+      if (callerUserContext && callerUserContext.isHOD) {
+        var existing = this._getUserByIdRecord(userId);
+        if (existing) {
+          const callerDept = String(callerUserContext.department || '').trim().toUpperCase();
+          const existingDept = String(existing[CONFIG.COLUMNS.USER_DEPARTMENT] || existing.department || '').trim().toUpperCase();
+          if (existingDept !== callerDept) {
+            return Utils.buildResponse(false, 'Unauthorized: You can only reset passwords for users in your own department.');
+          }
+        }
       }
 
       var passCols = this._getPasswordColumns();
@@ -995,8 +1130,15 @@ const UserService = {
       }
 
       // 2. Validate incoming profile payload
+
+      Logger.log("========== DEBUG PROFILE ==========");
+
+      Logger.log(JSON.stringify(profileData, null, 2));
+
       if (!profileData || typeof profileData !== 'object' || Array.isArray(profileData)) {
+
         return Utils.buildResponse(false, 'No profile data to update.');
+
       }
 
       // 3. Dynamically collect strictly allowed profile fields from CONFIG.COLUMNS
@@ -1030,17 +1172,45 @@ const UserService = {
       }
 
       // 4. Extract and filter data using a secure whitelist approach
+      Logger.log("===== ALLOWED FIELDS =====");
+      Logger.log(JSON.stringify(allowedFields));
+
       var updateData = {};
       var hasValidUpdates = false;
 
-      for (var j = 0; j < allowedFields.length; j++) {
-        var fieldName = allowedFields[j];
-        if (profileData[fieldName] !== undefined) {
-          // Input sanitization: Trim strings to prevent accidental white space contamination
-          var value = profileData[fieldName];
-          updateData[fieldName] = (typeof value === 'string') ? value.trim() : value;
+      /*
+       * Map database column names to CONFIG display names.
+       */
+      var fieldMap = {
+        first_name: CONFIG.COLUMNS.USER_FIRST_NAME,
+        last_name: CONFIG.COLUMNS.USER_LAST_NAME,
+        email_address: CONFIG.COLUMNS.USER_EMAIL_ADDRESS,
+        phone_number: CONFIG.COLUMNS.USER_PHONE,
+        profile_picture_url: CONFIG.COLUMNS.USER_PROFILE_PICTURE,
+        bio_notes: CONFIG.COLUMNS.USER_BIO,
+        theme_preference: CONFIG.COLUMNS.USER_THEME,
+        language: CONFIG.COLUMNS.USER_LANGUAGE,
+        timezone: CONFIG.COLUMNS.USER_TIMEZONE,
+        popup_notifications: CONFIG.COLUMNS.USER_POPUP_NOTIFICATIONS,
+        notification_sound: CONFIG.COLUMNS.USER_NOTIFICATION_SOUND
+      };
+
+      for (var dbField in fieldMap) {
+
+        if (profileData[dbField] !== undefined) {
+
+          var value = profileData[dbField];
+
+          updateData[fieldMap[dbField]] =
+            (typeof value === "string")
+              ? value.trim()
+              : value;
+
           hasValidUpdates = true;
+
+          Logger.log("Updating: " + fieldMap[dbField] + " = " + value);
         }
+
       }
 
       // 5. Fail early if no valid properties are targeted for updates
@@ -1194,12 +1364,30 @@ const UserService = {
       var phone = String(payload.phone || payload.phoneNumber || user.phone_number || '').trim();
       var department = String(payload.department || user.department || '').trim();
 
+      // Resolve department code to Department ID to satisfy Foreign Key constraints
+      var resolvedDeptId = department;
+      try {
+        var allDepts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+        var matchedDept = allDepts.find(function (d) {
+          var dCode = String(d['Department Code'] || d.department_code || '').trim().toUpperCase();
+          var dId = String(d['Department ID'] || d.department_id || '').trim().toUpperCase();
+          var dName = String(d['Department Name'] || d.department_name || '').trim().toUpperCase();
+          var cleanDept = String(department).trim().toUpperCase();
+          return dCode === cleanDept || dId === cleanDept || dName === cleanDept;
+        });
+        if (matchedDept) {
+          resolvedDeptId = matchedDept['Department ID'] || matchedDept.department_id || department;
+        }
+      } catch (deptErr) {
+        Logger.log("Error resolving department code to ID in completeUserProfile: " + deptErr.message);
+      }
+
       // Store profile in role-specific dedicated tables (normalized)
       if (role === 'Faculty' || role === 'HOD') {
         var facultyId = String(payload.facultyId || payload.employeeId || user.employee_id || IdService.generateId('FACULTY')).trim();
         var empId = String(payload.employeeId || payload.facultyId || user.employee_id || facultyId).trim();
         var designation = String(payload.designation || (role === 'HOD' ? 'Head of Department' : 'Faculty')).trim();
-        
+
         var existingFac = DatabaseService.findOne(CONFIG.SHEETS.FACULTY, 'user_id', userId);
         var facData = {
           faculty_id: (existingFac && existingFac.faculty_id) ? existingFac.faculty_id : facultyId,
@@ -1207,10 +1395,11 @@ const UserService = {
           user_id: userId,
           faculty_name: name,
           designation: designation,
-          department_id: department,
+          department_id: resolvedDeptId,
           email: email,
           mobile: phone,
-          status: 'Active',
+          // DEFAULT: New faculty profile starts Inactive. StatusService controls promotion to Active.
+          status: (CONFIG.USER_STATUS && CONFIG.USER_STATUS.INACTIVE ? CONFIG.USER_STATUS.INACTIVE : 'Inactive'),
           updated_at: new Date().toISOString()
         };
         if (existingFac) {
@@ -1222,9 +1411,9 @@ const UserService = {
       } else if (role === 'Student Coordinator' || role === 'StudentCoordinator' || role === 'Student') {
         var rollNumber = String(payload.rollNumber || '').trim().toUpperCase();
         var branch = String(payload.branch || '').trim();
-        
-        var existingStu = DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'user_id', userId) || 
-                          (rollNumber ? DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'roll_number', rollNumber) : null);
+
+        var existingStu = DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'user_id', userId) ||
+          (rollNumber ? DatabaseService.findOne(CONFIG.SHEETS.STUDENTS, 'roll_number', rollNumber) : null);
         var stuData = {
           student_id: (existingStu && existingStu.student_id) ? existingStu.student_id : IdService.generateId('STUDENTS'),
           roll_number: rollNumber || (existingStu ? existingStu.roll_number : userId),
@@ -1232,10 +1421,11 @@ const UserService = {
           student_name: name,
           email_address: email,
           phone_number: phone,
-          department_id: department,
+          department_id: resolvedDeptId,
           section: branch,
           year: payload.year ? Number(payload.year) : 1,
-          student_status: 'Active',
+          // DEFAULT: New student profile starts Inactive. StatusService controls promotion to Active.
+          student_status: (CONFIG.STUDENT_STATUS && CONFIG.STUDENT_STATUS.INACTIVE ? CONFIG.STUDENT_STATUS.INACTIVE : 'Inactive'),
           last_updated_at: new Date().toISOString()
         };
         if (existingStu) {
@@ -1247,7 +1437,7 @@ const UserService = {
       } else if (role === 'Guest Coordinator' || role === 'GuestCoordinator') {
         var guestId = String(payload.guestId || '').trim();
         var branch = String(payload.branch || '').trim();
-        
+
         var existingGuest = DatabaseService.findOne(CONFIG.SHEETS.GUEST_COORDINATORS, 'user_id', userId);
         var guestData = {
           id: (existingGuest && existingGuest.id) ? existingGuest.id : IdService.generateId('GUEST_COORDINATORS'),
@@ -1270,12 +1460,16 @@ const UserService = {
 
       // Update users table with correct Supabase column names (snake_case)
       var sheetName = this._mustUsersSheet();
+      Logger.log("========== COMPLETE PROFILE DEBUG ==========");
+      Logger.log("This is the UPDATED code");
       var updates = {
         'profile_completed': true,
         'first_login': false,
         'last_login_timestamp': new Date().toISOString(),
+        // 'online_status': 'Online',
         'updated_at': new Date().toISOString()
       };
+      Logger.log(JSON.stringify(updates, null, 2));
 
       var success = DatabaseService.updateRow(sheetName, 'user_id', userId, updates);
       if (!success) {
@@ -1332,33 +1526,33 @@ const UserService = {
       if (!user) return Utils.buildResponse(false, 'User record not found');
 
       var sheetName = this._mustUsersSheet();
-      var salt = PasswordUtils.generateSalt();
-      var hash = PasswordUtils.hashPassword(newPassword, salt);
+      var salt = String(new Date().getTime()); // simple unique salt
+      var hash = Utils.hashString ? Utils.hashString(salt + ':' + newPassword) : newPassword;
 
       var updates = {};
-      updates[CONFIG.COLUMNS.USER_PASSWORD_HASH || 'Password Hash'] = hash;
+      updates['password_hash'] = hash;
       updates['salt'] = salt;
 
       if (setupData.phone) {
-        updates[CONFIG.COLUMNS.USER_PHONE || 'Phone'] = String(setupData.phone).trim();
+        updates['phone_number'] = String(setupData.phone).trim();
       }
       if (setupData.designation) {
-        updates[CONFIG.COLUMNS.USER_DESIGNATION || 'Title/Designation'] = String(setupData.designation).trim();
+        updates['title_designation'] = String(setupData.designation).trim();
       }
       if (setupData.firstName) {
-        updates[CONFIG.COLUMNS.USER_FIRST_NAME || 'First Name'] = String(setupData.firstName).trim();
+        updates['first_name'] = String(setupData.firstName).trim();
       }
       if (setupData.lastName) {
-        updates[CONFIG.COLUMNS.USER_LAST_NAME || 'Last Name'] = String(setupData.lastName).trim();
+        updates['last_name'] = String(setupData.lastName).trim();
       }
 
       // Mark first login as complete and profile as completed
-      updates[CONFIG.COLUMNS.USER_FIRST_LOGIN || 'first_login'] = false;
-      updates[CONFIG.COLUMNS.USER_PROFILE_COMPLETED || 'profile_completed'] = true;
-      updates[CONFIG.COLUMNS.USER_ONLINE_STATUS || 'OnlineStatus'] = 'Online';
-      updates[CONFIG.COLUMNS.USER_LAST_LOGIN_TS || 'LastLogin'] = new Date().toISOString();
+      updates['first_login'] = false;
+      updates['profile_completed'] = true;
+      updates['last_login_timestamp'] = new Date().toISOString();
+      updates['updated_at'] = new Date().toISOString();
 
-      var success = DatabaseService.updateRow(sheetName, CONFIG.COLUMNS.USER_ID || 'User ID', userId, updates);
+      var success = DatabaseService.updateRow(sheetName, 'user_id', userId, updates);
       if (!success) {
         return Utils.buildResponse(false, 'Failed to update account setup in database.');
       }

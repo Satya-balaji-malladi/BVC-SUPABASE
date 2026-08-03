@@ -40,7 +40,7 @@
         });
       }
 
-      // Department structure form submit
+      // Department structure form submit & save button click
       const deptForm = document.getElementById('departmentStructureForm');
       if (deptForm) {
         deptForm.addEventListener('submit', (e) => {
@@ -48,6 +48,15 @@
           this.saveDepartmentStructure();
         });
       }
+      document.getElementById('btnSaveDeptStructure')?.addEventListener('click', (e) => {
+        const form = document.getElementById('departmentStructureForm');
+        if (form && form.checkValidity()) {
+          e.preventDefault();
+          this.saveDepartmentStructure();
+        } else if (form) {
+          form.classList.add('was-validated');
+        }
+      });
 
       // Action triggers for maintenance
       document.getElementById('btnWipeAttendance')?.addEventListener('click', () => this.handleWipeAttendance());
@@ -131,17 +140,43 @@
           if (action === 'delete-dept') this.deleteDepartment(id);
         });
       }
+      // Event Admin Settings form
+      const eaForm = document.getElementById('eventAdminSettingsForm');
+      if (eaForm) {
+        eaForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          this.saveEventAdminSettings();
+        });
+      }
     },
 
     enforceRoleVisibility: function () {
       const user = (App.State && App.State.currentUser) || App.Auth.currentUser || {};
-      const rawRole = String(user.role || user.Role || localStorage.getItem('userRole') || 'Coordinator').toUpperCase().trim();
-      const isSuperAdmin = (rawRole === 'SUPER ADMIN' || rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN');
+      const rawRole = String(user.role || user.Role || localStorage.getItem('userRole') || 'Coordinator').toUpperCase().trim().replace(/[\s_]+/g, '');
+      const isSuperAdmin = (rawRole === 'SUPERADMIN');
       const isHOD = (rawRole === 'HOD');
+<<<<<<< Updated upstream
       const isEventAdmin = (rawRole === 'EVENT ADMIN' || rawRole === 'EVENT_ADMIN');
+=======
+      const isEventAdmin = (rawRole === 'EVENTADMIN' || rawRole === 'EVENT_ADMIN' || rawRole === 'ADMIN');
+>>>>>>> Stashed changes
 
       const hodContainer = document.getElementById('hod-structure-container');
       const superadminContainer = document.getElementById('superadmin-depts-container');
+      const sysAdminContainer = document.getElementById('system-admin-settings-container');
+      const eaSettingsContainer = document.getElementById('event-admin-settings-container');
+
+      if (isEventAdmin) {
+        if (sysAdminContainer) sysAdminContainer.classList.add('d-none');
+        if (eaSettingsContainer) {
+          eaSettingsContainer.classList.remove('d-none');
+          this.loadEventAdminSettings();
+        }
+        return;
+      } else {
+        if (sysAdminContainer) sysAdminContainer.classList.remove('d-none');
+        if (eaSettingsContainer) eaSettingsContainer.classList.add('d-none');
+      }
 
       // Default: hide privileged tabs
       document.getElementById('tab-maintenance-wrapper')?.classList.add('d-none');
@@ -213,25 +248,22 @@
     },
 
     saveDepartmentStructure: function () {
+      const form = document.getElementById('departmentStructureForm');
+      if (form && !form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+      }
+
       const payload = {
-        hodDeptName: document.getElementById('hodDeptName')?.value || '',
-        hodDeptCode: document.getElementById('hodDeptCode')?.value || '',
-        hodDeptEmail: document.getElementById('hodDeptEmail')?.value || '',
-        hodDeptBranches: document.getElementById('hodDeptBranches')?.value || '',
+        hodDeptName: (document.getElementById('hodDeptName')?.value || '').trim(),
+        hodDeptCode: (document.getElementById('hodDeptCode')?.value || '').trim(),
+        hodDeptEmail: (document.getElementById('hodDeptEmail')?.value || '').trim(),
+        hodDeptBranches: (document.getElementById('hodDeptBranches')?.value || '').trim(),
         hodDeptYears: '2, 3, 4',
-        hodDeptSections: document.getElementById('hodDeptSections')?.value || ''
+        hodDeptSections: (document.getElementById('hodDeptSections')?.value || '').trim()
       };
 
-      App.LoadingManager.show();
-      App.API._call('saveSettings', payload)
-        .then(() => {
-          App.LoadingManager.hide();
-          App.UI.showSuccess('Department & Academic Structure updated successfully!');
-        })
-        .catch(err => {
-          App.LoadingManager.hide();
-          App.UI.showError('Failed to save department structure: ' + err.message);
-        });
+      this.executeSave(payload);
     },
 
     saveGeneralSettings: function () {
@@ -734,6 +766,94 @@
         .catch(err => {
           App.LoadingManager.hide();
           App.UI.showError("Failed to delete department: " + err.message);
+        });
+    },
+
+    loadEventAdminSettings: function () {
+      const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+      const errEl = document.getElementById('eaSettingsError');
+      if (!selectedEventId) {
+        if (errEl) {
+          errEl.textContent = 'No event selected. Please select an event first.';
+          errEl.classList.remove('d-none');
+        }
+        return;
+      }
+      if (errEl) errEl.classList.add('d-none');
+
+      App.LoadingManager.show();
+      App.API._call('getEventById', selectedEventId)
+        .then(res => {
+          App.LoadingManager.hide();
+          const evt = (res && res.data) ? res.data : (res && res.event) ? res.event : res;
+          if (evt) {
+            if (document.getElementById('eaSetEventName')) document.getElementById('eaSetEventName').value = evt.event_name || evt['Event Name'] || '';
+            if (document.getElementById('eaSetVenue')) document.getElementById('eaSetVenue').value = evt.location || evt.venue || evt['Location'] || '';
+            if (document.getElementById('eaSetDescription')) document.getElementById('eaSetDescription').value = evt.description || evt['Description'] || '';
+            if (document.getElementById('eaSetAttendanceType')) document.getElementById('eaSetAttendanceType').value = evt.attendance_type || evt['Attendance Type'] || 'Fixed';
+            if (document.getElementById('eaSetStatus')) document.getElementById('eaSetStatus').value = evt.status || evt['Event Status'] || 'Active';
+            if (document.getElementById('eaSetStartDate')) document.getElementById('eaSetStartDate').value = evt.start_date || evt['Start Date'] || '';
+            if (document.getElementById('eaSetEndDate')) document.getElementById('eaSetEndDate').value = evt.end_date || evt['End Date'] || '';
+            if (document.getElementById('eaSetStartTime')) document.getElementById('eaSetStartTime').value = evt.start_time || evt['Start Time'] || '';
+            if (document.getElementById('eaSetEndTime')) document.getElementById('eaSetEndTime').value = evt.end_time || evt['End Time'] || '';
+            if (document.getElementById('eaSetRegStartDate')) document.getElementById('eaSetRegStartDate').value = evt.registration_start_date || evt['Registration Start Date'] || '';
+            if (document.getElementById('eaSetRegEndDate')) document.getElementById('eaSetRegEndDate').value = evt.registration_end_date || evt['Registration End Date'] || '';
+            if (document.getElementById('eaSetCapacity')) document.getElementById('eaSetCapacity').value = evt.capacity || evt['Capacity'] || 100;
+            if (document.getElementById('eaSetVisibility')) document.getElementById('eaSetVisibility').value = evt.organizer || evt.department || evt['Organizer'] || '';
+
+            const subTitle = document.getElementById('eaSettingsSubTitle');
+            if (subTitle) {
+              subTitle.textContent = `Managing Settings for: ${evt.event_name || selectedEventId} (${selectedEventId})`;
+            }
+          }
+        })
+        .catch(err => {
+          App.LoadingManager.hide();
+          if (errEl) {
+            errEl.textContent = 'Failed to load event details: ' + err.message;
+            errEl.classList.remove('d-none');
+          }
+        });
+    },
+
+    saveEventAdminSettings: function () {
+      const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+      if (!selectedEventId) return;
+
+      const form = document.getElementById('eventAdminSettingsForm');
+      if (form && !form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+      }
+
+      const payload = {
+        event_name: document.getElementById('eaSetEventName').value.trim(),
+        location: document.getElementById('eaSetVenue').value.trim(),
+        description: document.getElementById('eaSetDescription').value.trim(),
+        attendance_type: document.getElementById('eaSetAttendanceType').value,
+        status: document.getElementById('eaSetStatus').value,
+        start_date: document.getElementById('eaSetStartDate').value,
+        end_date: document.getElementById('eaSetEndDate').value,
+        start_time: document.getElementById('eaSetStartTime').value,
+        end_time: document.getElementById('eaSetEndTime').value,
+        registration_start_date: document.getElementById('eaSetRegStartDate').value,
+        registration_end_date: document.getElementById('eaSetRegEndDate').value,
+        capacity: parseInt(document.getElementById('eaSetCapacity').value, 10) || 100,
+        organizer: document.getElementById('eaSetVisibility').value.trim()
+      };
+
+      App.LoadingManager.show();
+      App.API._call('updateEvent', selectedEventId, payload)
+        .then(res => {
+          App.LoadingManager.hide();
+          if (res && res.success === false) {
+            throw new Error(res.message || 'Update failed');
+          }
+          App.Utils.showToast('Event settings updated successfully!', false);
+        })
+        .catch(err => {
+          App.LoadingManager.hide();
+          App.Utils.showToast('Failed to save event settings: ' + err.message, true);
         });
     },
 

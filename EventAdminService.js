@@ -35,14 +35,14 @@ const EventAdminService = {
         }
 
         // 1. Fetch Event Details
-        var evRecords = DatabaseService.findByColumn(CONFIG.TABLES.EVENTS, 'event_id', eventId, { strict: true });
+        var evRecords = DatabaseService.findByColumn(CONFIG.SHEETS.EVENTS, 'event_id', eventId, { strict: true });
         if (!evRecords || evRecords.length === 0) {
           return Utils.buildResponse(false, 'Event not found: ' + eventId);
         }
         var eventObj = evRecords[0];
 
         // 2. Fetch Event Assignments (Coordinators & Admins)
-        var assignments = DatabaseService.findByColumn(CONFIG.TABLES.EVENT_ASSIGNMENTS, 'event_id', eventId, { strict: true }) || [];
+        var assignments = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_ASSIGNMENTS, 'event_id', eventId, { strict: true }) || [];
         var activeAssignments = assignments.filter(function (a) {
           return String(a.status || 'Active').toLowerCase() === 'active';
         });
@@ -53,14 +53,14 @@ const EventAdminService = {
         });
 
         // 3. Fetch Registered Participants
-        var participants = DatabaseService.findByColumn(CONFIG.TABLES.EVENT_PARTICIPANTS, 'event_id', eventId, { strict: true }) || [];
+        var participants = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_PARTICIPANTS, 'event_id', eventId, { strict: true }) || [];
         var totalRegistered = participants.length;
         var pendingRegs = participants.filter(function (p) {
           return String(p.registration_status || '').toLowerCase() === 'pending';
         }).length;
 
         // 4. Fetch Attendance Logs for this Event
-        var attendanceLogs = DatabaseService.findByColumn(CONFIG.TABLES.ATTENDANCE, 'event_id', eventId, { strict: true }) || [];
+        var attendanceLogs = DatabaseService.findByColumn(CONFIG.SHEETS.ATTENDANCE, 'event_id', eventId, { strict: true }) || [];
         var totalPresent = attendanceLogs.length;
 
         var totalAbsent = totalRegistered > totalPresent ? totalRegistered - totalPresent : 0;
@@ -135,7 +135,7 @@ const EventAdminService = {
         if (!targetUserId && payload.username && payload.password) {
           var username = String(payload.username).trim().toLowerCase();
 
-          var existing = DatabaseService.findByColumn(CONFIG.TABLES.USERS, 'username', username, { strict: true });
+          var existing = DatabaseService.findByColumn(CONFIG.SHEETS.USERS, 'username', username, { strict: true });
           if (existing && existing.length > 0) {
             return Utils.buildResponse(false, 'Username "' + username + '" is already taken.');
           }
@@ -156,7 +156,7 @@ const EventAdminService = {
             created_at: new Date().toISOString()
           };
 
-          DatabaseService.insertRow(CONFIG.TABLES.USERS, newCoordRecord);
+          DatabaseService.insertRow(CONFIG.SHEETS.USERS, newCoordRecord);
         }
 
         if (!targetUserId) {
@@ -164,7 +164,7 @@ const EventAdminService = {
         }
 
         // Check if assignment already exists
-        var existingAssignments = DatabaseService.findByColumn(CONFIG.TABLES.EVENT_ASSIGNMENTS, 'event_id', eventId, { strict: true }) || [];
+        var existingAssignments = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_ASSIGNMENTS, 'event_id', eventId, { strict: true }) || [];
         var match = existingAssignments.find(function (a) {
           return String(a.user_id) === String(targetUserId) && String(a.role).toLowerCase() === 'coordinator';
         });
@@ -186,16 +186,39 @@ const EventAdminService = {
           assigned_at: new Date().toISOString()
         };
 
-        DatabaseService.insertRow(CONFIG.TABLES.EVENT_ASSIGNMENTS, assignmentRecord);
+        // Write assignment to both Google Sheets tables
+        DatabaseService.insertRow(CONFIG.SHEETS.EVENT_ASSIGNMENTS, assignmentRecord);
+
+        try {
+          const coordRecord = {
+            'Assignment ID': assignmentId,
+            'Event ID': eventId,
+            'User ID': targetUserId,
+            'Assignment Role': 'Coordinator',
+            'Assignment Status': 'Active',
+            'Assigned By': callerUserId,
+            'Assigned Date': assignmentRecord.assigned_at,
+            'Updated By': callerUserId,
+            'Updated Date': assignmentRecord.assigned_at,
+            'Remarks': 'Assigned by Event Admin'
+          };
+          DatabaseService.insertRow(CONFIG.SHEETS.EVENT_COORDINATORS, coordRecord);
+        } catch (coordErr) {
+          Logger.log('Error syncing to event_coordinators sheet: ' + coordErr.message);
+        }
+
+        if (typeof StatusService !== 'undefined') {
+          StatusService.refreshUserStatus(targetUserId, null, false);
+        }
 
         // Audit Log
         try {
-          DatabaseService.insertRow(CONFIG.TABLES.AUDIT_LOGS, {
+          DatabaseService.insertRow(CONFIG.SHEETS.AUDIT_LOGS, {
             log_id: 'LOG_ASSIGN_' + new Date().getTime(),
             user_id: callerUserId,
             action: 'ASSIGN_COORDINATOR',
             target_entity: 'event_assignments',
-            new_value: assignmentRecord,
+            new_value: JSON.stringify(assignmentRecord),
             session_token: sessionToken,
             created_at: new Date().toISOString()
           });
@@ -228,7 +251,7 @@ const EventAdminService = {
       try {
         if (!assignmentId) return Utils.buildResponse(false, 'Assignment ID required.');
 
-        var records = DatabaseService.findByColumn(CONFIG.TABLES.EVENT_ASSIGNMENTS, 'assignment_id', assignmentId, { strict: true });
+        var records = DatabaseService.findByColumn(CONFIG.SHEETS.EVENT_ASSIGNMENTS, 'assignment_id', assignmentId, { strict: true });
         if (!records || records.length === 0) {
           return Utils.buildResponse(false, 'Assignment record not found.');
         }
@@ -239,7 +262,19 @@ const EventAdminService = {
         record.removed_at = new Date().toISOString();
         record.remarks = remarks || 'Removed by Event Admin';
 
-        DatabaseService.updateRow(CONFIG.TABLES.EVENT_ASSIGNMENTS, 'assignment_id', assignmentId, record);
+        DatabaseService.updateRow(CONFIG.SHEETS.EVENT_ASSIGNMENTS, 'assignment_id', assignmentId, record);
+
+        // Sync coordinator removal to event_coordinators table
+        try {
+          DatabaseService.updateRow(CONFIG.SHEETS.EVENT_COORDINATORS, 'Assignment ID', assignmentId, {
+            'Assignment Status': 'Removed',
+            'Updated By': callerUserId,
+            'Updated Date': new Date().toISOString(),
+            'Remarks': remarks || 'Removed by Event Admin'
+          });
+        } catch (syncErr) {
+          Logger.log('Error syncing removal to event_coordinators: ' + syncErr.message);
+        }
 
         return Utils.buildResponse(true, 'Assignment removed successfully.', { assignmentId: assignmentId });
 

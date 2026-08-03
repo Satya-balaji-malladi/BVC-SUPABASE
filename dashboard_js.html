@@ -107,41 +107,46 @@
   function updateStatsUI(stats) {
     if (!stats) return;
 
-    // 1. Initialize role resolution & DOM handles first (Avoid Temporal Dead Zone)
-    const userRole = String(localStorage.getItem('userRole') || (window.App && window.App.State && window.App.State.currentUser ? window.App.State.currentUser.role : '') || '').toUpperCase().trim();
+    // 1. Initialize role resolution & DOM handles first
+    const userRole = String(localStorage.getItem('userRole') || (window.App && window.App.State && window.App.State.currentUser ? window.App.State.currentUser.role : '') || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+    const userDept = localStorage.getItem('userDept') || (window.App && window.App.State && window.App.State.currentUser ? window.App.State.currentUser.department : '') || '';
+
     const isHOD = (userRole === 'HOD');
-    const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
+    const isEventAdmin = (userRole === 'EVENTADMIN' || userRole === 'ADMIN');
+    const isSuperAdmin = (userRole === 'SUPERADMIN' || userRole === 'SUPER_ADMIN');
 
     const cardDepts = document.getElementById('cardTotalDeptsContainer');
     const cardAdmins = document.getElementById('cardTotalAdminsContainer');
+    const cardCrossDept = document.getElementById('crossDeptCardContainer');
     const labelCoords = document.getElementById('labelTotalCoordinators');
     const labelEvents = document.getElementById('labelActiveEvents');
+    const labelTodayAtt = document.getElementById('labelTodayAttendance');
 
-    // 2. Safe diagnostic logging (Variables are now initialized)
-    console.log("User Role:", userRole);
-    console.log("Is HOD:", isHOD);
-    console.log("Department Card Found:", !!cardDepts);
-    console.log("===== DASHBOARD STATS =====");
-    console.log(JSON.stringify(stats, null, 2));
-    console.log("Updating Stats UI:", stats);
-
+    // 2. Dynamic card labels based on Role & Department Context
     if (isHOD) {
       if (cardDepts) cardDepts.classList.add('d-none');
       if (cardAdmins) cardAdmins.classList.remove('d-none');
-      if (labelCoords) labelCoords.textContent = 'Department Coordinators';
-      if (labelEvents) labelEvents.textContent = 'Active Events';
+      if (cardCrossDept) cardCrossDept.classList.remove('d-none');
+      if (labelCoords) labelCoords.textContent = userDept ? `${userDept} Coordinators` : 'Dept Coordinators';
+      if (labelEvents) labelEvents.textContent = userDept ? `${userDept} Active Events` : 'Dept Active Events';
+      if (labelTodayAtt) labelTodayAtt.textContent = userDept ? `${userDept} Attendance Today` : 'Dept Attendance Today';
     } else if (isEventAdmin) {
       if (cardDepts) cardDepts.classList.add('d-none');
       if (cardAdmins) cardAdmins.classList.add('d-none');
+      if (cardCrossDept) cardCrossDept.classList.add('d-none');
       if (labelCoords) labelCoords.textContent = 'Assigned Coordinators';
       if (labelEvents) labelEvents.textContent = 'Events Assigned Today';
+      if (labelTodayAtt) labelTodayAtt.textContent = 'Event Scans Today';
     } else {
       if (cardDepts) cardDepts.classList.remove('d-none');
       if (cardAdmins) cardAdmins.classList.add('d-none');
+      if (cardCrossDept) cardCrossDept.classList.remove('d-none');
       if (labelCoords) labelCoords.textContent = 'Total Coordinators';
-      if (labelEvents) labelEvents.textContent = 'Active Events';
+      if (labelEvents) labelEvents.textContent = 'Total Active Events';
+      if (labelTodayAtt) labelTodayAtt.textContent = 'Total Today Attendance';
     }
 
+    // 3. Populate Metric Values
     const totalUsersEl = document.getElementById('totalUsers');
     const activeEventsEl = document.getElementById('activeEvents');
     const todayAttendanceEl = document.getElementById('todayAttendance');
@@ -150,7 +155,7 @@
 
     if (totalUsersEl) totalUsersEl.textContent = (stats.totalCoordinators != null && stats.totalCoordinators !== '') ? stats.totalCoordinators : 0;
     if (totalDeptAdminsEl) totalDeptAdminsEl.textContent = (stats.totalAdmins != null && stats.totalAdmins !== '') ? stats.totalAdmins : 0;
-    if (activeEventsEl) activeEventsEl.textContent = (stats.activeEvents != null && stats.activeEvents !== '') ? stats.activeEvents : ((stats.totalEvents != null && stats.totalEvents !== '') ? stats.totalEvents : 0);
+    if (activeEventsEl) activeEventsEl.textContent = (stats.activeEvents != null && stats.activeEvents !== '') ? stats.activeEvents : 0;
     if (todayAttendanceEl) todayAttendanceEl.textContent = (stats.todayAttendance != null && stats.todayAttendance !== '') ? stats.todayAttendance : 0;
     if (totalDepartmentsEl) totalDepartmentsEl.textContent = (stats.totalDepartments != null && stats.totalDepartments !== '') ? stats.totalDepartments : 0;
 
@@ -158,7 +163,23 @@
     const completedEl = document.getElementById('completedEventsCount');
     if (completedEl) completedEl.textContent = (stats.completedEvents != null) ? stats.completedEvents : 0;
 
-    // Top Event Today & Count
+    // Upcoming Events count
+    const upcomingEl = document.getElementById('upcomingEventsCount');
+    if (upcomingEl) upcomingEl.textContent = (stats.upcomingEvents != null) ? stats.upcomingEvents : 0;
+
+    // Stopped Events count
+    const stoppedEl = document.getElementById('stoppedEventsCount');
+    if (stoppedEl) stoppedEl.textContent = (stats.stoppedEvents != null) ? stats.stoppedEvents : 0;
+
+    // Cancelled Events count
+    const cancelledEl = document.getElementById('cancelledEventsCount');
+    if (cancelledEl) cancelledEl.textContent = (stats.cancelledEvents != null) ? stats.cancelledEvents : 0;
+
+    // Cross-Dept Scans count
+    const crossDeptEl = document.getElementById('crossDeptCount');
+    if (crossDeptEl) crossDeptEl.textContent = (stats.crossDeptScans != null) ? stats.crossDeptScans : 0;
+
+    // Top Event Today & Attendees Count
     const topNameEl = document.getElementById('topEventTodayName');
     const topCountEl = document.getElementById('topEventTodayCount');
     if (topNameEl) {
@@ -216,37 +237,79 @@
   /**
    * Populates Active Events Table
    */
+  /**
+   * Populates Active Events Table with Role-Based Isolation
+   */
   function loadEventsUI(events) {
     const tbody = document.getElementById('activeEventsTableBody');
     if (!tbody) return;
 
-    if (!events || events.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center">No active events found.</td></tr>';
+    const userRole = String(localStorage.getItem('userRole') || (window.App && window.App.State && window.App.State.currentUser ? window.App.State.currentUser.role : '') || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+    const isHOD = (userRole === 'HOD');
+    const isEventAdmin = (userRole === 'EVENTADMIN' || userRole === 'ADMIN');
+    const userDept = localStorage.getItem('userDept') || (window.App && window.App.State && window.App.State.currentUser ? window.App.State.currentUser.department : '') || '';
+    const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+
+    // Update section title based on role
+    const cardTitleEl = document.querySelector('#activeEventsTableBody')?.closest('.enterprise-card')?.querySelector('.enterprise-card-title');
+    if (cardTitleEl) {
+      if (isHOD) {
+        cardTitleEl.innerHTML = `<i class="bi bi-collection-play me-2"></i>Active & Upcoming Events ${userDept ? `(${userDept})` : ''}`;
+      } else if (isEventAdmin) {
+        cardTitleEl.innerHTML = `<i class="bi bi-collection-play me-2"></i>My Assigned Active Events`;
+      } else {
+        cardTitleEl.innerHTML = `<i class="bi bi-collection-play me-2"></i>All Active & Upcoming Events`;
+      }
+    }
+
+    let displayEvents = events || [];
+
+    // Additional client-side role filtering safety for HOD / Event Admin
+    if (isHOD && userDept) {
+      const normDept = String(userDept).toUpperCase().replace(/[\s_]+/g, '');
+      displayEvents = displayEvents.filter(evt => {
+        const rawDepts = String(evt['Departments'] || evt['Department'] || evt.departments || evt.department || '').toUpperCase();
+        const eventDepts = rawDepts.split(',').map(d => d.trim().replace(/[\s_]+/g, ''));
+        return rawDepts === 'ALL' || eventDepts.includes(normDept);
+      });
+    } else if (isEventAdmin && selectedEventId) {
+      displayEvents = displayEvents.filter(evt => {
+        const id = evt['Event ID'] || evt.event_id || evt.eventId || '';
+        return String(id).trim() === String(selectedEventId).trim();
+      });
+    }
+
+    if (!displayEvents || displayEvents.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-info-circle me-2"></i>No active events found for your department scope.</td></tr>`;
       return;
     }
 
     let html = '';
-    events.forEach(evt => {
-      // Safe mapping supporting both Sheet Headers and Object properties from Config.gs
-      const name = evt['Event Name'] || evt.eventName || 'Unnamed Event';
-      const dept = evt['Department'] || evt['Departments'] || evt.department || 'General';
-      const coord = evt['Organizer'] || evt['Coordinator ID'] || evt.coordinatorId || 'Unknown';
-      const date = evt['Start Date'] || evt.startDate || '';
+    displayEvents.forEach(evt => {
+      const id = evt['Event ID'] || evt.event_id || evt.eventId || '';
+      const name = evt['Event Name'] || evt.eventName || evt.event_name || 'Unnamed Event';
+      const dept = evt['Department'] || evt['Departments'] || evt.departments || evt.department || 'General';
+      const coord = evt['Organizer'] || evt['Coordinator ID'] || evt.coordinatorId || evt.coordinator_id || 'Assigned Admin';
+      const date = evt['Start Date'] || evt.startDate || evt.start_date || 'N/A';
+      const time = evt['Start Time'] || evt.startTime || evt.start_time || '';
+      const dateTimeStr = date + (time ? ' (' + time + ')' : '');
       const status = evt['Event Status'] || evt['Status'] || evt.status || 'Active';
 
       let statusClass = 'badge-active';
       if (status.toLowerCase() === 'upcoming') statusClass = 'badge-upcoming';
       if (status.toLowerCase() === 'completed') statusClass = 'badge-completed';
+      if (status.toLowerCase() === 'stopped') statusClass = 'bg-warning text-dark';
+      if (status.toLowerCase() === 'cancelled') statusClass = 'bg-danger text-white';
 
       html += `
       <tr>
-        <td class="fw-semibold">${name}</td>
-        <td>${dept}</td>
-        <td>${coord}</td>
-        <td>${date}</td>
-        <td><span class="badge badge-enterprise ${statusClass}">${status}</span></td>
+        <td class="fw-semibold text-primary">${App.Utils ? App.Utils.escapeHtml(name) : name}</td>
+        <td><span class="badge bg-light text-dark border">${App.Utils ? App.Utils.escapeHtml(dept) : dept}</span></td>
+        <td><span class="fw-medium">${App.Utils ? App.Utils.escapeHtml(coord) : coord}</span></td>
+        <td><small class="text-muted"><i class="bi bi-clock me-1"></i>${App.Utils ? App.Utils.escapeHtml(dateTimeStr) : dateTimeStr}</small></td>
+        <td><span class="badge badge-enterprise ${statusClass}">${App.Utils ? App.Utils.escapeHtml(status) : status}</span></td>
         <td class="text-end">
-          <button class="btn btn-sm btn-outline-primary" aria-label="View Details" onclick="showToast('View details coming soon', 'info')"><i class="bi bi-eye"></i></button>
+          <button class="btn btn-sm btn-outline-primary" aria-label="View Details" onclick="if(window.App && App.State){ App.State.selectedEventId='${id}'; } if(window.App && App.Modules && App.Modules.events){ App.Modules.events.load(); } else { alert('Event ID: ${id}'); }"><i class="bi bi-eye-fill me-1"></i>View</button>
         </td>
       </tr>
     `;
@@ -258,15 +321,25 @@
   /**
    * Utility: Shows the full-screen loader
    */
+  /**
+   * Utility: Shows unified loading overlay
+   */
   function showLoader() {
-    const loader = document.getElementById('dashboardLoader');
-    if (loader) loader.classList.remove('d-none');
+    if (window.App && window.App.LoadingManager && typeof window.App.LoadingManager.show === 'function') {
+      window.App.LoadingManager.show('Loading Dashboard Data...');
+    } else {
+      const loader = document.getElementById('dashboardLoader');
+      if (loader) loader.classList.remove('d-none');
+    }
   }
 
   /**
-   * Utility: Hides the full-screen loader
+   * Utility: Hides unified loading overlay cleanly
    */
   function hideLoader() {
+    if (window.App && window.App.LoadingManager && typeof window.App.LoadingManager.hide === 'function') {
+      window.App.LoadingManager.hide(true);
+    }
     const loader = document.getElementById('dashboardLoader');
     if (loader) loader.classList.add('d-none');
   }
@@ -288,7 +361,7 @@
     if (type === 'warning') bgClass = 'bg-warning text-dark';
     if (type === 'info') bgClass = 'bg-info text-dark';
 
-    toastEl.classList.add(bgClass);
+    bgClass.split(' ').forEach(cls => { if (cls) toastEl.classList.add(cls); });
 
     const closeBtn = toastEl.querySelector('.btn-close');
     if (type === 'warning' || type === 'info') {
@@ -453,8 +526,14 @@
             countEl.textContent = window.crossDeptDataList.length;
           }
 
-          // Show card for HOD or Admin/Super Admin
-          container.classList.remove('d-none');
+          // Show Cross Department card ONLY for HOD
+          const userRole = localStorage.getItem('userRole') || (App.currentUser && App.currentUser.role) || '';
+          const roleClean = String(userRole).toUpperCase().trim().replace(/[\s_]+/g, '');
+          if (roleClean === "HOD") {
+            container.classList.remove("d-none");
+          } else {
+            container.classList.add("d-none");
+          }
 
           // Bind click event once
           const btn = document.getElementById('btnOpenCrossDept');

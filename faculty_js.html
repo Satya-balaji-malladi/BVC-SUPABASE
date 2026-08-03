@@ -1,0 +1,654 @@
+<script>
+  /**
+   * ==========================================
+   * FACULTY MODULE LOGIC
+   * ==========================================
+   */
+  App.Modules.faculty = {
+    facultyData: [],
+    filteredData: [],
+    departmentsList: [],
+
+    // State variables for pagination
+    currentPage: 1,
+    itemsPerPage: 10,
+    facultyModalInstance: null,
+    pollingInterval: null,
+
+    // Map sheet keys to local properties
+    Fields: {
+      EMPLOYEE_ID: 'Employee ID',
+      NAME: 'Faculty Name',
+      DEPARTMENT_ID: 'Department ID',
+      DESIGNATION: 'Designation',
+      EMAIL: 'Email Address',
+      PHONE: 'Phone Number',
+      STATUS: 'Status',
+      USER_ID: 'User ID',
+      CREATED_AT: 'Created At',
+      UPDATED_AT: 'Updated At'
+    },
+
+    init: function () {
+      App.Logger.info('Faculty init');
+      this.bindEvents();
+
+      // Enforce HOD/Admin visibility rules
+      const currentUser = App.State && App.State.currentUser;
+      if (currentUser) {
+        const role = String(currentUser.role || '').toUpperCase().trim();
+        const addBtn = document.getElementById('faculty-add-btn');
+        if (addBtn) {
+          // If coordinator, hide add button
+          if (role === 'COORDINATOR' || role === 'EVENT COORDINATOR') {
+            addBtn.style.setProperty('display', 'none', 'important');
+          } else {
+            addBtn.style.display = '';
+          }
+        }
+      }
+
+      this.loadDepartments()
+        .then(() => {
+          this.load();
+        });
+
+      this.startPolling();
+    },
+
+    /**
+     * Loads active departments from Database to populate dropdowns
+     */
+    loadDepartments: function () {
+      return App.API.getActiveDepartments()
+        .then(depts => {
+          this.departmentsList = Array.isArray(depts) ? depts : [];
+          this.populateDepartmentsDropdown();
+        })
+        .catch(err => {
+          App.Logger.error("Failed to load active departments:", err);
+        });
+    },
+
+    /**
+     * Populates department filters and selection selectors
+     */
+    populateDepartmentsDropdown: function () {
+      const deptFilter = document.getElementById('faculty-dept-filter');
+      const deptSelect = document.getElementById('facultyDepartment');
+
+      let filterHtml = '<option value="">All Depts</option>';
+      let selectHtml = '<option value="">Select Department</option>';
+
+      let userObj = null;
+      try { userObj = JSON.parse(localStorage.getItem('userObj') || '{}'); } catch(e) {}
+      const currentUser = (App.State && App.State.currentUser) || userObj || {};
+      const userRole = String(currentUser.role || currentUser.Role || localStorage.getItem('userRole') || '').toUpperCase().trim().replace(/[\s_]+/g, '');
+      const userDept = String(currentUser.department || currentUser.Department || currentUser.department_id || currentUser['Department ID'] || localStorage.getItem('userDept') || '').trim();
+      const isHOD = userRole.includes('HOD');
+
+      if (isHOD && userDept) {
+        const matched = (this.departmentsList || []).find(d => {
+          const code = String(d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '').toUpperCase().trim();
+          const id   = String(d['Department ID'] || d.department_id || '').toUpperCase().trim();
+          const name = String(d['Department Name'] || d.department_name || '').toUpperCase().trim();
+          const target = String(userDept).toUpperCase().trim();
+          return code === target || id === target || name === target || name.includes(target) || target.includes(code) || target.replace(/\s+/g,'') === code.replace(/\s+/g,'');
+        });
+
+        let deptCode = userDept;
+        let deptName = userDept;
+        let deptId = userDept;
+        if (matched) {
+          deptCode = matched['Department Code'] || matched.department_code || userDept;
+          deptName = matched['Department Name'] || matched.department_name || deptCode;
+          deptId = matched['Department ID'] || matched.department_id || deptCode;
+        }
+
+        const displayText = (deptName && deptCode && deptName.toUpperCase() !== deptCode.toUpperCase())
+          ? `${deptName} (${deptCode})`
+          : deptCode;
+
+        if (deptFilter) {
+          deptFilter.innerHTML = `<option value="${deptId}" selected>${displayText}</option>`;
+          deptFilter.value = deptId;
+          deptFilter.disabled = true;
+          deptFilter.style.backgroundColor = '#e9ecef';
+          deptFilter.style.pointerEvents = 'none';
+        }
+        if (deptSelect) {
+          deptSelect.innerHTML = `<option value="${deptId}" selected>${displayText}</option>`;
+          deptSelect.value = deptId;
+          deptSelect.disabled = true;
+          deptSelect.style.backgroundColor = '#e9ecef';
+          deptSelect.style.pointerEvents = 'none';
+        }
+      } else {
+        if (deptFilter) {
+          deptFilter.disabled = false;
+          deptFilter.removeAttribute('disabled');
+        }
+        if (deptSelect) {
+          deptSelect.disabled = false;
+          deptSelect.removeAttribute('disabled');
+        }
+        this.departmentsList.forEach(d => {
+          const code = d['Department Code'] || d.department_code || d['Short Name'] || d['Department ID'] || '';
+          const name = d['Department Name'] || d.department_name || code;
+          const id = d['Department ID'] || d.department_id || code;
+
+          filterHtml += `<option value="${id}">${code}</option>`;
+          selectHtml += `<option value="${id}">${code} - ${name}</option>`;
+        });
+        if (deptFilter) deptFilter.innerHTML = filterHtml;
+        if (deptSelect) deptSelect.innerHTML = selectHtml;
+      }
+    },
+
+    /**
+     * Fetches latest faculty dataset from the sheet/database
+     */
+    load: function () {
+      const tbody = document.getElementById('faculty-table-body');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>Loading faculty...</td></tr>';
+      }
+
+      App.API.getFacultyMembers()
+        .then(res => {
+          const data = Array.isArray(res) ? res : [];
+          this.facultyData = data.map(f => this.normalizeFaculty(f));
+          this.applyFilters();
+        })
+        .catch(err => {
+          if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-2"></i>Failed to load faculty. <button class="btn btn-sm btn-outline-danger ms-2" onclick="App.Modules.faculty.load()">Retry</button></td></tr>';
+          }
+          App.ErrorHandler.handle(err, "Failed to load faculty members");
+        });
+    },
+
+    /**
+     * Normalizes faculty sheet records to standard properties
+     */
+    normalizeFaculty: function (f) {
+      return {
+        employee_id: f.employee_id || f[this.Fields.EMPLOYEE_ID] || 'N/A',
+        faculty_name: f.faculty_name || f.name || f[this.Fields.NAME] || 'N/A',
+        department: f.department_id || f.department || f[this.Fields.DEPARTMENT_ID] || 'N/A',
+        designation: f.designation || f[this.Fields.DESIGNATION] || 'Faculty',
+        email: f.email_address || f.email || f[this.Fields.EMAIL] || 'N/A',
+        mobile: f.mobile || f.phone || f[this.Fields.PHONE] || 'N/A',
+        status: f.status || f[this.Fields.STATUS] || 'Active',
+        user_id: f.user_id || f[this.Fields.USER_ID] || 'N/A',
+        created_at: f.created_at || f[this.Fields.CREATED_AT] || 'N/A',
+        updated_at: f.updated_at || f[this.Fields.UPDATED_AT] || 'N/A'
+      };
+    },
+
+    debounce: function (func, delay) {
+      let timeout;
+      return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+      };
+    },
+
+    bindEvents: function () {
+      const searchInput = document.getElementById('faculty-search-input');
+      const deptFilter = document.getElementById('faculty-dept-filter');
+      const statusFilter = document.getElementById('faculty-status-filter');
+      const perPageSelect = document.getElementById('faculty-per-page');
+
+      if (searchInput) {
+        searchInput.addEventListener('input', this.debounce(() => {
+          this.applyFilters();
+        }, 300));
+      }
+
+      if (deptFilter) deptFilter.addEventListener('change', () => this.applyFilters());
+      if (statusFilter) statusFilter.addEventListener('change', () => this.applyFilters());
+
+      if (perPageSelect) {
+        perPageSelect.addEventListener('change', (e) => {
+          this.itemsPerPage = parseInt(e.target.value, 10);
+          this.currentPage = 1;
+          this.renderTable();
+        });
+      }
+
+      const addBtn = document.getElementById('faculty-add-btn') || document.querySelector('button[data-action="add-faculty"]');
+      if (addBtn) addBtn.addEventListener('click', () => this.openAddFacultyModal());
+
+      const exportBtn = document.getElementById('faculty-export-btn');
+      if (exportBtn) exportBtn.addEventListener('click', () => this.exportToCSV());
+
+      const form = document.getElementById('facultyForm');
+      if (form) form.addEventListener('submit', (e) => this.handleFacultySubmit(e));
+
+      const confirmDeleteBtn = document.getElementById('facultyConfirmDeleteBtn');
+      if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', () => this.handleDeleteFaculty());
+
+      const tbody = document.getElementById('faculty-table-body');
+      if (tbody) {
+        tbody.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-action');
+          const id = btn.getAttribute('data-id');
+
+          if (action === 'view-faculty') this.openViewFacultyModal(id);
+          if (action === 'edit-faculty') this.openEditFacultyModal(id);
+          if (action === 'delete-faculty') this.openDeleteFacultyModal(id);
+        });
+      }
+    },
+
+    applyFilters: function () {
+      const query = (document.getElementById('faculty-search-input')?.value || '').toLowerCase().trim();
+      const dept = (document.getElementById('faculty-dept-filter')?.value || '');
+      const status = (document.getElementById('faculty-status-filter')?.value || '');
+
+      this.filteredData = this.facultyData.filter(f => {
+        // Search query
+        const matchQuery = !query ||
+          String(f.employee_id).toLowerCase().includes(query) ||
+          String(f.faculty_name).toLowerCase().includes(query) ||
+          String(f.designation).toLowerCase().includes(query) ||
+          String(f.email).toLowerCase().includes(query);
+
+        // Dept filter with space/hyphen normalization
+        let matchDept = true;
+        if (dept) {
+          const targetDept = String(dept).toUpperCase().trim().replace(/[\s_]+/g, '');
+          const facDept = String(f.department).toUpperCase().trim().replace(/[\s_]+/g, '');
+          matchDept = (facDept === targetDept || facDept.includes(targetDept) || targetDept.includes(facDept));
+        }
+
+        // Status filter
+        const matchStatus = !status || String(f.status).toUpperCase() === status.toUpperCase();
+
+        return matchQuery && matchDept && matchStatus;
+      });
+
+      this.currentPage = 1;
+      this.updateStats();
+      this.renderTable();
+    },
+
+    updateStats: function () {
+      const total = this.facultyData.length;
+      const active = this.facultyData.filter(f => String(f.status).toLowerCase() === 'active').length;
+      const inactive = total - active;
+      const depts = new Set(this.facultyData.map(f => f.department)).size;
+
+      document.getElementById('faculty-stat-total').innerText = total;
+      document.getElementById('faculty-stat-active').innerText = active;
+      document.getElementById('faculty-stat-inactive').innerText = inactive;
+      document.getElementById('faculty-stat-departments').innerText = depts;
+    },
+
+    renderTable: function () {
+      const tbody = document.getElementById('faculty-table-body');
+      if (!tbody) return;
+
+      if (this.filteredData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-5"><i class="bi bi-inbox fs-2 mb-2 d-block opacity-50"></i>No faculty members found matching filters</td></tr>';
+        this.renderPagination(0);
+        return;
+      }
+
+      const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+      const endIndex = Math.min(startIndex + this.itemsPerPage, this.filteredData.length);
+      const paginated = this.filteredData.slice(startIndex, startIndex + this.itemsPerPage);
+
+      const currentUser = App.State && App.State.currentUser;
+      const callerRole = String(currentUser ? currentUser.role : '').toUpperCase().trim();
+      const isCo = callerRole === 'COORDINATOR' || callerRole === 'EVENT COORDINATOR';
+
+      let html = '';
+      paginated.forEach(f => {
+        const isAct = String(f.status).toLowerCase() === 'active';
+        const badgeClass = isAct ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger';
+        
+        let actionButtons = '';
+        if (isCo) {
+          actionButtons = `
+            <button class="btn btn-sm btn-outline-secondary" data-action="view-faculty" data-id="${f.employee_id}" title="View Details"><i class="bi bi-eye"></i></button>
+          `;
+        } else {
+          actionButtons = `
+            <button class="btn btn-sm btn-outline-secondary" data-action="view-faculty" data-id="${f.employee_id}" title="View Details"><i class="bi bi-eye"></i></button>
+            <button class="btn btn-sm btn-outline-primary ms-1" data-action="edit-faculty" data-id="${f.employee_id}" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger ms-1" data-action="delete-faculty" data-id="${f.employee_id}" title="Delete"><i class="bi bi-trash"></i></button>
+          `;
+        }
+
+        html += `
+          <tr>
+            <td><span class="font-monospace fw-semibold text-secondary">${App.Utils.escapeHtml(f.employee_id)}</span></td>
+            <td class="fw-semibold text-dark">${App.Utils.escapeHtml(f.faculty_name)}</td>
+            <td><span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-10">${App.Utils.escapeHtml(f.department)}</span></td>
+            <td><span class="text-muted small">${App.Utils.escapeHtml(f.designation)}</span></td>
+            <td><a href="mailto:${f.email}" class="text-decoration-none small text-secondary">${App.Utils.escapeHtml(f.email)}</a></td>
+            <td><span class="small font-monospace">${App.Utils.escapeHtml(f.mobile || '-')}</span></td>
+            <td><span class="badge ${badgeClass}">${f.status}</span></td>
+            <td class="text-end text-nowrap">${actionButtons}</td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+      this.renderPagination(this.filteredData.length);
+    },
+
+    renderPagination: function (totalCount) {
+      const el = document.getElementById('faculty-pagination');
+      if (!el) return;
+
+      const totalPages = Math.ceil(totalCount / this.itemsPerPage);
+      if (totalPages <= 1) {
+        el.innerHTML = '<li class="page-item disabled"><a class="page-link" href="#">1</a></li>';
+        return;
+      }
+
+      let html = '';
+      const prevDisabled = this.currentPage === 1 ? 'disabled' : '';
+      html += `<li class="page-item ${prevDisabled}"><a class="page-link" href="#" data-page="${this.currentPage - 1}">Previous</a></li>`;
+
+      for (let i = 1; i <= totalPages; i++) {
+        const active = this.currentPage === i ? 'active' : '';
+        html += `<li class="page-item ${active}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+      }
+
+      const nextDisabled = this.currentPage === totalPages ? 'disabled' : '';
+      html += `<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${this.currentPage + 1}">Next</a></li>`;
+
+      el.innerHTML = html;
+
+      // Bind click triggers
+      el.querySelectorAll('.page-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const page = parseInt(link.getAttribute('data-page'), 10);
+          if (!isNaN(page) && page >= 1 && page <= totalPages) {
+            this.currentPage = page;
+            this.renderTable();
+          }
+        });
+      });
+    },
+
+    openAddFacultyModal: function () {
+      const form = document.getElementById('facultyForm');
+      if (form) form.reset();
+
+      this.populateDepartmentsDropdown();
+
+      document.getElementById('facultyModalLabel').innerText = 'Add Faculty Member';
+      document.getElementById('facultyOriginalId').value = '';
+      document.getElementById('facultyEmployeeId').readOnly = false;
+      document.getElementById('facultyUsernameGroup').classList.add('d-none');
+      document.getElementById('facultyPasswordGroup').classList.add('d-none');
+      document.getElementById('facultyStatusGroup').classList.add('d-none');
+      document.getElementById('facultyViewOnlyFields').classList.add('d-none');
+
+      // Simplify Add Faculty: Make designation, password, username, mobile, dept optional in validation
+      const deptInput = document.getElementById('facultyDepartment');
+      if (deptInput) deptInput.required = false;
+      const desigInput = document.getElementById('facultyDesignation');
+      if (desigInput) desigInput.required = false;
+      const passInput = document.getElementById('facultyPassword');
+      if (passInput) passInput.required = false;
+      const userInput = document.getElementById('facultyUsername');
+      if (userInput) userInput.required = false;
+      const mobileInput = document.getElementById('facultyMobile');
+      if (mobileInput) mobileInput.required = false;
+
+      // Auto-set Department selection for HOD / Creator
+      const currentUser = (App.State && App.State.currentUser) || App.User || {};
+      const userDept = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || localStorage.getItem('userDept') || '';
+      const deptSelect = document.getElementById('facultyDepartment');
+      if (deptSelect && userDept) {
+        deptSelect.value = userDept;
+      }
+
+      // Reset validation states
+      form.classList.remove('was-validated');
+      const errEl = document.getElementById('facultyModalError');
+      if (errEl) errEl.classList.add('d-none');
+
+      this.showModal();
+    },
+
+    openEditFacultyModal: function (employeeId) {
+      const f = this.facultyData.find(fac => fac.employee_id === employeeId);
+      if (!f) return;
+
+      const form = document.getElementById('facultyForm');
+      if (form) form.reset();
+
+      document.getElementById('facultyModalLabel').innerText = 'Edit Faculty Profile';
+      document.getElementById('facultyOriginalId').value = f.employee_id;
+
+      document.getElementById('facultyEmployeeId').value = f.employee_id;
+      document.getElementById('facultyEmployeeId').readOnly = true; // prevent changing primary key id
+      document.getElementById('facultyName').value = f.faculty_name;
+      document.getElementById('facultyDepartment').value = f.department;
+      document.getElementById('facultyDesignation').value = f.designation;
+      document.getElementById('facultyEmail').value = f.email;
+      document.getElementById('facultyMobile').value = f.mobile === 'N/A' ? '' : f.mobile;
+
+      // Hide auth creation fields for updates
+      document.getElementById('facultyUsernameGroup').classList.add('d-none');
+      document.getElementById('facultyPasswordGroup').classList.add('d-none');
+
+      // Allow updating Status
+      document.getElementById('facultyStatusGroup').classList.remove('d-none');
+      document.getElementById('facultyStatus').value = f.status || 'Active';
+
+      // Reset validation states
+      form.classList.remove('was-validated');
+      const errEl = document.getElementById('facultyModalError');
+      if (errEl) errEl.classList.add('d-none');
+
+      this.showModal();
+    },
+
+    openViewFacultyModal: function (employeeId) {
+      this.openEditFacultyModal(employeeId);
+      document.getElementById('facultyModalLabel').innerText = 'View Faculty Details';
+    },
+
+    showModal: function () {
+      const modalEl = document.getElementById('facultyModal');
+      if (modalEl) {
+        this.facultyModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        this.facultyModalInstance.show();
+      }
+    },
+
+    hideModal: function () {
+      const modalEl = document.getElementById('facultyModal');
+      if (modalEl) {
+        const instance = bootstrap.Modal.getInstance(modalEl) || this.facultyModalInstance;
+        if (instance) instance.hide();
+      }
+    },
+
+    handleFacultySubmit: function (e) {
+      e.preventDefault();
+      const form = document.getElementById('facultyForm');
+
+      const currentUser = (App.State && App.State.currentUser) || App.User || {};
+      const creatorDept = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || localStorage.getItem('userDept') || '';
+
+      const empId = document.getElementById('facultyEmployeeId').value.trim().toUpperCase();
+      const name = document.getElementById('facultyName').value.trim();
+      const deptSelect = document.getElementById('facultyDepartment');
+      const dept = (deptSelect && deptSelect.value) ? deptSelect.value.trim() : creatorDept;
+      const designation = (document.getElementById('facultyDesignation')?.value || '').trim() || 'Assistant Professor';
+      const email = document.getElementById('facultyEmail').value.trim().toLowerCase();
+      const mobile = (document.getElementById('facultyMobile')?.value || '').trim();
+      const username = (document.getElementById('facultyUsername')?.value || '').trim() || (email.split('@')[0] || empId.toLowerCase() || ('user_' + Date.now())).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const password = (document.getElementById('facultyPassword')?.value || '').trim() || (empId ? empId + '123' : 'Bvc@1234');
+
+      if (!empId || !name || !email || !dept) {
+        form.classList.add('was-validated');
+        const errEl = document.getElementById('facultyModalError');
+        if (errEl) {
+          errEl.textContent = 'Please fill in required fields (Employee ID, Faculty Name, Gmail/Email).';
+          errEl.classList.remove('d-none');
+        }
+        return;
+      }
+
+      const saveBtn = document.getElementById('facultySaveBtn');
+      const saveText = document.getElementById('facultySaveBtnText');
+      const saveSpinner = document.getElementById('facultySaveSpinner');
+      const originalId = document.getElementById('facultyOriginalId').value;
+
+      if (saveBtn) saveBtn.disabled = true;
+      if (saveSpinner) saveSpinner.classList.remove('d-none');
+      if (saveText) saveText.innerText = 'Saving...';
+
+      const payload = {
+        employeeId: empId,
+        name: name,
+        departmentId: dept,
+        designation: designation,
+        email: email,
+        mobile: mobile,
+        username: username,
+        password: password,
+        status: document.getElementById('facultyStatus')?.value || 'Active'
+      };
+
+      let actionPromise;
+      if (originalId) {
+        // Update faculty details
+        const updatePayload = {
+          faculty_name: payload.name,
+          designation: payload.designation,
+          email_address: payload.email,
+          mobile: payload.mobile,
+          status: payload.status
+        };
+        actionPromise = App.API.updateFaculty(originalId, updatePayload);
+      } else {
+        // Create faculty profile + user account
+        actionPromise = App.API.createFaculty(payload);
+      }
+
+      actionPromise
+        .then(res => {
+          if (res.success) {
+            App.Utils.showToast(originalId ? 'Faculty details updated successfully' : 'Faculty profile registered successfully', false);
+            this.hideModal();
+            this.load();
+          } else {
+            throw new Error(res.message || 'Operation failed');
+          }
+        })
+        .catch(err => {
+          const errEl = document.getElementById('facultyModalError');
+          if (errEl) {
+            errEl.innerText = err.message || 'Network request failed';
+            errEl.classList.remove('d-none');
+          }
+        })
+        .finally(() => {
+          if (saveBtn) saveBtn.disabled = false;
+          if (saveSpinner) saveSpinner.classList.add('d-none');
+          if (saveText) saveText.innerText = 'Save Faculty';
+        });
+    },
+
+    openDeleteFacultyModal: function (employeeId) {
+      document.getElementById('facultyDeleteId').value = employeeId;
+      const delModal = new bootstrap.Modal(document.getElementById('facultyDeleteModal'));
+      delModal.show();
+    },
+
+    handleDeleteFaculty: function () {
+      const id = document.getElementById('facultyDeleteId').value;
+      const confirmBtn = document.getElementById('facultyConfirmDeleteBtn');
+      const spinner = document.getElementById('facultyDeleteSpinner');
+
+      if (confirmBtn) confirmBtn.disabled = true;
+      if (spinner) spinner.classList.remove('d-none');
+
+      App.API.deleteFaculty(id)
+        .then(res => {
+          if (res.success) {
+            App.Utils.showToast('Faculty member deleted successfully', false);
+            bootstrap.Modal.getInstance(document.getElementById('facultyDeleteModal')).hide();
+            this.load();
+          } else {
+            throw new Error(res.message || 'Delete operation failed');
+          }
+        })
+        .catch(err => {
+          App.Utils.showToast(`Error: ${err.message}`, true);
+        })
+        .finally(() => {
+          if (confirmBtn) confirmBtn.disabled = false;
+          if (spinner) spinner.classList.add('d-none');
+        });
+    },
+
+    exportToCSV: function () {
+      if (this.filteredData.length === 0) {
+        App.Utils.showToast("No data available to export", true);
+        return;
+      }
+
+      const headers = ['Employee ID', 'Faculty Name', 'Department', 'Designation', 'Email Address', 'Mobile Number', 'Status'];
+      const rows = this.filteredData.map(f => [
+        f.employee_id,
+        f.faculty_name,
+        f.department,
+        f.designation,
+        f.email,
+        f.mobile,
+        f.status
+      ]);
+
+      let csvContent = "data:text/csv;charset=utf-8," 
+        + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `BVC_Faculty_Export_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+
+    startPolling: function () {
+      this.stopPolling();
+      this.pollingInterval = setInterval(() => {
+        App.API.getFacultyMembers()
+          .then(res => {
+            const data = Array.isArray(res) ? res : [];
+            this.facultyData = data.map(f => this.normalizeFaculty(f));
+            this.updateStats();
+            this.renderTable();
+          })
+          .catch(e => console.warn("Background polling error:", e));
+      }, 30000); // Poll every 30 seconds
+    },
+
+    stopPolling: function () {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+    },
+
+    destroy: function () {
+      this.stopPolling();
+    }
+  };
+</script>

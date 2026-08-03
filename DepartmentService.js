@@ -664,6 +664,18 @@ const DepartmentService = {
         );
       }
 
+      // Retrieve existing department record to detect HOD changes
+      const oldDeptRecord = DatabaseService.findOne(CONFIG.SHEETS.DEPARTMENTS, CONFIG.COLUMNS.DEPARTMENT_ID, departmentId);
+      const oldHodEmpId = oldDeptRecord ? String(oldDeptRecord['HOD Emp ID'] || oldDeptRecord.hod_employee_id || oldDeptRecord.hod_emp_id || '').trim().toUpperCase() : '';
+      const oldHodEmail = oldDeptRecord ? String(oldDeptRecord['HOD Email'] || oldDeptRecord.hod_email || '').trim().toLowerCase() : '';
+
+      const deptCode = String(updateData[CONFIG.COLUMNS.DEPARTMENT_CODE] || (oldDeptRecord ? oldDeptRecord[CONFIG.COLUMNS.DEPARTMENT_CODE] : '')).trim().toUpperCase();
+      const deptName = String(updateData[CONFIG.COLUMNS.DEPARTMENT_NAME] || (oldDeptRecord ? oldDeptRecord[CONFIG.COLUMNS.DEPARTMENT_NAME] : '')).trim();
+
+      const newHodEmpId = String(updateData['HOD Emp ID'] || updateData.hod_emp_id || updateData.hod_employee_id || '').trim().toUpperCase();
+      const newHodName = String(updateData['HOD Name'] || updateData.hod_name || '').trim();
+      const newHodEmail = String(updateData['HOD Email'] || updateData.hod_email || '').trim().toLowerCase();
+
       // Audit fields
       updateData[CONFIG.COLUMNS.UPDATED_BY] = updatedBy || "";
       updateData[CONFIG.COLUMNS.UPDATED_AT] = Utils.getCurrentTimestamp();
@@ -681,6 +693,106 @@ const DepartmentService = {
           false,
           CONFIG.MESSAGES.DEPARTMENT_UPDATE_FAILED
         );
+      }
+
+      // Synchronize HOD changes to users sheet
+      var hodMsg = "";
+      if (newHodEmpId && (newHodEmpId !== oldHodEmpId || newHodEmail !== oldHodEmail)) {
+        try {
+          var allUsers = DatabaseService.readAllRowsIncludingDeleted(CONFIG.SHEETS.USERS) || [];
+          var empIdCol = CONFIG.COLUMNS.USER_EMPLOYEE_ID || 'Employee ID';
+          var existingUser = allUsers.find(function (u) {
+            var eid = String(u[empIdCol] || u['Employee ID'] || u.employee_id || '').trim().toUpperCase();
+            return eid === newHodEmpId;
+          });
+
+          if (existingUser) {
+            var userIdToRestore = existingUser[CONFIG.COLUMNS.USER_ID] || existingUser.user_id;
+            var userUpdates = {
+              [CONFIG.COLUMNS.DELETION_FLAG]: false,
+              [CONFIG.COLUMNS.STATUS]: 'Active',
+              [CONFIG.COLUMNS.USER_ROLE || 'Role']: 'HOD',
+              [CONFIG.COLUMNS.USER_DEPARTMENT || 'Department']: deptCode,
+              [CONFIG.COLUMNS.USER_DESIGNATION || 'Title/Designation']: "Head of Department (" + deptCode + ")",
+              [CONFIG.COLUMNS.UPDATED_AT]: Utils.getCurrentTimestamp()
+            };
+            if (newHodEmail) {
+              userUpdates[CONFIG.COLUMNS.USER_EMAIL_ADDRESS || 'Email Address'] = newHodEmail;
+            }
+            DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID, userIdToRestore, userUpdates);
+            hodMsg = " New HOD User Account (" + newHodEmpId + ") updated/reactivated.";
+          } else {
+            // Create brand new HOD user account
+            var nameParts = newHodName.split(" ");
+            var initialPwd = "BVC@" + newHodEmpId;
+            var hodUserData = {
+              username: newHodEmpId.toLowerCase(),
+              password: initialPwd,
+              email_address: newHodEmail,
+              first_name: nameParts[0] || newHodName,
+              last_name: nameParts.slice(1).join(" ") || "",
+              employee_id: newHodEmpId,
+              role: "HOD",
+              department: deptCode,
+              title_designation: "Head of Department (" + deptCode + ")",
+              status: "Active"
+            };
+            var adminContext = { isSuperAdmin: true, role: 'Super Admin', username: 'SuperAdmin' };
+            var createResult = UserService.createUser(hodUserData, adminContext);
+            if (createResult && createResult.success) {
+              hodMsg = " New HOD User Account (" + newHodEmpId + ") created with password: " + initialPwd + ".";
+              
+              // Email credentials
+              try {
+                var emailSubject = "BVC Attendance Portal - HOD Account Credentials (Updated)";
+                var emailBody = "Dear " + newHodName + ",\n\n" +
+                  "You have been assigned as the new HOD for the " + deptName + " (" + deptCode + ") on the BVC Event Attendance Portal.\n\n" +
+                  "LOGIN CREDENTIALS:\n" +
+                  "Username / Employee ID: " + newHodEmpId + "\n" +
+                  "Temporary Password: " + initialPwd + "\n\n" +
+                  "Please log in and update your password.\n\n" +
+                  "Regards,\nBVC System Administration";
+                if (typeof MailApp !== 'undefined' && MailApp.sendEmail) {
+                  MailApp.sendEmail(newHodEmail, emailSubject, emailBody);
+                } else if (typeof GmailApp !== 'undefined' && GmailApp.sendEmail) {
+                  GmailApp.sendEmail(newHodEmail, emailSubject, emailBody);
+                }
+              } catch (eMailErr) {
+                Logger.log("Failed to send updated HOD credentials email: " + eMailErr.message);
+              }
+            } else {
+              hodMsg = " New HOD User creation note: " + (createResult ? createResult.message : "Unknown error");
+            }
+          }
+
+          // Handle demoting the previous HOD user if they are no longer HOD of any department
+          if (oldHodEmpId && oldHodEmpId !== newHodEmpId) {
+            var allDepts = DatabaseService.readAllRows(CONFIG.SHEETS.DEPARTMENTS) || [];
+            var isHodElsewhere = allDepts.some(function (d) {
+              var dId = String(d[CONFIG.COLUMNS.DEPARTMENT_ID] || d.department_id || '');
+              var dHOD = String(d['HOD Emp ID'] || d.hod_employee_id || d.hod_emp_id || '').trim().toUpperCase();
+              return dId !== departmentId && dHOD === oldHodEmpId && !d[CONFIG.COLUMNS.DELETION_FLAG];
+            });
+
+            if (!isHodElsewhere) {
+              var oldUser = allUsers.find(function (u) {
+                var eid = String(u[empIdCol] || u['Employee ID'] || u.employee_id || '').trim().toUpperCase();
+                return eid === oldHodEmpId;
+              });
+              if (oldUser) {
+                var oldUserId = oldUser[CONFIG.COLUMNS.USER_ID] || oldUser.user_id;
+                DatabaseService.updateRow(CONFIG.SHEETS.USERS, CONFIG.COLUMNS.USER_ID, oldUserId, {
+                  [CONFIG.COLUMNS.USER_ROLE || 'Role']: 'Faculty',
+                  [CONFIG.COLUMNS.USER_DESIGNATION || 'Title/Designation']: 'Faculty member',
+                  [CONFIG.COLUMNS.UPDATED_AT]: Utils.getCurrentTimestamp()
+                });
+                hodMsg += " Old HOD (" + oldHodEmpId + ") demoted to Faculty role.";
+              }
+            }
+          }
+        } catch (syncErr) {
+          Logger.log("HOD synchronization failed during updateDepartment: " + syncErr.message);
+        }
       }
 
       // Audit Log
