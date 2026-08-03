@@ -60,6 +60,7 @@
      * Controls structural focus ring highlights on menu path configurations
      */
     function setActiveMenu(pageName) {
+      const pageNameLower = String(pageName || '').toLowerCase();
       const userRole = String(localStorage.getItem('userRole') || '').toUpperCase().trim();
       const isEventAdmin = (userRole === 'EVENT ADMIN' || userRole === 'EVENT_ADMIN' || userRole === 'ADMIN');
       const isHOD = (userRole === 'HOD');
@@ -84,7 +85,7 @@
 
       navLinks.forEach(link => {
         const itemPage = link.getAttribute('data-page');
-        if (itemPage === pageName) {
+        if (itemPage === pageNameLower) {
           link.classList.add('active');
           link.setAttribute('aria-current', 'page');
         } else {

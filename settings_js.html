@@ -138,18 +138,31 @@
       const rawRole = String(user.role || user.Role || localStorage.getItem('userRole') || 'Coordinator').toUpperCase().trim();
       const isSuperAdmin = (rawRole === 'SUPER ADMIN' || rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN');
       const isHOD = (rawRole === 'HOD');
+      const isEventAdmin = (rawRole === 'EVENT ADMIN' || rawRole === 'EVENT_ADMIN');
 
       const hodContainer = document.getElementById('hod-structure-container');
       const superadminContainer = document.getElementById('superadmin-depts-container');
 
+      // Default: hide privileged tabs
+      document.getElementById('tab-maintenance-wrapper')?.classList.add('d-none');
+      document.getElementById('tab-audit-wrapper')?.classList.add('d-none');
+
       if (isSuperAdmin) {
+        // Super Admin sees maintenance and audit + superadmin department management
         document.getElementById('tab-maintenance-wrapper')?.classList.remove('d-none');
         document.getElementById('tab-audit-wrapper')?.classList.remove('d-none');
         if (hodContainer) hodContainer.classList.add('d-none');
         if (superadminContainer) superadminContainer.classList.remove('d-none');
+      } else if (isHOD) {
+        // HOD sees HOD department structure only
+        if (hodContainer) hodContainer.classList.remove('d-none');
+        if (superadminContainer) superadminContainer.classList.add('d-none');
+      } else if (isEventAdmin) {
+        // Event Admin should not see HOD or SuperAdmin panels: show only general & rules
+        if (hodContainer) hodContainer.classList.add('d-none');
+        if (superadminContainer) superadminContainer.classList.add('d-none');
       } else {
-        document.getElementById('tab-maintenance-wrapper')?.classList.add('d-none');
-        document.getElementById('tab-audit-wrapper')?.classList.add('d-none');
+        // Coordinators & others: show HOD view (department fields) but hide superadmin/maintenance
         if (hodContainer) hodContainer.classList.remove('d-none');
         if (superadminContainer) superadminContainer.classList.add('d-none');
       }
