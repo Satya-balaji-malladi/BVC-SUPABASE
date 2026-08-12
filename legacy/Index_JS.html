@@ -1,0 +1,344 @@
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    'use strict';
+
+    // Global Component DOM Element Object Cache Map Variables
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+    const currentPageTitle = document.getElementById('currentPageTitle');
+    const navLinks = document.querySelectorAll('.sidebar-nav .nav-link');
+    const notificationBadge = document.getElementById('notificationBadge');
+
+    // Action Control Button Intercept Triggers
+    const sidebarLogoutBtn = document.getElementById('sidebarLogoutBtn');
+    const navbarLogoutBtn = document.getElementById('navbarLogoutBtn');
+    const profileMenuLink = document.getElementById('profileMenuLink');
+    const settingsMenuLink = document.getElementById('settingsMenuLink');
+
+    // Bootstrap Visual Helper Modals and Toast Class References
+    const confirmModalEl = document.getElementById('confirmModal');
+    const confirmModalSubmitBtn = document.getElementById('confirmModalSubmitBtn');
+    const appToastEl = document.getElementById('appToast');
+
+    let bsConfirmModal = null;
+    let bsAppToast = null;
+
+    if (confirmModalEl) bsConfirmModal = new bootstrap.Modal(confirmModalEl);
+    if (appToastEl) bsAppToast = new bootstrap.Toast(appToastEl);
+
+    /**
+     * Toggles layout frame expansion boundary widths safely between modes
+     */
+    function toggleSidebar() {
+      const isMobile = window.innerWidth <= 991.98;
+
+      if (isMobile) {
+        const isOpen = sidebar.classList.toggle('mobile-open');
+        sidebarOverlay.classList.toggle('d-none', !isOpen);
+        sidebarToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      } else {
+        const isCollapsed = sidebar.classList.toggle('collapsed');
+        sidebarToggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      }
+    }
+
+    // Assign event triggers for side canvas expansion buttons
+    sidebarToggle.addEventListener('click', toggleSidebar);
+    sidebarOverlay.addEventListener('click', toggleSidebar);
+
+    /**
+     * Updates text node strings for top horizontal toolbar contexts
+     */
+    function setPageTitle(title) {
+      if (currentPageTitle) {
+        currentPageTitle.textContent = title;
+      }
+    }
+
+    /**
+     * Controls structural focus ring highlights on menu path configurations
+     */
+    function setActiveMenu(pageName) {
+      const pageNameLower = String(pageName || '').toLowerCase().trim();
+
+      // Ensure sidebar menu items reflect single source of truth permissions
+      if (typeof App !== 'undefined' && App.PermissionManager && typeof App.PermissionManager.renderSidebar === 'function') {
+        App.PermissionManager.renderSidebar();
+      }
+
+      navLinks.forEach(link => {
+        const itemPage = String(link.dataset.page || link.getAttribute('data-page') || '').toLowerCase().trim();
+        if (itemPage === pageNameLower) {
+          link.classList.add('active');
+          link.setAttribute('aria-current', 'page');
+        } else {
+          link.classList.remove('active');
+          link.removeAttribute('aria-current');
+        }
+      });
+    }
+
+    /**
+     * loadPage – Thin delegate to App.Router.navigate (Single Source of Truth).
+     * All navigation logic lives in App.Router.navigate (common_js.html).
+     * This wrapper exists so that older HTML onclick attributes still work.
+     */
+    function loadPage(pageName) {
+      if (typeof App !== 'undefined' && App.Router && typeof App.Router.navigate === 'function') {
+        App.Router.navigate(pageName);
+      } else {
+        console.error('[loadPage] App.Router not available. Cannot navigate to:', pageName);
+      }
+    }
+
+    /**
+     * Fires transient operational feedback alerts context panels
+     */
+    function showToast(message, isInfo = true) {
+      const toastText = document.getElementById('toastText');
+      const toastIcon = document.getElementById('toastIcon');
+
+      if (!toastText || !bsAppToast) return;
+
+      toastText.textContent = message;
+      toastIcon.className = isInfo ? 'bi bi-info-circle flex-shrink-0 text-primary' : 'bi bi-check-circle flex-shrink-0 text-success';
+
+      bsAppToast.show();
+    }
+
+    /**
+     * Programmatic control utility methods mapping validation alert visibility rules
+     */
+    function setNotificationBadgeCount(count) {
+      if (!notificationBadge) return;
+      if (count > 0) {
+        notificationBadge.classList.remove('d-none');
+      } else {
+        notificationBadge.classList.add('d-none');
+      }
+    }
+
+    /**
+     * Interactive confirmation alert interface routing template helper
+     */
+    function requestActionConfirmation(message, onConfirmCallback) {
+      const confirmModalText = document.getElementById('confirmModalText');
+      if (confirmModalText) {
+        confirmModalText.textContent = message;
+      }
+
+      if (!bsConfirmModal) return;
+
+      const currentSubmitBtn = document.getElementById('confirmModalSubmitBtn');
+      if (currentSubmitBtn) {
+        // Flush previous event capture patterns by clone substitution assignment
+        const newSubmitBtn = currentSubmitBtn.cloneNode(true);
+        currentSubmitBtn.parentNode.replaceChild(newSubmitBtn, currentSubmitBtn);
+
+        newSubmitBtn.addEventListener('click', () => {
+          bsConfirmModal.hide();
+          if (typeof onConfirmCallback === 'function') {
+            onConfirmCallback();
+          }
+        });
+      }
+
+      bsConfirmModal.show();
+    }
+
+    /**
+     * Clear context variables and routes window states back to authorization vectors
+     */
+    function logout() {
+      console.log('Logout protocol initiated. Dispatched clearing execution handles...');
+      App.LoadingManager.show();
+
+      if (window.App && window.App.Auth && typeof window.App.Auth.logout === 'function') {
+        window.App.Auth.logout();
+      } else {
+        App.LoadingManager.hide(true);
+        alert('Logout routing signal delivered successfully. Session ended.');
+      }
+    }
+
+    // Redundant navigation event listeners removed because common_js.html handles global navigation delegation
+
+    // Wire exit execution handles to dialog modal intercept layers
+    const handleLogoutAction = (event) => {
+      event.preventDefault();
+      requestActionConfirmation('Are you sure you want to log out from the BVC Event Attendance Management platform?', logout);
+    };
+
+    if (sidebarLogoutBtn) sidebarLogoutBtn.addEventListener('click', handleLogoutAction);
+    if (navbarLogoutBtn) navbarLogoutBtn.addEventListener('click', handleLogoutAction);
+
+    // Wire standard profile and configuration dropdown shortcuts into router
+    if (profileMenuLink) profileMenuLink.addEventListener('click', () => App.Router.navigate('Profile'));
+    if (settingsMenuLink) settingsMenuLink.addEventListener('click', () => App.Router.navigate('Settings'));
+
+    /**
+     * Screen scale transformation adapter watch bounds listeners
+     */
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 991.98) {
+        sidebar.classList.remove('mobile-open');
+        sidebarOverlay.classList.add('d-none');
+      }
+    });
+
+    // ==========================================
+    // Phase 2: Theme Toggle & Command Palette
+    // ==========================================
+    function initPhase2UX() {
+      // 1. Theme Management
+      const btnTheme = document.getElementById('btnThemeToggle');
+      const sunIcon = document.getElementById('themeSunIcon');
+      const moonIcon = document.getElementById('themeMoonIcon');
+
+      let currentTheme = localStorage.getItem('appTheme') || 'light';
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      updateThemeIcons(currentTheme);
+
+      if (btnTheme) {
+        btnTheme.onclick = () => {
+          currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', currentTheme);
+          localStorage.setItem('appTheme', currentTheme);
+          updateThemeIcons(currentTheme);
+        };
+      }
+
+      function updateThemeIcons(theme) {
+        if (!sunIcon || !moonIcon) return;
+        if (theme === 'dark') {
+          sunIcon.classList.add('d-none');
+          moonIcon.classList.remove('d-none');
+        } else {
+          sunIcon.classList.remove('d-none');
+          moonIcon.classList.add('d-none');
+        }
+      }
+
+      // 2. Command Palette (Ctrl+K)
+      const modalPalette = new bootstrap.Modal(document.getElementById('commandPaletteModal'));
+      const txtSearch = document.getElementById('txtCommandSearch');
+      const lstResults = document.getElementById('lstCommandResults');
+
+      const commands = [
+        { name: 'Go to Dashboard', action: () => loadPage('Dashboard'), icon: 'bi-grid-1x2-fill' },
+        { name: 'Manage Faculty Profiles', action: () => loadPage('Faculty'), icon: 'bi-person-workspace' },
+        { name: 'Manage Students List', action: () => loadPage('Students'), icon: 'bi-person-badge' },
+        { name: 'Manage Events', action: () => loadPage('Events'), icon: 'bi-calendar-event-fill' },
+        { name: 'Scan Event Attendance', action: () => loadPage('Attendance'), icon: 'bi-qr-code-scan' },
+        { name: 'View Platform Reports', action: () => loadPage('Reports'), icon: 'bi-graph-up-arrow' },
+        { name: 'System Settings', action: () => loadPage('Settings'), icon: 'bi-gear-fill' },
+        { name: 'System Test Center Diagnostics', action: () => loadPage('Testcenter'), icon: 'bi-shield-check' }
+      ];
+
+      window.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+          e.preventDefault();
+          modalPalette.show();
+        }
+      });
+
+      const searchBtn = document.getElementById('btnHeaderSearch');
+      if (searchBtn) searchBtn.onclick = () => modalPalette.show();
+
+      document.getElementById('commandPaletteModal').addEventListener('shown.bs.modal', () => {
+        txtSearch.focus();
+        renderCommandResults('');
+      });
+
+      txtSearch.oninput = () => renderCommandResults(txtSearch.value);
+
+      function renderCommandResults(query) {
+        const q = query.toLowerCase().trim();
+        const filtered = commands.filter(c => c.name.toLowerCase().includes(q));
+
+        if (filtered.length === 0) {
+          lstResults.innerHTML = '<div class="p-3 text-muted text-center small">No commands matched query</div>';
+          return;
+        }
+
+        lstResults.innerHTML = filtered.map((c, idx) => `
+            <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-2.5 px-3" data-idx="${idx}">
+              <i class="bi ${c.icon} text-secondary"></i>
+              <span class="small text-dark">${App.Utils.escapeHtml(c.name)}</span>
+            </button>
+          `).join('');
+
+        lstResults.querySelectorAll('button').forEach((btn, idx) => {
+          btn.onclick = () => {
+            filtered[idx].action();
+            modalPalette.hide();
+            txtSearch.value = '';
+          };
+        });
+      }
+    }
+
+    initPhase2UX();
+
+    // Structural platform execution context init parameters setup on launch
+    setNotificationBadgeCount(0); // Pass values > 0 to expose the indicator anchor badge element dynamically
+    window.loadPage = loadPage;
+
+    // First-Time Login Detection & Setup Handler
+    function checkAndPromptFirstLogin() {
+      const token = localStorage.getItem('sessionToken');
+      if (!token) return;
+
+      // Restore event context from localStorage into App.State
+      const storedEventId = localStorage.getItem('selectedEventId');
+      const storedAssignmentRole = localStorage.getItem('assignmentRole');
+      if (typeof App !== 'undefined' && App.State) {
+        if (storedEventId) App.State.currentEventId = storedEventId;
+        if (storedAssignmentRole) App.State.currentAssignmentRole = storedAssignmentRole;
+      }
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res && res.success && res.user) {
+            if (typeof App !== 'undefined' && App.State) {
+              App.State.currentUser = res.user;
+            }
+            const isFirstLogin = res.user.first_login === true ||
+              res.user.first_login === 'true' ||
+              res.user['First Login'] === true ||
+              res.user['First Login'] === 'true' ||
+              res.user.first_login === 1;
+
+            const uname = res.user.username || res.user.Username || res.user['User ID'] || res.user.user_id || 'User';
+            console.log("Session restored successfully. User:", uname, "| Assignment Role:", storedAssignmentRole || 'N/A');
+
+            // Re-render sidebar now that App.State.currentAssignmentRole is set
+            if (typeof App !== 'undefined' && App.PermissionManager && typeof App.PermissionManager.renderSidebar === 'function') {
+              App.PermissionManager.renderSidebar();
+            }
+          }
+        })
+        .authenticate(token);
+    }
+
+    // Automatically load the appropriate component when the shell initializes
+    if (google && google.script && google.script.url) {
+      google.script.url.getLocation(function (location) {
+        let requestedPage = location.parameter.page || 'dashboard';
+
+        // Prevent loading login inside the shell
+        if (requestedPage.toLowerCase() === 'login' || requestedPage.toLowerCase() === 'forgotpassword') {
+          requestedPage = 'dashboard';
+        }
+
+        App.Router.navigate(requestedPage);
+        checkAndPromptFirstLogin();
+      });
+    } else {
+      // Fallback
+      App.Router.navigate('dashboard');
+      checkAndPromptFirstLogin();
+    }
+  });
+</script>

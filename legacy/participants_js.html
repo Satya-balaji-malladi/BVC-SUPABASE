@@ -1,0 +1,890 @@
+<script>
+  /**
+   * ==========================================
+   * PARTICIPANT MODULE LOGIC
+   * ==========================================
+   */
+  App.Modules.participants = {
+    participantsData: [],
+    filteredData: [],
+    eventsList: [],
+    departmentsList: [],
+
+    // State variables for pagination and selection
+    currentPage: 1,
+    itemsPerPage: 10,
+    selectedRolls: new Set(),
+    
+    // Modals
+    addModalInstance: null,
+    bulkModalInstance: null,
+    detailsModalInstance: null,
+    pollingInterval: null,
+
+    init: function () {
+      App.Logger.info('Participants init');
+      this.bindEvents();
+
+      // Hide Add/Import Participant buttons for Admin and Super Admin roles
+      const storedRole = localStorage.getItem('userRole') || (App.State && App.State.currentUser && App.State.currentUser.role) || '';
+      const role = App.PermissionManager.normalizeRole(storedRole);
+      const isAdminOrSuper = role === 'ADMIN' || role === 'SUPERADMIN';
+      const addBtn = document.getElementById('participants-add-btn');
+      const importBtn = document.getElementById('participants-bulk-import-btn');
+      if (isAdminOrSuper) {
+        if (addBtn) addBtn.style.setProperty('display', 'none', 'important');
+        if (importBtn) importBtn.style.setProperty('display', 'none', 'important');
+      } else {
+        if (addBtn) addBtn.style.display = '';
+        if (importBtn) importBtn.style.display = '';
+      }
+
+      // Load all setup datasets (Events, Depts) then load Participants
+      Promise.all([
+        this.loadEvents(),
+        this.loadDepartments()
+      ]).then(() => {
+        this.load();
+      });
+
+      this.startPolling();
+    },
+
+    bindEvents: function () {
+      // Filters & Search
+      const searchInput = document.getElementById('participants-search-input');
+      const eventFilter = document.getElementById('participants-event-filter');
+      const deptFilter = document.getElementById('participants-dept-filter');
+      const yearFilter = document.getElementById('participants-year-filter');
+      const attendanceFilter = document.getElementById('participants-attendance-filter');
+      const perPageSelect = document.getElementById('participants-per-page');
+
+      if (searchInput) {
+        searchInput.addEventListener('input', this.debounce(() => {
+          this.applyFilters();
+        }, 300));
+      }
+
+      if (eventFilter) eventFilter.addEventListener('change', () => this.applyFilters());
+      if (deptFilter) deptFilter.addEventListener('change', () => this.applyFilters());
+      if (yearFilter) yearFilter.addEventListener('change', () => this.applyFilters());
+      if (attendanceFilter) attendanceFilter.addEventListener('change', () => this.applyFilters());
+
+      if (perPageSelect) {
+        perPageSelect.addEventListener('change', (e) => {
+          this.itemsPerPage = parseInt(e.target.value, 10);
+          this.currentPage = 1;
+          this.renderTable();
+        });
+      }
+
+      // Checkbox Select All
+      const selectAll = document.getElementById('participants-select-all');
+      if (selectAll) {
+        selectAll.addEventListener('change', (e) => {
+          const checked = e.target.checked;
+          const checkBoxes = document.querySelectorAll('.participant-checkbox');
+          checkBoxes.forEach(cb => {
+            cb.checked = checked;
+            const roll = cb.getAttribute('data-roll');
+            if (checked) {
+              this.selectedRolls.add(roll);
+            } else {
+              this.selectedRolls.delete(roll);
+            }
+          });
+          this.updateBulkRemoveButton();
+        });
+      }
+
+      // Action buttons
+      const addBtn = document.getElementById('participants-add-btn');
+      if (addBtn) addBtn.addEventListener('click', () => this.openAddModal());
+
+      const bulkImportBtn = document.getElementById('participants-bulk-import-btn');
+      if (bulkImportBtn) bulkImportBtn.addEventListener('click', () => this.openBulkModal());
+
+      const bulkRemoveBtn = document.getElementById('participants-bulk-remove-btn');
+      if (bulkRemoveBtn) bulkRemoveBtn.addEventListener('click', () => this.handleBulkRemove());
+
+      const exportBtn = document.getElementById('participants-export-btn');
+      if (exportBtn) exportBtn.addEventListener('click', () => App.ExportBuilder.open('participants'));
+
+      // Single Add Verification & Save
+      const verifyBtn = document.getElementById('pVerifyBtn');
+      if (verifyBtn) verifyBtn.addEventListener('click', () => this.verifyStudentEligibility());
+
+      const form = document.getElementById('participantForm');
+      if (form) form.addEventListener('submit', (e) => this.handleAddSubmit(e));
+
+      // Bulk Import Save
+      const bulkForm = document.getElementById('participantBulkForm');
+      if (bulkForm) bulkForm.addEventListener('submit', (e) => this.handleBulkSubmit(e));
+
+      // Table Action delegation (view, delete)
+      const tbody = document.getElementById('participants-table-body');
+      if (tbody) {
+        tbody.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-action');
+          const roll = btn.getAttribute('data-roll');
+          const eventId = btn.getAttribute('data-event');
+
+          if (action === 'view') this.openDetailsModal(roll, eventId);
+          if (action === 'remove') this.handleSingleRemove(roll, eventId);
+        });
+
+        tbody.addEventListener('change', (e) => {
+          if (e.target.classList.contains('participant-checkbox')) {
+            const roll = e.target.getAttribute('data-roll');
+            if (e.target.checked) {
+              this.selectedRolls.add(roll);
+            } else {
+              this.selectedRolls.delete(roll);
+            }
+            this.updateBulkRemoveButton();
+          }
+        });
+      }
+    },
+
+    debounce: function (func, delay) {
+      let timeout;
+      return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+      };
+    },
+
+    loadEvents: function () {
+      return App.API.getAllEvents()
+        .then(res => {
+          this.eventsList = Array.isArray(res) ? res : [];
+          this.populateEventsDropdowns();
+        })
+        .catch(err => {
+          App.Logger.error("Failed to load events list", err);
+        });
+    },
+
+    loadDepartments: function () {
+      return App.API.getActiveDepartments()
+        .then(res => {
+          this.departmentsList = Array.isArray(res) ? res : [];
+          this.populateDeptsDropdown();
+        })
+        .catch(err => {
+          App.Logger.error("Failed to load departments list", err);
+        });
+    },
+
+    populateEventsDropdowns: function () {
+      const filter = document.getElementById('participants-event-filter');
+      const addSelect = document.getElementById('pEventSelect');
+      const bulkSelect = document.getElementById('pBulkEventSelect');
+
+      const roleNorm = this.getCurrentUserRole();
+      const isEventAdmin = (roleNorm === 'EVENTADMIN' || roleNorm === 'EVENT_ADMIN');
+      const currentUser = (App.State && App.State.currentUser) || App.User;
+      const assignedEvtId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId) || (currentUser && (currentUser.assignedEventId || currentUser.eventId || currentUser['Event ID']));
+
+      let html = '<option value="">All Events</option>';
+      let selectHtml = '<option value="">Choose an Event</option>';
+
+      this.eventsList.forEach(e => {
+        const id = e['Event ID'] || e.event_id;
+        const name = e['Event Name'] || e.event_name;
+        html += `<option value="${id}">${name}</option>`;
+        selectHtml += `<option value="${id}">${name} (${id})</option>`;
+      });
+
+      if (filter) {
+        filter.innerHTML = html;
+        if (isEventAdmin && assignedEvtId) {
+          filter.value = assignedEvtId;
+          filter.disabled = true;
+        }
+      }
+      if (addSelect) {
+        addSelect.innerHTML = selectHtml;
+        if (isEventAdmin && assignedEvtId) {
+          addSelect.value = assignedEvtId;
+          addSelect.disabled = true;
+        }
+      }
+      if (bulkSelect) {
+        bulkSelect.innerHTML = selectHtml;
+        if (isEventAdmin && assignedEvtId) {
+          bulkSelect.value = assignedEvtId;
+          bulkSelect.disabled = true;
+        }
+      }
+    },
+
+    getCurrentUserDept: function () {
+      const currentUser = (App.State && App.State.currentUser) || App.User;
+      if (currentUser) {
+        const d = currentUser.department || currentUser.Department || currentUser.dept || currentUser['Department'] || currentUser.department_code || currentUser['Department Code'];
+        if (d) return String(d).trim();
+      }
+      return String(localStorage.getItem('userDept') || '').trim();
+    },
+
+    getCurrentUserRole: function () {
+      const currentUser = (App.State && App.State.currentUser) || App.User;
+      const r = currentUser ? (currentUser.role || currentUser.Role) : (localStorage.getItem('userRole') || '');
+      return App.PermissionManager.normalizeRole(r);
+    },
+
+    populateDeptsDropdown: function () {
+      const filter = document.getElementById('participants-dept-filter');
+      const isHOD = this.getCurrentUserRole() === 'HOD';
+      const userDept = this.getCurrentUserDept();
+
+      if (isHOD && filter) {
+        let deptCode = userDept;
+        let deptName = userDept;
+        let deptId = userDept;
+
+        const matched = (this.departmentsList || []).find(d => {
+          const c = String(d['Department Code'] || d.department_code || '').trim().toUpperCase();
+          const id = String(d['Department ID'] || d.department_id || '').trim().toUpperCase();
+          const n = String(d['Department Name'] || d.department_name || '').trim().toUpperCase();
+          const target = String(userDept).trim().toUpperCase();
+          return c === target || id === target || n === target;
+        });
+
+        if (matched) {
+          deptCode = matched['Department Code'] || matched.department_code || userDept;
+          deptName = matched['Department Name'] || matched.department_name || deptCode;
+          deptId = matched['Department ID'] || matched.department_id || deptCode;
+        }
+
+        const displayText = (deptName && deptCode && deptName.toUpperCase() !== deptCode.toUpperCase())
+          ? `${deptName} (${deptCode})`
+          : deptCode;
+
+        filter.innerHTML = `<option value="${deptId}">${displayText}</option>`;
+        filter.value = deptId;
+        filter.disabled = true;
+      } else if (filter) {
+        filter.disabled = false;
+        filter.removeAttribute('disabled');
+        let html = '<option value="">All Depts</option>';
+        (this.departmentsList || []).forEach(d => {
+          const id = d['Department ID'];
+          const code = d['Department Code'] || id;
+          html += `<option value="${id}">${code}</option>`;
+        });
+        filter.innerHTML = html;
+      }
+
+      // Populate Colleges dropdown
+      const collegeFilter = document.getElementById('participants-college-filter');
+      if (collegeFilter) {
+        const colSet = new Set();
+        (this.participantsData || []).forEach(p => {
+          const col = p.college_name || p.college || p['College Name'] || 'BVC Engineering College';
+          if (col) colSet.add(col);
+        });
+        let cHtml = '<option value="">All Colleges</option>';
+        colSet.forEach(c => {
+          cHtml += `<option value="${App.Utils.escapeHtml(c)}">${App.Utils.escapeHtml(c)}</option>`;
+        });
+        collegeFilter.innerHTML = cHtml;
+      }
+    },
+
+    load: function () {
+      const tbody = document.getElementById('participants-table-body');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>Loading participants...</td></tr>';
+      }
+
+      App.API.getAllEnrichedParticipants()
+        .then(res => {
+          if (Array.isArray(res)) {
+            this.participantsData = res;
+          } else if (res && Array.isArray(res.data)) {
+            this.participantsData = res.data;
+          } else if (res && typeof res === 'object') {
+            const arr = [];
+            Object.keys(res).forEach(k => {
+              if (!isNaN(parseInt(k, 10))) arr.push(res[k]);
+            });
+            this.participantsData = arr;
+          } else {
+            this.participantsData = [];
+          }
+
+          // Compute lifetime participation count per student roll
+          const rollCountMap = {};
+          this.participantsData.forEach(p => {
+            const roll = String(p['Roll Number'] || p.roll_number || '').toUpperCase().trim();
+            if (roll) rollCountMap[roll] = (rollCountMap[roll] || 0) + 1;
+          });
+          this.participantsData.forEach(p => {
+            const roll = String(p['Roll Number'] || p.roll_number || '').toUpperCase().trim();
+            p.participation_count = rollCountMap[roll] || 1;
+            p.college_name = p.college_name || p.college || p['College Name'] || 'BVC Engineering College';
+          });
+
+          this.selectedRolls.clear();
+          this.updateBulkRemoveButton();
+          const selectAll = document.getElementById('participants-select-all');
+          if (selectAll) selectAll.checked = false;
+          
+          this.populateDeptsDropdown();
+          this.applyFilters();
+        })
+        .catch(err => {
+          if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger py-4"><i class="bi bi-exclamation-triangle me-2"></i>Failed to load participant list. <button class="btn btn-sm btn-outline-danger ms-2" onclick="App.Modules.participants.load()">Retry</button></td></tr>';
+          }
+          App.ErrorHandler.handle(err, "Failed to load participants list");
+        });
+    },
+
+    applyFilters: function () {
+      const searchInput = document.getElementById('participants-search-input');
+      const eventFilter = document.getElementById('participants-event-filter');
+      const deptFilter = document.getElementById('participants-dept-filter');
+      const yearFilter = document.getElementById('participants-year-filter');
+      const collegeFilter = document.getElementById('participants-college-filter');
+      const partFilter = document.getElementById('participants-participation-filter');
+      const attendanceFilter = document.getElementById('participants-attendance-filter');
+
+      const searchStr = (searchInput ? searchInput.value : '').toLowerCase().trim();
+      const eventVal = eventFilter ? eventFilter.value : '';
+      const deptVal = deptFilter ? deptFilter.value : '';
+      const yearVal = yearFilter ? yearFilter.value : '';
+      const collegeVal = collegeFilter ? collegeFilter.value : '';
+      const partVal = partFilter ? partFilter.value : '';
+      const attendanceVal = attendanceFilter ? attendanceFilter.value : '';
+      const isHOD = this.getCurrentUserRole() === 'HOD';
+      const roleNorm = this.getCurrentUserRole();
+      const isEventAdminOrCoord = (roleNorm === 'EVENTADMIN' || roleNorm === 'EVENT_ADMIN' || roleNorm === 'COORDINATOR');
+      const selectedEventId = localStorage.getItem('selectedEventId') || (App.State && App.State.selectedEventId);
+
+      this.filteredData = this.participantsData.filter(p => {
+        const pEvtId = String(p['Event ID'] || p.event_id || p.eventId || '').trim();
+        if (isEventAdminOrCoord && selectedEventId && pEvtId !== String(selectedEventId).trim()) return false;
+        if (eventVal && pEvtId !== eventVal) return false;
+        if (deptVal && !isHOD && p.department !== deptVal) return false;
+        if (yearVal && String(p.year) !== String(yearVal)) return false;
+        if (collegeVal && (p.college_name || 'BVC Engineering College') !== collegeVal) return false;
+        if (attendanceVal && p['Attendance Status'] !== attendanceVal) return false;
+
+        if (partVal) {
+          const count = p.participation_count || 1;
+          if (partVal === '1' && count < 1) return false;
+          if (partVal === '2' && count < 2) return false;
+          if (partVal === '3' && count < 3) return false;
+        }
+
+        if (searchStr) {
+          const searchable = [
+            p['Roll Number'] || '',
+            p.student_name || '',
+            p.event_name || '',
+            p.college_name || ''
+          ].join(' ').toLowerCase();
+
+          if (!searchable.includes(searchStr)) return false;
+        }
+        return true;
+      });
+
+      this.currentPage = 1;
+      this.updateStats();
+      this.renderTable();
+    },
+
+    updateStats: function () {
+      const totalEl = document.getElementById('participants-stat-total');
+      if (!totalEl) return;
+      
+      const total = this.filteredData.length;
+      const present = this.filteredData.filter(p => p['Attendance Status'] === 'Present').length;
+      const absent = total - present;
+      const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+
+      totalEl.textContent = total;
+      
+      const presentEl = document.getElementById('participants-stat-present');
+      if (presentEl) presentEl.textContent = present;
+      
+      const absentEl = document.getElementById('participants-stat-absent');
+      if (absentEl) absentEl.textContent = absent;
+      
+      const rateEl = document.getElementById('participants-stat-rate');
+      if (rateEl) rateEl.textContent = `${rate}%`;
+    },
+
+    renderTable: function () {
+      const tbody = document.getElementById('participants-table-body');
+      if (!tbody) return;
+
+      if (this.filteredData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-5"><i class="bi bi-info-circle me-2"></i>No Participants Found</td></tr>';
+        this.renderPagination(0);
+        return;
+      }
+
+      const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+      const endIndex = Math.min(startIndex + this.itemsPerPage, this.filteredData.length);
+      const pageData = this.filteredData.slice(startIndex, endIndex);
+
+      let html = '';
+      pageData.forEach(p => {
+        const isChecked = this.selectedRolls.has(p['Roll Number']) ? 'checked' : '';
+        const regStatusBadge = p['Registration Status'] === 'Confirmed'
+          ? '<span class="badge bg-success bg-opacity-10 text-success border border-success-subtle">Confirmed</span>'
+          : '<span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle">Cancelled</span>';
+
+        const attStatusBadge = p['Attendance Status'] === 'Present'
+          ? '<span class="badge bg-success text-white">Present</span>'
+          : '<span class="badge bg-secondary text-white">Absent</span>';
+
+        const deptObj = this.departmentsList.find(d => String(d['Department ID']) === String(p.department));
+        const deptDisplay = deptObj ? (deptObj['Department Code'] || p.department) : p.department;
+        const colDisplay = p.college_name || 'BVC Engineering College';
+        const pBadge = `<span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle fw-bold px-2">${p.participation_count || 1} Event${(p.participation_count || 1) === 1 ? '' : 's'}</span>`;
+
+        html += `
+          <tr>
+            <td>
+              <input type="checkbox" class="form-check-input participant-checkbox" data-roll="${App.Utils.escapeHtml(p['Roll Number'])}" ${isChecked}>
+            </td>
+            <td class="fw-medium text-dark font-monospace">${App.Utils.escapeHtml(p['Roll Number'])}</td>
+            <td class="fw-bold">${App.Utils.escapeHtml(p.student_name)}</td>
+            <td><span class="badge bg-info bg-opacity-10 text-info border border-info-subtle fw-semibold">${App.Utils.escapeHtml(colDisplay)}</span></td>
+            <td><span class="badge bg-secondary bg-opacity-10 text-secondary">${App.Utils.escapeHtml(deptDisplay)}</span></td>
+            <td><span class="badge bg-primary bg-opacity-10 text-primary">${App.Utils.escapeHtml(p.branch || deptDisplay)}</span></td>
+            <td>Year ${App.Utils.escapeHtml(p.year)} - ${App.Utils.escapeHtml(p.section)}</td>
+            <td class="text-truncate" style="max-width: 180px;">${App.Utils.escapeHtml(p.event_name)}</td>
+            <td>${pBadge}</td>
+            <td>${regStatusBadge}</td>
+            <td>${attStatusBadge}</td>
+            <td class="text-end text-nowrap">
+              <button class="btn btn-sm btn-light text-primary me-1" data-action="view" data-roll="${App.Utils.escapeHtml(p['Roll Number'])}" data-event="${App.Utils.escapeHtml(p['Event ID'])}" title="Profile & Logs"><i class="bi bi-eye"></i></button>
+              <button class="btn btn-sm btn-light text-danger" data-action="remove" data-roll="${App.Utils.escapeHtml(p['Roll Number'])}" data-event="${App.Utils.escapeHtml(p['Event ID'])}" title="Cancel Registration"><i class="bi bi-trash"></i></button>
+            </td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+      this.renderPagination(Math.ceil(this.filteredData.length / this.itemsPerPage));
+    },
+
+    renderPagination: function (totalPages) {
+      const nav = document.getElementById('participants-pagination');
+      if (!nav) return;
+
+      if (totalPages <= 1) {
+        nav.innerHTML = `
+          <li class="page-item disabled"><a class="page-link" href="#" tabindex="-1">Previous</a></li>
+          <li class="page-item active"><a class="page-link" href="#">1</a></li>
+          <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+        `;
+        return;
+      }
+
+      let html = '';
+      const prevDisabled = this.currentPage === 1 ? 'disabled' : '';
+      html += `<li class="page-item ${prevDisabled}"><a class="page-link" href="#" data-page="${this.currentPage - 1}">Previous</a></li>`;
+
+      for (let i = 1; i <= totalPages; i++) {
+        const active = i === this.currentPage ? 'active' : '';
+        html += `<li class="page-item ${active}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+      }
+
+      const nextDisabled = this.currentPage === totalPages ? 'disabled' : '';
+      html += `<li class="page-item ${nextDisabled}"><a class="page-link" href="#" data-page="${this.currentPage + 1}">Next</a></li>`;
+
+      nav.innerHTML = html;
+
+      const links = nav.querySelectorAll('a.page-link');
+      links.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const page = e.target.getAttribute('data-page');
+          if (page) {
+            this.currentPage = parseInt(page, 10);
+            this.renderTable();
+          }
+        });
+      });
+    },
+
+    updateBulkRemoveButton: function () {
+      const btn = document.getElementById('participants-bulk-remove-btn');
+      if (!btn) return;
+
+      if (this.selectedRolls.size > 0) {
+        btn.classList.remove('d-none');
+        btn.textContent = `Remove Selected (${this.selectedRolls.size})`;
+      } else {
+        btn.classList.add('d-none');
+      }
+    },
+
+    openAddModal: function () {
+      const form = document.getElementById('participantForm');
+      if (form) {
+        form.reset();
+        form.classList.remove('was-validated');
+      }
+
+      const verifyResult = document.getElementById('pVerificationResult');
+      if (verifyResult) {
+        verifyResult.innerHTML = '';
+        verifyResult.classList.add('d-none');
+      }
+
+      const errorAlert = document.getElementById('participantModalError');
+      if (errorAlert) errorAlert.classList.add('d-none');
+
+      document.getElementById('pSaveBtn').disabled = true;
+
+      if (!this.addModalInstance) {
+        const el = document.getElementById('participantModal');
+        if (el) this.addModalInstance = new bootstrap.Modal(el);
+      }
+      if (this.addModalInstance) this.addModalInstance.show();
+    },
+
+    openBulkModal: function () {
+      const form = document.getElementById('participantBulkForm');
+      if (form) {
+        form.reset();
+        form.classList.remove('was-validated');
+      }
+
+      const errorAlert = document.getElementById('pBulkModalError');
+      if (errorAlert) errorAlert.classList.add('d-none');
+
+      if (!this.bulkModalInstance) {
+        const el = document.getElementById('participantBulkModal');
+        if (el) this.bulkModalInstance = new bootstrap.Modal(el);
+      }
+      if (this.bulkModalInstance) this.bulkModalInstance.show();
+    },
+
+    openDetailsModal: function (roll, eventId) {
+      const part = this.participantsData.find(p => String(p['Roll Number']) === String(roll) && String(p['Event ID']) === String(eventId));
+      if (!part) return;
+
+      document.getElementById('pDetailsName').textContent = part.student_name || 'Unknown Student';
+      document.getElementById('pDetailsRoll').textContent = part['Roll Number'];
+      document.getElementById('pDetailsStatus').textContent = part['Registration Status'] || 'Confirmed';
+
+      const deptObj = this.departmentsList.find(d => String(d['Department ID']) === String(part.department));
+      const deptDisplay = deptObj ? (deptObj['Department Code'] || part.department) : part.department;
+
+      document.getElementById('pDetailsDept').textContent = deptDisplay;
+      document.getElementById('pDetailsYearSec').textContent = `Year ${part.year} - Sec ${part.section}`;
+      
+      const emailField = document.getElementById('pDetailsEmail');
+      const phoneField = document.getElementById('pDetailsPhone');
+      
+      emailField.textContent = part.email || 'N/A';
+      phoneField.textContent = part.mobile || 'N/A';
+
+      // Timeline check-ins loader
+      const timeline = document.getElementById('pDetailsTimeline');
+      timeline.innerHTML = '<div class="text-center py-2"><span class="spinner-border spinner-border-sm text-secondary me-2"></span>Loading logs...</div>';
+
+      App.API.getStudentEventHistory(part['Roll Number'])
+        .then(history => {
+          const list = Array.isArray(history) ? history : (history.history || history.data || []);
+          const matches = list.filter(h => h['Event ID'] === eventId || h.event_id === eventId);
+
+          if (matches.length === 0) {
+            timeline.innerHTML = '<div class="text-muted small">No check-in logs recorded for this event.</div>';
+            return;
+          }
+
+          let html = '<div class="list-group list-group-flush">';
+          matches.forEach(m => {
+            const time = m['Attendance Time'] || m.time || m.timestamp || 'N/A';
+            const status = m['Attendance Status'] || m.status || 'Present';
+            const method = m['Attendance Method'] || m.method || 'Scanned';
+
+            html += `
+              <div class="list-group-item px-0 py-1 bg-transparent small border-0 d-flex justify-content-between align-items-center">
+                <div>
+                  <i class="bi bi-clock text-primary me-2"></i>Checked In (${method})
+                </div>
+                <div class="text-end">
+                  <span class="badge bg-success me-2">${status}</span>
+                  <span class="text-muted font-monospace">${time}</span>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+          timeline.innerHTML = html;
+        })
+        .catch(err => {
+          timeline.innerHTML = '<div class="text-danger small">Failed to load check-in logs.</div>';
+        });
+
+      if (!this.detailsModalInstance) {
+        const el = document.getElementById('pDetailsModal');
+        if (el) this.detailsModalInstance = new bootstrap.Modal(el);
+      }
+      if (this.detailsModalInstance) this.detailsModalInstance.show();
+    },
+
+    verifyStudentEligibility: function () {
+      const eventId = document.getElementById('pEventSelect').value;
+      const rollNumber = document.getElementById('pRollNumber').value.toUpperCase().trim();
+      const resultDiv = document.getElementById('pVerificationResult');
+
+      if (!eventId || !rollNumber) {
+        App.UI.showError('Select an event and enter a roll number.');
+        return;
+      }
+
+      resultDiv.classList.remove('d-none');
+      resultDiv.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary me-2"></span>Verifying eligibility...';
+
+      App.API.checkEligibility(eventId, rollNumber)
+        .then(res => {
+          if (res.eligible) {
+            resultDiv.className = 'p-3 mb-3 rounded bg-success bg-opacity-10 border border-success-subtle text-success';
+            resultDiv.innerHTML = `<h6><i class="bi bi-check-circle-fill me-2"></i>Eligible</h6> Student is eligible to participate in this event.`;
+            document.getElementById('pSaveBtn').disabled = false;
+          } else {
+            resultDiv.className = 'p-3 mb-3 rounded bg-danger bg-opacity-10 border border-danger-subtle text-danger';
+            resultDiv.innerHTML = `<h6><i class="bi bi-x-circle-fill me-2"></i>Ineligible</h6> Reason: ${res.reason}`;
+            document.getElementById('pSaveBtn').disabled = true;
+          }
+        })
+        .catch(err => {
+          resultDiv.className = 'p-3 mb-3 rounded bg-warning bg-opacity-10 border border-warning-subtle text-warning';
+          resultDiv.innerHTML = `<h6><i class="bi bi-exclamation-triangle-fill me-2"></i>Verification Failed</h6> ${err.message || 'Verification crashed.'}`;
+          document.getElementById('pSaveBtn').disabled = true;
+        });
+    },
+
+    handleAddSubmit: function (e) {
+      e.preventDefault();
+      const form = e.target;
+      if (!form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+      }
+
+      const eventId = document.getElementById('pEventSelect').value;
+      const roll = document.getElementById('pRollNumber').value.toUpperCase().trim();
+
+      const btn = document.getElementById('pSaveBtn');
+      const spinner = document.getElementById('pSaveSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('d-none');
+
+      App.API.addParticipant(eventId, roll)
+        .then(() => {
+          btn.disabled = false;
+          spinner.classList.add('d-none');
+          if (this.addModalInstance) this.addModalInstance.hide();
+          App.UI.showSuccess("Participant added successfully!");
+          this.load();
+        })
+        .catch(err => {
+          btn.disabled = false;
+          spinner.classList.add('d-none');
+          const errorAlert = document.getElementById('participantModalError');
+          if (errorAlert) {
+            errorAlert.textContent = err.message || "Failed to add participant.";
+            errorAlert.classList.remove('d-none');
+          }
+          App.UI.showError(err.message || "Failed to add participant.");
+        });
+    },
+
+    handleBulkSubmit: function (e) {
+      e.preventDefault();
+      const form = e.target;
+      if (!form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+      }
+
+      const eventId = document.getElementById('pBulkEventSelect').value;
+      const rollsRaw = document.getElementById('pBulkRolls').value;
+      const rollNumbers = rollsRaw.split(/[\n,]+/).map(r => r.trim().toUpperCase()).filter(r => r.length > 0);
+
+      if (rollNumbers.length === 0) {
+        App.UI.showError("Enter at least one roll number.");
+        return;
+      }
+
+      const btn = document.getElementById('pBulkSaveBtn');
+      const spinner = document.getElementById('pBulkSaveSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('d-none');
+
+      App.API.bulkAddParticipants(eventId, rollNumbers)
+        .then(res => {
+          btn.disabled = false;
+          spinner.classList.add('d-none');
+          if (this.bulkModalInstance) this.bulkModalInstance.hide();
+          
+          const sCount = res.success ? res.success.length : 0;
+          const eCount = res.errors ? res.errors.length : 0;
+          
+          App.UI.showSuccess(`Roster import complete: Registered ${sCount} successfully. Skipped ${eCount} invalid/duplicates.`);
+          this.load();
+        })
+        .catch(err => {
+          btn.disabled = false;
+          spinner.classList.add('d-none');
+          const errorAlert = document.getElementById('pBulkModalError');
+          if (errorAlert) {
+            errorAlert.textContent = err.message || "Bulk import failed.";
+            errorAlert.classList.remove('d-none');
+          }
+          App.UI.showError(err.message || "Bulk import failed.");
+        });
+    },
+
+    handleSingleRemove: function (roll, eventId) {
+      if (confirm(`Are you sure you want to cancel the event registration for student ${roll}?`)) {
+        App.API.removeParticipant(eventId, roll)
+          .then(() => {
+            App.UI.showSuccess("Registration cancelled successfully.");
+            this.load();
+          })
+          .catch(err => {
+            App.UI.showError(err.message || "Failed to remove participant.");
+          });
+      }
+    },
+
+    handleBulkRemove: function () {
+      const eventFilter = document.getElementById('participants-event-filter');
+      const eventId = eventFilter ? eventFilter.value : '';
+
+      if (!eventId) {
+        App.UI.showError("Please select a specific Event filter first to perform bulk registration removals.");
+        return;
+      }
+
+      const count = this.selectedRolls.size;
+      if (confirm(`Are you sure you want to remove all ${count} selected participants from the event?`)) {
+        const rollNumbers = Array.from(this.selectedRolls);
+        
+        App.LoadingManager.show();
+        App.API.bulkRemoveParticipants(eventId, rollNumbers)
+          .then(res => {
+            App.LoadingManager.hide();
+            App.UI.showSuccess(`Successfully removed ${res.success ? res.success.length : 0} registrations.`);
+            this.load();
+          })
+          .catch(err => {
+            App.LoadingManager.hide();
+            App.UI.showError(err.message || "Bulk remove failed.");
+          });
+      }
+    },
+
+    exportCSV: function () {
+      if (this.filteredData.length === 0) {
+        App.UI.showInfo("No data to export.");
+        return;
+      }
+
+      const headers = ["Roll Number", "Student Name", "Department", "Year", "Section", "Event Name", "Registration Status", "Attendance Status"];
+      const rows = this.filteredData.map(p => [
+        p['Roll Number'],
+        p.student_name,
+        p.department,
+        p.year,
+        p.section,
+        p.event_name,
+        p['Registration Status'],
+        p['Attendance Status']
+      ]);
+
+        let csvContent = "\uFEFF"; // UTF-8 BOM
+        csvContent += headers.join(",") + "\r\n";
+        rows.forEach(row => {
+          csvContent += row.map(val => {
+            const cleanVal = String(val ?? '').replace(/"/g, '""');
+            return `"${cleanVal}"`;
+          }).join(",") + "\r\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `participants_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      App.UI.showSuccess("CSV export completed successfully.");
+    },
+
+    refreshParticipants: function () {
+      // Skip updates if any modal is active
+      const modal1 = document.getElementById('participantModal');
+      const modal2 = document.getElementById('participantBulkModal');
+      const modal3 = document.getElementById('pDetailsModal');
+
+      if ((modal1 && modal1.classList.contains('show')) ||
+          (modal2 && modal2.classList.contains('show')) ||
+          (modal3 && modal3.classList.contains('show'))) {
+        return;
+      }
+
+      App.API.getAllEnrichedParticipants()
+        .then(res => {
+          const newData = Array.isArray(res) ? res : (res.data || []);
+          const hasChanged = JSON.stringify(newData) !== JSON.stringify(this.participantsData);
+          if (hasChanged) {
+            App.Logger.info("Background update detected: refresh participants roster");
+            this.participantsData = newData;
+            this.applyFilters();
+          }
+        })
+        .catch(err => {
+          App.Logger.error("Background participants refresh failed: ", err);
+        });
+    },
+
+    startPolling: function () {
+      this.stopPolling();
+      this.pollingInterval = setInterval(() => {
+        this.refreshParticipants();
+      }, 25000);
+    },
+
+    stopPolling: function () {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+    },
+
+    refresh: function () {
+      this.load();
+    },
+
+    destroy: function () {
+      App.Logger.info('Participants destroy');
+      this.stopPolling();
+    }
+  };
+
+  // Auto-initialize module on load
+  if (typeof App !== 'undefined' && App.Modules && App.Modules.participants) {
+    App.Modules.participants.init();
+  }
+</script>

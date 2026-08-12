@@ -1,0 +1,158 @@
+<script>
+  /**
+   * ==========================================
+   * PERMISSION MANAGER (Single Source of Truth)
+   * ==========================================
+   * Centralized Enterprise Role-Based Navigation & Permission Architecture
+   */
+  (function (global) {
+    'use strict';
+
+    global.App = global.App || {};
+
+    const ROLE_PERMISSIONS = {
+      'SUPER_ADMIN': [
+        'dashboard', 'users', 'faculty', 'students', 'events',
+        'participants', 'attendance', 'reports', 'analytics',
+        'settings', 'monitoring', 'profile', 'logout', 'testcenter'
+      ],
+      'HOD': [
+        'dashboard', 'users', 'faculty', 'students', 'events',
+        'participants', 'attendance', 'reports', 'analytics',
+        'settings', 'profile', 'logout'
+      ],
+      'FACULTY': [
+        'logout', 'profile'
+      ],
+      'EVENT_ADMIN': [
+        'dashboard', 'events', 'attendance', 'participants', 'reports', 'settings', 'profile', 'logout'
+      ],
+      'COORDINATOR': [
+        'dashboard', 'attendance', 'participants', 'profile', 'logout'
+      ]
+    };
+
+    const PermissionManager = {
+      ROLE_PERMISSIONS: ROLE_PERMISSIONS,
+
+      /**
+       * Single Source of Truth for Role Normalization
+       * Converts legacy roles, spaces, aliases into exactly ONE of the four valid strings:
+       * SUPER_ADMIN, HOD, EVENT_ADMIN, COORDINATOR.
+       */
+      normalizeRole: function (rawRole) {
+        var r = rawRole;
+        if (r === undefined || r === null || r === '') {
+          // Now also check for assignmentRole if operating within an event context
+          var localRole = (typeof localStorage !== 'undefined' && localStorage !== null)
+            ? (
+              localStorage.getItem('assignmentRole') ||
+              localStorage.getItem('loginRole') ||
+              localStorage.getItem('userRole')
+            )
+            : '';
+          (global.App && global.App.State && global.App.State.currentAssignmentRole) ||
+            (global.App && global.App.State && global.App.State.currentUser && (global.App.State.currentUser.role || global.App.State.currentUser.Role)) ||
+            '';
+        }
+
+        var clean = String(r).toUpperCase().replace(/[\s_]+/g, '');
+
+        if (clean === 'SUPERADMIN' || clean === 'DEVELOPER' || clean === 'SUPER_ADMIN') {
+          return 'SUPER_ADMIN';
+        }
+        if (clean === 'HOD' || clean === 'ADMIN' || clean === 'TESTER') {
+          return 'HOD';
+        }
+        if (clean === 'EVENTADMIN' || clean === 'EVENTMANAGER' || clean === 'EVENT_ADMIN') {
+          return 'EVENT_ADMIN';
+        }
+        if (clean === 'FACULTY' || clean === 'STAFF') {
+          return 'FACULTY';
+        }
+        if (clean === 'COORDINATOR' || clean === 'USER' || clean === 'MONITOR' || clean === 'STUDENT' || clean === 'GUESTCOORDINATOR') {
+          return 'COORDINATOR';
+        }
+
+        return 'FACULTY';
+      },
+
+      /**
+       * Gets array of allowed page identifiers for a given role
+       */
+      getPermissions: function (rawRole) {
+        var role = this.normalizeRole(rawRole);
+        return this.ROLE_PERMISSIONS[role] || [];
+      },
+
+      /**
+       * Alias for getPermissions
+       */
+      getAllowedPages: function (rawRole) {
+        return this.getPermissions(rawRole);
+      },
+
+      /**
+       * Checks if a page is permitted for a role
+       */
+      hasPermission: function (pageName, rawRole) {
+        if (!pageName) return false;
+        var page = String(pageName).toLowerCase().trim();
+        var allowed = this.getPermissions(rawRole);
+        return allowed.indexOf(page) !== -1;
+      },
+
+      /**
+       * Single centralized method to render sidebar links according to role permissions
+       */
+      renderSidebar: function (rawRole) {
+        var role = this.normalizeRole(rawRole);
+        var allowed = this.getPermissions(role);
+
+        if (typeof document === 'undefined') return;
+
+        // Query all sidebar nav links
+        var navLinks = document.querySelectorAll('.sidebar-nav .nav-link');
+        if (navLinks && navLinks.length > 0) {
+          navLinks.forEach(function (link) {
+            var pageAttr = link.dataset.page || link.getAttribute('data-page') || '';
+            var page = String(pageAttr).toLowerCase().trim();
+
+            // If dataset page is missing, check if it's logout button
+            if (!page && (link.id === 'sidebarLogoutBtn' || link.id === 'logout-btn')) {
+              page = 'logout';
+            }
+
+            if (!page) return;
+
+            var container = link.closest('.nav-item') || link;
+
+            if (allowed.indexOf(page) !== -1) {
+              container.classList.remove('d-none');
+              container.style.display = '';
+            } else {
+              container.classList.add('d-none');
+              container.style.display = 'none';
+            }
+          });
+        }
+
+        // Handle standalone logout elements if outside .sidebar-nav
+        var logoutElements = document.querySelectorAll('#logout-btn, #sidebarLogoutBtn');
+        logoutElements.forEach(function (btn) {
+          var container = btn.closest('.nav-item') || btn;
+          if (allowed.indexOf('logout') !== -1) {
+            container.classList.remove('d-none');
+            container.style.display = '';
+          } else {
+            container.classList.add('d-none');
+            container.style.display = 'none';
+          }
+        });
+      }
+    };
+
+    global.App.PermissionManager = PermissionManager;
+
+  })(typeof window !== 'undefined' ? window : this);
+</script>
