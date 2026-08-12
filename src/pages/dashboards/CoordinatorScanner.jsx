@@ -438,21 +438,25 @@ export default function CoordinatorScanner({ isNested = false }) {
                result = { status: 'NOT_REGISTERED', student: stuData };
             } else {
                // 3. Check if already marked present
-               const { data: attData } = await supabase.from('event_attendance')
+               const { data: attData } = await supabase.from('attendance')
                  .select('*').eq('event_id', eventId).eq('roll_number', rollNumber)
-                 .eq('attendance_date', currentAttendanceDate).single();
+                 .eq('date', currentAttendanceDate).single();
                  
                if (attData) {
                  result = { status: 'DUPLICATE', student: stuData };
                } else {
                  // 4. Mark present
-                 const attId = `${eventId}_${rollNumber}_${currentAttendanceDate}`;
-                 const { error: insErr } = await supabase.from('event_attendance').insert({
+                 const now = new Date().toISOString();
+                 const attId = `ATT_${Date.now()}_${rollNumber}`;
+                 const { error: insErr } = await supabase.from('attendance').insert({
                    attendance_id: attId,
                    event_id: eventId,
-                   participant_id: regData.participant_id || `${eventId}_${rollNumber}`,
                    roll_number: rollNumber,
-                   attendance_date: currentAttendanceDate,
+                   user_id: tokenObj?.user?.id || null,
+                   attendance_status: 'Present',
+                   timestamp: now,
+                   date: currentAttendanceDate,
+                   time: now.split('T')[1].split('.')[0],
                    attendance_method: inputMode === 'camera' ? 'QR' : 'Barcode'
                  });
                  
@@ -461,7 +465,7 @@ export default function CoordinatorScanner({ isNested = false }) {
                    setProcessingScan(false);
                    return;
                  }
-                 result = { status: 'SUCCESS', student: stuData, timestamp: new Date().toISOString() };
+                 result = { status: 'SUCCESS', student: stuData, timestamp: now };
                }
             }
           }
