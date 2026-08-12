@@ -66,7 +66,6 @@ export default function FeedbackWidget() {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="glass-panel hide-on-mobile"
         style={{
           position: 'fixed',
           bottom: '1.5rem',
@@ -84,6 +83,8 @@ export default function FeedbackWidget() {
           zIndex: 9999,
           border: '1px solid rgba(255,255,255,0.2)',
           transition: 'transform 0.2s',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)'
         }}
         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
