@@ -3,6 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { Calendar, Users, Award, Percent, Clock, AlertCircle } from 'lucide-react';
 import EventAdminService from '../../services/EventAdminService';
 import { useNavigate } from 'react-router-dom';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 export default function EventAdminDashboard() {
   const [stats, setStats] = useState(null);
@@ -27,6 +28,8 @@ export default function EventAdminDashboard() {
     }
   };
 
+  const isMobile = useIsMobile();
+
   if (loading) {
     return <div style={{ padding: '2rem', color: '#6c757d' }}>Loading dashboard...</div>;
   }
@@ -47,6 +50,103 @@ export default function EventAdminDashboard() {
     );
   }
 
+  if (isMobile) {
+    return (
+      <div style={{ padding: '1rem', width: '100%', overflowX: 'hidden' }}>
+        <h2 style={{ marginBottom: '0.25rem', fontSize: '1.5rem', fontWeight: 700, color: '#212529' }}>Dashboard</h2>
+        <p style={{ color: '#6c757d', marginBottom: '1.5rem', fontSize: '0.9rem' }}>Overview of your assigned events.</p>
+        
+        {/* Mobile 2x2 Compact Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #f1f3f5', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <Users size={18} color="#0d6efd" />
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{stats.total_participants}</h3>
+            </div>
+            <h6 style={{ margin: 0, color: '#6c757d', fontSize: '0.75rem', fontWeight: 600 }}>Total Reg</h6>
+          </div>
+
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #f1f3f5', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <Award size={18} color="#198754" />
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{stats.total_present}</h3>
+            </div>
+            <h6 style={{ margin: 0, color: '#6c757d', fontSize: '0.75rem', fontWeight: 600 }}>Present</h6>
+          </div>
+
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #f1f3f5', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <Percent size={18} color="#0dcaf0" />
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{stats.attendance_percentage}%</h3>
+            </div>
+            <h6 style={{ margin: 0, color: '#6c757d', fontSize: '0.75rem', fontWeight: 600 }}>Attendance</h6>
+          </div>
+
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #f1f3f5', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <Calendar size={18} color="#6f42c1" />
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{stats.events_count}</h3>
+            </div>
+            <h6 style={{ margin: 0, color: '#6c757d', fontSize: '0.75rem', fontWeight: 600 }}>Events</h6>
+          </div>
+        </div>
+
+        {/* Mobile Assigned Events */}
+        <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e9ecef', overflow: 'hidden', marginBottom: '1.5rem' }}>
+          <div style={{ padding: '1rem', borderBottom: '1px solid #e9ecef', background: '#f8f9fa' }}>
+            <h5 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Your Events</h5>
+          </div>
+          <div style={{ padding: '0.75rem' }}>
+            {stats.events?.map(ev => (
+              <div key={ev.event_id} style={{ padding: '0.75rem', border: '1px solid #f1f3f5', borderRadius: '8px', marginBottom: '0.5rem', cursor: 'pointer' }} onClick={() => navigate('/event-admin/events')}>
+                <div style={{ fontWeight: 600, color: '#0d6efd', marginBottom: '0.25rem', fontSize: '0.95rem' }}>{ev.event_name}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6c757d', alignItems: 'center' }}>
+                  <span>{new Date(ev.start_date).toLocaleDateString()}</span>
+                  <span style={{ 
+                    background: ev.event_status === 'Active' ? '#d1e7dd' : '#e2e3e5', 
+                    color: ev.event_status === 'Active' ? '#0f5132' : '#383d41', 
+                    padding: '2px 8px', borderRadius: '10px', fontWeight: 600, fontSize: '0.75rem' 
+                  }}>
+                    {ev.event_status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Mobile Recent Activity */}
+        <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e9ecef', overflow: 'hidden', marginBottom: '1.5rem' }}>
+          <div style={{ padding: '1rem', borderBottom: '1px solid #e9ecef', background: '#f8f9fa' }}>
+            <h5 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Clock size={16} /> Recent Scans
+            </h5>
+          </div>
+          <div style={{ padding: '1rem' }}>
+            {stats.recent_attendance?.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {stats.recent_attendance.map((att, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: idx < stats.recent_attendance.length - 1 ? '1px solid #f1f3f5' : 'none' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{att.first_name} <span style={{ color: '#6c757d', fontSize: '0.8rem' }}>({att.roll_number})</span></div>
+                      <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>Event ID: {att.event_id}</div>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#198754', fontWeight: 500 }}>
+                      {new Date(att.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', color: '#6c757d', padding: '1rem 0', fontSize: '0.9rem' }}>No recent scans recorded.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // DESKTOP PRESENTATION (Preserved Exactly)
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ marginBottom: '0.5rem', fontWeight: 700, color: '#212529' }}>Event Dashboard</h2>
