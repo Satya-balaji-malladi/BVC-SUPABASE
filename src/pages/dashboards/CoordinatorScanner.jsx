@@ -242,12 +242,20 @@ export default function CoordinatorScanner({ isNested = false }) {
       if (evtErr) throw evtErr;
       setEventData(event);
 
-      const { count: registeredCount } = await supabase
+      const { data: regData, error: regErr } = await supabase
         .from('event_participants')
-        .select('*', { count: 'exact', head: true })
+        .select('roll_number')
         .eq('event_id', eventId);
+        
+      let uniqueCount = 0;
+      if (!regErr && regData) {
+        const validRolls = regData
+          .map(r => (r.roll_number || '').trim().toUpperCase())
+          .filter(r => r !== '');
+        uniqueCount = new Set(validRolls).size;
+      }
 
-      setStats(prev => ({ ...prev, registered: registeredCount || 0 }));
+      setStats(prev => ({ ...prev, registered: uniqueCount }));
     } catch (err) {
       console.error('Failed to load dashboard:', err);
     } finally {
