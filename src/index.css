@@ -349,7 +349,7 @@ select.input-field {
   
   .header-actions > button,
   .header-actions > a {
-    width: 100%;
+    /* removed width: 100% to stop it from being too long */
     justify-content: center;
   }
 
