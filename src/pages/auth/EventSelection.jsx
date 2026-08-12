@@ -195,15 +195,14 @@ export default function EventSelection() {
         </div>
       </header>
 
-      {/* Centered Form */}
-      <main style={{ flex: 1, overflowY: 'auto', display: 'flex', padding: '2rem 1rem' }}>
+      <main style={{ flex: 1, overflowY: 'auto', display: 'flex', padding: '1rem', alignItems: 'center' }}>
         <div 
           className="glass-panel" 
           style={{ 
             width: '100%', 
             maxWidth: '520px', 
-            margin: 'auto',
-            padding: '1.75rem 2rem', 
+            margin: '0 auto',
+            padding: '1.5rem', 
             borderRadius: '20px', 
             boxShadow: 'var(--shadow-lg)',
             border: '2px solid rgba(59, 130, 246, 0.2)',
@@ -362,7 +361,6 @@ export default function EventSelection() {
                     onClick={() => setIsCreateModalOpen(true)}
                     className="btn btn-secondary"
                     style={{ 
-                      width: '100%', 
                       padding: '0.85rem', 
                       fontSize: '1rem', 
                       fontWeight: '600',
@@ -374,11 +372,12 @@ export default function EventSelection() {
                       cursor: 'pointer',
                       border: '2px dashed var(--accent-blue)',
                       background: 'transparent',
-                      color: 'var(--accent-blue)'
+                      color: 'var(--accent-blue)',
+                      width: '100%'
                     }}
                   >
-                    <Plus size={18} />
-                    Create Event
+                    <Plus size={20} />
+                    Create New Event
                   </button>
                 </div>
               )}
