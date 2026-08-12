@@ -419,13 +419,58 @@ export default function CoordinatorScanner({ isNested = false }) {
         p_token: tokenObj?.token || ''
       });
 
-      if (rpcError) {
-        showResult('error', `System Error: ${rpcError.message}`);
-        setProcessingScan(false);
-        return;
-      }
+      let result = rpcResult || {};
 
-      const result = rpcResult || {};
+      if (rpcError) {
+        if (rpcError.message.includes('Could not find the function') || rpcError.code === 'PGRST202') {
+          console.warn('RPC not found. Using client-side fallback for attendance...');
+          // 1. Check if student exists
+          const { data: stuData } = await supabase.from('students').select('*').eq('roll_number', rollNumber).single();
+          
+          if (!stuData) {
+            result = { status: 'NOT_FOUND' };
+          } else {
+            // 2. Check if registered
+            const { data: regData } = await supabase.from('event_participants')
+              .select('*').eq('event_id', eventId).eq('roll_number', rollNumber).single();
+              
+            if (!regData || regData.registration_status !== 'Active') {
+               result = { status: 'NOT_REGISTERED', student: stuData };
+            } else {
+               // 3. Check if already marked present
+               const { data: attData } = await supabase.from('event_attendance')
+                 .select('*').eq('event_id', eventId).eq('roll_number', rollNumber)
+                 .eq('attendance_date', currentAttendanceDate).single();
+                 
+               if (attData) {
+                 result = { status: 'DUPLICATE', student: stuData };
+               } else {
+                 // 4. Mark present
+                 const attId = `${eventId}_${rollNumber}_${currentAttendanceDate}`;
+                 const { error: insErr } = await supabase.from('event_attendance').insert({
+                   attendance_id: attId,
+                   event_id: eventId,
+                   participant_id: regData.participant_id || `${eventId}_${rollNumber}`,
+                   roll_number: rollNumber,
+                   attendance_date: currentAttendanceDate,
+                   attendance_method: inputMode === 'camera' ? 'QR' : 'Barcode'
+                 });
+                 
+                 if (insErr) {
+                   showResult('error', `Failed to mark attendance: ${insErr.message}`);
+                   setProcessingScan(false);
+                   return;
+                 }
+                 result = { status: 'SUCCESS', student: stuData, timestamp: new Date().toISOString() };
+               }
+            }
+          }
+        } else {
+          showResult('error', `System Error: ${rpcError.message}`);
+          setProcessingScan(false);
+          return;
+        }
+      }
       const status = result.status;
       const student = result.student;
 
