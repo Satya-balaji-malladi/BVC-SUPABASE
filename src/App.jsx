@@ -123,7 +123,6 @@ function App() {
     );
   }
 
-  // Routing Logic
   const getDashboardRoute = () => {
     if (!session) return '/login';
     if (profileIncomplete) return '/complete-profile';
@@ -132,7 +131,18 @@ function App() {
     if (normalized === 'SuperAdmin') return '/super-admin';
     if (normalized === 'HOD' || normalized === 'DepartmentAdmin') return '/department-admin';
     if (normalized === 'Developer') return '/developer';
-    if (['Faculty', 'EventAdmin', 'Coordinator', 'FacultyCoordinator', 'EventCoordinator', 'Student', 'Guest', 'STUDENT', 'GUEST', 'StudentCoordinator', 'GuestCoordinator'].includes(normalized)) return '/select-event';
+    
+    if (['Coordinator', 'FacultyCoordinator', 'EventCoordinator', 'Student', 'Guest', 'STUDENT', 'GUEST', 'StudentCoordinator', 'GuestCoordinator'].includes(normalized)) {
+      if (localStorage.getItem('selected_event_id')) {
+        return '/coordinator';
+      }
+      return '/select-event';
+    }
+    
+    if (['Faculty', 'EventAdmin'].includes(normalized)) {
+      return '/select-event';
+    }
+    
     return '/select-event';
   };
 
