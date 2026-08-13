@@ -57,7 +57,7 @@ BEGIN
 
     -- 4. Check Event Registration (if enabled)
     IF v_event.enable_registration = 'Yes' OR v_event.enable_registration = 'true' THEN
-        SELECT * INTO v_reg FROM event_participants WHERE event_id = p_event_id AND roll_number = p_roll_number;
+        SELECT * INTO v_reg FROM event_participants WHERE event_id = p_event_id AND roll_number ILIKE p_roll_number;
         IF NOT FOUND THEN
             RETURN json_build_object(
                 'status', 'NOT_REGISTERED', 
@@ -75,7 +75,7 @@ BEGIN
     -- 5. Duplicate Check
     SELECT attendance_id INTO v_attendance_id FROM attendance 
     WHERE event_id = p_event_id 
-      AND roll_number = p_roll_number 
+      AND roll_number ILIKE p_roll_number 
       AND date = p_attendance_date;
       
     IF FOUND THEN

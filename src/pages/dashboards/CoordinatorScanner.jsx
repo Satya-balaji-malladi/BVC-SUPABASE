@@ -450,7 +450,7 @@ export default function CoordinatorScanner({ isNested = false }) {
           } else {
             // 2. Check if registered
             const { data: regData } = await supabase.from('event_participants')
-              .select('*').eq('event_id', eventId).eq('roll_number', rollNumber).single();
+              .select('*').eq('event_id', eventId).ilike('roll_number', rollNumber).single();
               
             if (!regData || regData.registration_status !== 'Active') {
                result = { status: 'NOT_REGISTERED', student: stuData };
