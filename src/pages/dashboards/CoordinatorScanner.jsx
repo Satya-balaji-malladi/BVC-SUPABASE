@@ -394,8 +394,16 @@ export default function CoordinatorScanner({ isNested = false }) {
         .eq('event_id', eventId)
         .eq('date', today);
 
-      if (participants && participants.length > 0) {
-        const rollNumbers = participants.map(p => p.roll_number);
+      const allRollsSet = new Set();
+      (participants || []).forEach(p => { if (p.roll_number) allRollsSet.add(p.roll_number.toUpperCase()); });
+      (todaysAttendance || []).forEach(a => { if (a.roll_number) allRollsSet.add(a.roll_number.toUpperCase()); });
+      
+      const combinedParticipants = Array.from(allRollsSet).map(roll => ({ roll_number: roll }));
+
+      if (combinedParticipants.length > 0) {
+        const rollNumbers = combinedParticipants.map(p => p.roll_number);
+        
+        // Fetch student details in chunks if list is too large (Supabase limits .in() to ~1000 items usually, but we assume small batches for now, or just send all)
         const { data: studentsData } = await supabase
           .from('students')
           .select('roll_number, student_name, department_id, year')
@@ -424,8 +432,8 @@ export default function CoordinatorScanner({ isNested = false }) {
           if (a.roll_number) attMap.set(a.roll_number.toUpperCase(), a);
         });
 
-        const mapped = participants.map(p => {
-          const rollUpper = (p.roll_number || '').toUpperCase();
+        const mapped = combinedParticipants.map(p => {
+          const rollUpper = p.roll_number;
           const s = stuMap.get(rollUpper);
           const att = attMap.get(rollUpper);
           return {
