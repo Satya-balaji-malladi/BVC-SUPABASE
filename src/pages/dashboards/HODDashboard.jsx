@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Users, Calendar, UserSquare2, BookOpen, Activity, Filter, Eye } from 'lucide-react';
+import { Users, Calendar, UserSquare2, BookOpen, Activity, Filter, Eye, UploadCloud } from 'lucide-react';
+import ImportStudentsModal from '../../components/widgets/ImportStudentsModal';
 
 export default function HODDashboard() {
   const [stats, setStats] = useState({ events: 0, faculty: 0, students: 0, participants: 0 });
@@ -13,6 +14,7 @@ export default function HODDashboard() {
   const [filters, setFilters] = useState({
     status: 'All'
   });
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -153,6 +155,9 @@ export default function HODDashboard() {
           <h1 className="text-gradient">{departmentName} Dashboard</h1>
           <p>Overview of your department's events, faculty, and students.</p>
         </div>
+        <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <UploadCloud size={18} /> Import Students
+        </button>
       </div>
 
       {/* Stats Row */}
@@ -338,6 +343,15 @@ export default function HODDashboard() {
         </div>
 
       </div>
+      
+      <ImportStudentsModal 
+        isOpen={showImportModal} 
+        onClose={() => setShowImportModal(false)} 
+        onSuccess={() => {
+          setShowImportModal(false);
+          fetchDashboardData();
+        }} 
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Users, Calendar, CheckCircle, Building2, Trophy, ArrowUpRight, Plus, Download, Search, Shield } from 'lucide-react';
+import { Users, Calendar, CheckCircle, Building2, Trophy, ArrowUpRight, Plus, Download, Search, Shield, UploadCloud } from 'lucide-react';
+import ImportStudentsModal from '../../components/widgets/ImportStudentsModal';
 
 export default function SuperAdminDashboard() {
   const [stats, setStats] = useState({
@@ -13,6 +14,8 @@ export default function SuperAdminDashboard() {
     topEventName: 'No events today',
     topEventAttendees: 0
   });
+  
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     const fetchBasicStats = async () => {
@@ -181,6 +184,10 @@ export default function SuperAdminDashboard() {
             <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: '50%', color: '#10b981' }}><Users size={24} /></div>
             <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>Manage Users</span>
           </button>
+          <button onClick={() => setShowImportModal(true)} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%', border: '1px solid rgba(14, 165, 233, 0.2)', cursor: 'pointer', transition: 'all 0.2s' }}>
+            <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '1rem', borderRadius: '50%', color: '#0ea5e9' }}><UploadCloud size={24} /></div>
+            <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>Import Students</span>
+          </button>
           <button className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%', border: '1px solid rgba(245, 158, 11, 0.2)', cursor: 'pointer', transition: 'all 0.2s' }}>
             <div style={{ background: 'rgba(245, 158, 11, 0.1)', padding: '1rem', borderRadius: '50%', color: '#f59e0b' }}><Search size={24} /></div>
             <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>System Logs</span>
@@ -193,5 +200,13 @@ export default function SuperAdminDashboard() {
       </div>
 
     </div>
+    
+    <ImportStudentsModal 
+      isOpen={showImportModal} 
+      onClose={() => setShowImportModal(false)} 
+      onSuccess={() => {
+        setShowImportModal(false);
+      }} 
+    />
   );
 }
