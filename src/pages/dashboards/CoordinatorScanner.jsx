@@ -452,7 +452,7 @@ export default function CoordinatorScanner({ isNested = false }) {
             const { data: regData } = await supabase.from('event_participants')
               .select('*').eq('event_id', eventId).ilike('roll_number', rollNumber).single();
               
-            if (!regData || regData.registration_status !== 'Active') {
+            if (!regData || !['Active', 'Registered', 'Approved'].includes(regData.registration_status)) {
                result = { status: 'NOT_REGISTERED', student: stuData };
             } else {
                // 3. Check if already marked present
