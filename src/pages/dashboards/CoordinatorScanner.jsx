@@ -9,6 +9,49 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const COMMON_COLLEGES = [
+  "AUMP - Andhra University College of Engineering",
+  "GVPT - Gayatri Vidya Parishad College of Engineering",
+  "ANIL - Anil Neerukonda Institute of Technology and Sciences",
+  "SRKR - S.R.K.R. Engineering College",
+  "VRSE - V.R. Siddhartha Engineering College",
+  "GVPW - GVP College of Engineering for Women",
+  "PRAG - Pragati Engineering College",
+  "SVEC - Sree Vidyanikethan Engineering College",
+  "MVGR - MVGR College of Engineering",
+  "BVRIT - Padmasri Dr B.V Raju Institute of Technology",
+  "CBIT - Chaitanya Bharathi Institute of Technology",
+  "VNRV - VNR Vignana Jyothi Institute of Engineering and Technology",
+  "VASV - Vasavi College of Engineering",
+  "GRIET - Gokaraju Rangaraju Institute of Engineering and Technology",
+  "JNTUK - JNTU Kakinada",
+  "JNTUH - JNTU Hyderabad",
+  "JNTUA - JNTU Anantapur",
+  "AU - Andhra University",
+  "OU - Osmania University",
+  "VIT - Vellore Institute of Technology",
+  "SRM - SRM Institute of Science and Technology",
+  "KLCE - KL University",
+  "GITAM - GITAM University"
+];
+
+const COMMON_DEPARTMENTS = [
+  "CSE - Computer Science and Engineering",
+  "ECE - Electronics and Communication Engineering",
+  "EEE - Electrical and Electronics Engineering",
+  "MECH - Mechanical Engineering",
+  "CIVIL - Civil Engineering",
+  "IT - Information Technology",
+  "AIDS - Artificial Intelligence and Data Science",
+  "AIML - Artificial Intelligence and Machine Learning",
+  "CSD - Computer Science and Design",
+  "CSM - Computer Science and Engineering (AIML)",
+  "EIE - Electronics and Instrumentation Engineering",
+  "CHEM - Chemical Engineering",
+  "BTECH - Bachelor of Technology (General)",
+  "MBA - Master of Business Administration",
+  "MCA - Master of Computer Applications"
+];
 export default function CoordinatorScanner({ isNested = false }) {
   const navigate = useNavigate();
   const [userRole, setUserRole] = useState('');
@@ -62,7 +105,9 @@ export default function CoordinatorScanner({ isNested = false }) {
     college_type: 'BVC', // 'BVC' or 'Other'
     college_name: '',
     department: '',
+    manual_department: '',
     branch: '',
+    manual_branch: '',
     section: '',
     year: ''
   });
@@ -619,7 +664,8 @@ export default function CoordinatorScanner({ isNested = false }) {
 
   const handleSpotSubmit = async (e) => {
     e.preventDefault();
-    if (!spotData.student_name || !spotData.department || !spotData.year) return;
+    const finalDepartment = spotData.department === 'Other' ? spotData.manual_department.trim() : spotData.department;
+    if (!spotData.student_name || !finalDepartment || !spotData.year) return;
     
     setSpotSaving(true);
     try {
@@ -634,7 +680,7 @@ export default function CoordinatorScanner({ isNested = false }) {
           roll_number: cleanRoll,
           student_name: fullName,
           college_name: spotData.college_name,
-          department: spotData.department,
+          department: finalDepartment,
           year: spotData.year
         }], { onConflict: 'roll_number' });
       }
@@ -645,7 +691,7 @@ export default function CoordinatorScanner({ isNested = false }) {
         roll_number: cleanRoll,
         student_name: fullName,
         college: college,
-        department_id: spotData.department,
+        department_id: finalDepartment,
         section: spotData.section,
         year: parseInt(spotData.year) || 1
       }], { onConflict: 'roll_number' });
@@ -943,7 +989,10 @@ export default function CoordinatorScanner({ isNested = false }) {
                 {spotData.college_type === 'Other' && (
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', color: '#475569', marginBottom: '0.25rem' }}>External College Name *</label>
-                    <input required type="text" value={spotData.college_name} onChange={e => setSpotData({...spotData, college_name: e.target.value})} style={{ width: '100%', padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px' }} />
+                    <input required type="text" list="college-options" placeholder="Search or type college name..." value={spotData.college_name} onChange={e => setSpotData({...spotData, college_name: e.target.value})} style={{ width: '100%', padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px' }} />
+                    <datalist id="college-options">
+                      {COMMON_COLLEGES.map((col, idx) => <option key={idx} value={col} />)}
+                    </datalist>
                   </div>
                 )}
 
@@ -957,7 +1006,16 @@ export default function CoordinatorScanner({ isNested = false }) {
                           {d.department_name || d.department_code || d.department_id}
                         </option>
                       ))}
+                      <option value="Other">Other / Manual Entry</option>
                     </select>
+                    {spotData.department === 'Other' && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <input required type="text" list="dept-options" placeholder="Enter Department..." value={spotData.manual_department} onChange={e => setSpotData({...spotData, manual_department: e.target.value})} style={{ width: '100%', padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px' }} />
+                        <datalist id="dept-options">
+                          {COMMON_DEPARTMENTS.map((d, idx) => <option key={idx} value={d} />)}
+                        </datalist>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', color: '#475569', marginBottom: '0.25rem' }}>Branch *</label>
@@ -968,7 +1026,13 @@ export default function CoordinatorScanner({ isNested = false }) {
                           {b.branch_name || b.branch_code}
                         </option>
                       ))}
+                      <option value="Other">Other / Manual Entry</option>
                     </select>
+                    {spotData.branch === 'Other' && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <input required type="text" placeholder="Enter Branch..." value={spotData.manual_branch} onChange={e => setSpotData({...spotData, manual_branch: e.target.value})} style={{ width: '100%', padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px' }} />
+                      </div>
+                    )}
                   </div>
                 </div>
 
