@@ -449,16 +449,20 @@ export default function CoordinatorScanner({ isNested = false }) {
             result = { status: 'NOT_FOUND' };
           } else {
             // 2. Check if registered
-            const { data: regData } = await supabase.from('event_participants')
-              .select('*').eq('event_id', eventId).ilike('roll_number', rollNumber).single();
+            const { data: regDataList, error: regErr } = await supabase.from('event_participants')
+              .select('*').eq('event_id', eventId).ilike('roll_number', rollNumber).limit(1);
+            
+            const regData = regDataList && regDataList.length > 0 ? regDataList[0] : null;
               
             if (!regData || !['Active', 'Registered', 'Approved'].includes(regData.registration_status)) {
                result = { status: 'NOT_REGISTERED', student: stuData };
             } else {
                // 3. Check if already marked present
-               const { data: attData } = await supabase.from('attendance')
+               const { data: attDataList } = await supabase.from('attendance')
                  .select('*').eq('event_id', eventId).eq('roll_number', rollNumber)
-                 .eq('date', currentAttendanceDate).single();
+                 .eq('date', currentAttendanceDate).limit(1);
+                 
+               const attData = attDataList && attDataList.length > 0 ? attDataList[0] : null;
                  
                if (attData) {
                  result = { status: 'DUPLICATE', student: stuData };
