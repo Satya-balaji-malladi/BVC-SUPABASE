@@ -4,7 +4,8 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import SessionService from '../../services/SessionService';
 import { 
   Scan, CheckCircle2, XCircle, AlertTriangle, User, Menu,
-  MapPin, Clock, Camera, Keyboard, RefreshCw, ArrowLeft, ArrowRight, Users, Calendar, Loader2, LayoutDashboard, Search, ListChecks, LogOut
+  MapPin, Clock, Camera, Keyboard, RefreshCw, ArrowLeft, ArrowRight, Users, Calendar, Loader2, LayoutDashboard, Search, ListChecks, LogOut,
+  Bell, FileText, Info, ChevronRight, Download
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -21,6 +22,19 @@ export default function CoordinatorScanner({ isNested = false }) {
   const [currentAttendanceDate, setCurrentAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [eventDays, setEventDays] = useState([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 767);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 767);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile && activeModule === 'scanner' && !localStorage.getItem('started_scanning')) {
+       setActiveModule('home');
+    }
+  }, [isMobile]);
   
   // Data State
   const [stats, setStats] = useState({ registered: 0, present: 0 });
@@ -805,7 +819,7 @@ export default function CoordinatorScanner({ isNested = false }) {
       )}
 
       {/* STATISTICS */}
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+      <section className="desktop-only" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         {[
           { label: 'Registered', value: stats.registered, icon: <Users size={20} color="#3b82f6" />, bg: '#eff6ff', onClick: () => setActiveModule('registered') },
           { label: 'Present Today', value: stats.present, icon: <CheckCircle2 size={20} color="#22c55e" />, bg: '#dcfce7', onClick: () => { setActiveModule('attendance'); setAttendanceFilter('Present'); } },
@@ -832,7 +846,7 @@ export default function CoordinatorScanner({ isNested = false }) {
 
       <div className="scanner-layout" style={{ display: 'grid', gap: '1.5rem', gridTemplateColumns: '1fr', alignItems: 'start' }}>
       <section style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div className="desktop-only" style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>Scan Student</h3>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Scan student ID or QR code to record attendance</p>
@@ -850,6 +864,20 @@ export default function CoordinatorScanner({ isNested = false }) {
               <Camera size={16} /> Camera
             </button>
           </div>
+        </div>
+        
+        {/* MOBILE SEGMENTED CONTROL */}
+        <div className="mobile-only" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px', margin: '0 1.5rem 1rem 1.5rem' }}>
+            <button 
+              onClick={() => setInputMode('camera')}
+              style={{ flex: 1, padding: '0.5rem 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', border: 'none', background: inputMode === 'camera' ? '#fff' : 'transparent', color: inputMode === 'camera' ? '#0f172a' : '#64748b', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', boxShadow: inputMode === 'camera' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none', transition: 'all 0.2s' }}>
+              <Scan size={16} /> Scan
+            </button>
+            <button 
+              onClick={() => setInputMode('keyboard')}
+              style={{ flex: 1, padding: '0.5rem 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', border: 'none', background: inputMode === 'keyboard' ? '#fff' : 'transparent', color: inputMode === 'keyboard' ? '#0f172a' : '#64748b', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', boxShadow: inputMode === 'keyboard' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none', transition: 'all 0.2s' }}>
+              <Keyboard size={16} /> Manual
+            </button>
         </div>
 
         <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f8fafc', minHeight: '300px', justifyContent: 'center', position: 'relative' }}>
@@ -1167,7 +1195,7 @@ export default function CoordinatorScanner({ isNested = false }) {
 
   const renderAttendanceModule = () => (
     <section style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-      <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="desktop-only" style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             Attendance List
@@ -1198,6 +1226,37 @@ export default function CoordinatorScanner({ isNested = false }) {
             />
           </div>
         </div>
+      </div>
+
+      {/* MOBILE FILTERS */}
+      <div className="mobile-only" style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+         <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <select 
+              value={attendanceFilter} 
+              onChange={(e) => setAttendanceFilter(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#fff', flex: '1', minWidth: '100px' }}
+            >
+              <option value="All">All Status</option>
+              <option value="Present">Present</option>
+              <option value="Absent">Absent</option>
+            </select>
+            <div className="search-container" style={{ position: 'relative', flex: '2' }}>
+              <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={attendanceSearch}
+                onChange={(e) => setAttendanceSearch(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 1rem 0.5rem 2.2rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
+              />
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem', scrollbarWidth: 'none' }}>
+            <button onClick={() => setAttendanceFilter('All')} style={{ padding: '0.4rem 1rem', borderRadius: '999px', border: 'none', background: attendanceFilter === 'All' ? '#1e3a8a' : '#f1f5f9', color: attendanceFilter === 'All' ? '#fff' : '#475569', fontWeight: '600', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s' }}>All ({filteredAttendance.length + filteredAbsent.length})</button>
+            <button onClick={() => setAttendanceFilter('Present')} style={{ padding: '0.4rem 1rem', borderRadius: '999px', border: 'none', background: attendanceFilter === 'Present' ? '#166534' : '#f1f5f9', color: attendanceFilter === 'Present' ? '#fff' : '#475569', fontWeight: '600', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s' }}>Present ({filteredAttendance.length})</button>
+            <button onClick={() => setAttendanceFilter('Absent')} style={{ padding: '0.4rem 1rem', borderRadius: '999px', border: 'none', background: attendanceFilter === 'Absent' ? '#991b1b' : '#f1f5f9', color: attendanceFilter === 'Absent' ? '#fff' : '#475569', fontWeight: '600', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s' }}>Absent ({filteredAbsent.length})</button>
+          </div>
       </div>
       <div className="responsive-table-wrapper" style={{ padding: '1rem' }}>
         <table className="desktop-only" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
@@ -1308,12 +1367,26 @@ export default function CoordinatorScanner({ isNested = false }) {
 
   const renderRegisteredModule = () => (
     <section style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-      <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="desktop-only" style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>Registered Students</h3>
           <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>All students permitted for this event</p>
         </div>
         <div style={{ position: 'relative' }}>
+          <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+          <input 
+            type="text" 
+            placeholder="Search roll no or name..." 
+            value={registeredSearch}
+            onChange={(e) => setRegisteredSearch(e.target.value)}
+            style={{ width: '100%', padding: '0.5rem 1rem 0.5rem 2.2rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
+          />
+        </div>
+      </div>
+
+      {/* MOBILE SEARCH */}
+      <div className="mobile-only" style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>
+        <div className="search-container" style={{ position: 'relative' }}>
           <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
           <input 
             type="text" 
@@ -1371,6 +1444,103 @@ export default function CoordinatorScanner({ isNested = false }) {
     </section>
   );
 
+  const renderMobileHomeModule = () => (
+    <div className="mobile-only" style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Event Card */}
+      <div style={{ background: '#fff', padding: '1.25rem', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ background: isLive ? '#dcfce7' : '#f1f5f9', color: isLive ? '#166534' : '#475569', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: isLive ? '#22c55e' : '#94a3b8' }} />
+            {isLive ? 'LIVE' : 'UPCOMING'}
+          </span>
+          <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px' }}>
+            {eventData?.enable_registration === 'Yes' ? 'Registered Entry' : 'Open Entry'}
+          </span>
+        </div>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>{eventData?.event_name || 'Unknown Event'}</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={14} /> {eventData?.location || 'TBD'}</div>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={14} /> {new Date(eventData?.start_date).toLocaleDateString()}</div>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Info size={14} /> ID: {eventData?.event_id}</div>
+        </div>
+      </div>
+
+      {/* Today's Summary */}
+      <div>
+        <h3 style={{ fontSize: '1.05rem', color: '#0f172a', margin: '0 0 0.75rem 0.25rem' }}>Today's Summary</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#eff6ff', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={20} /></div>
+             <div>
+               <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Registered</div>
+               <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0f172a' }}>{stats.registered}</div>
+               <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Students</div>
+             </div>
+          </div>
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#dcfce7', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle2 size={20} /></div>
+             <div>
+               <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Present Today</div>
+               <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0f172a' }}>{stats.present}</div>
+               <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Students</div>
+             </div>
+          </div>
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#fef3c7', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={20} /></div>
+             <div>
+               <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Remaining</div>
+               <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0f172a' }}>{remaining}</div>
+               <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Students</div>
+             </div>
+          </div>
+          <div style={{ background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f3e8ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Scan size={20} /></div>
+             <div>
+               <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Attendance %</div>
+               <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0f172a' }}>{percentage}%</div>
+               <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Today</div>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Scan Attendance Large Button */}
+      <button onClick={() => setActiveModule('scanner')} style={{ background: '#2446B8', color: '#fff', border: 'none', borderRadius: '16px', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(36,70,184,0.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Scan size={28} />
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: '1.1rem', fontWeight: '600' }}>Scan Attendance</div>
+            <div style={{ fontSize: '0.8rem', opacity: 0.85 }}>Scan student ID to mark attendance</div>
+          </div>
+        </div>
+        <ChevronRight size={20} />
+      </button>
+
+      {/* Quick Actions */}
+      <div>
+        <h3 style={{ fontSize: '1.05rem', color: '#0f172a', margin: '0 0 0.75rem 0.25rem' }}>Quick Actions</h3>
+        <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+          <button onClick={() => setActiveModule('attendance')} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', minWidth: '76px', height: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <div style={{ color: '#3b82f6' }}><FileText size={22} /></div>
+            <span style={{ fontSize: '0.65rem', color: '#475569', fontWeight: '500', whiteSpace: 'nowrap' }}>Attendance</span>
+          </button>
+          <button onClick={() => setActiveModule('registered')} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', minWidth: '76px', height: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <div style={{ color: '#22c55e' }}><Users size={22} /></div>
+            <span style={{ fontSize: '0.65rem', color: '#475569', fontWeight: '500' }}>Registered</span>
+          </button>
+          <button onClick={() => alert('Reports module under construction')} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', minWidth: '76px', height: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <div style={{ color: '#f59e0b' }}><FileText size={22} /></div>
+            <span style={{ fontSize: '0.65rem', color: '#475569', fontWeight: '500' }}>Reports</span>
+          </button>
+          <button onClick={() => alert('Event info module under construction')} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', minWidth: '76px', height: '80px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <div style={{ color: '#8b5cf6' }}><Info size={22} /></div>
+            <span style={{ fontSize: '0.65rem', color: '#475569', fontWeight: '500', whiteSpace: 'nowrap' }}>Event Info</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ height: isNested ? '100%' : '100vh', overflowY: isNested ? 'visible' : 'auto', background: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
       
@@ -1406,18 +1576,54 @@ export default function CoordinatorScanner({ isNested = false }) {
 
       {/* MOBILE HEADER */}
       {!isNested && (
-      <header className="mobile-only" style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '0 1rem', height: '64px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 90 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button onClick={() => setIsDrawerOpen(true)} style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#0f172a' }}>
-            <Menu size={24} />
-          </button>
-          <h1 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: '600' }}>
-            {activeModule === 'scanner' ? 'Scan Student' : activeModule === 'attendance' ? 'Attendance' : 'Registered Students'}
-          </h1>
-        </div>
-        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-          <User size={16} />
-        </div>
+      <header className="mobile-only" style={{ background: '#2446B8', color: '#fff', padding: '1rem 1rem 3rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, zIndex: 90 }}>
+        {activeModule === 'home' ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button onClick={() => setIsDrawerOpen(true)} style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#fff' }}>
+                <Menu size={24} />
+              </button>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>Coordinator</h1>
+                <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>Event Operations</div>
+              </div>
+            </div>
+            <div style={{ position: 'relative', marginTop: '0.25rem' }}>
+              <Bell size={24} color="#fff" />
+              <div style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: '#fff', fontSize: '0.65rem', fontWeight: 'bold', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>3</div>
+            </div>
+          </>
+        ) : activeModule === 'scanner' ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button onClick={() => setActiveModule('home')} style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#fff' }}>
+                <ArrowLeft size={24} />
+              </button>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>Scan Attendance</h1>
+                <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>Mark student attendance</div>
+              </div>
+            </div>
+            <button style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#fff', marginTop: '0.25rem' }}>
+              <RefreshCw size={20} />
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button onClick={() => setActiveModule('home')} style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#fff' }}>
+                <ArrowLeft size={24} />
+              </button>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>{activeModule === 'attendance' ? 'Attendance List' : 'Registered Students'}</h1>
+                <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>{activeModule === 'attendance' ? 'View all students' : 'Permitted students'}</div>
+              </div>
+            </div>
+            <button style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#fff', marginTop: '0.25rem' }}>
+              <Search size={20} />
+            </button>
+          </>
+        )}
       </header>
       )}
 
@@ -1486,7 +1692,7 @@ export default function CoordinatorScanner({ isNested = false }) {
         )}
 
         {/* MAIN CONTENT */}
-        <main style={{ flex: 1, padding: isNested ? '0' : '1.5rem', overflowY: 'auto' }}>
+        <main className="mobile-main-content" style={{ flex: 1, padding: isNested ? '0' : '1.5rem', overflowY: 'auto' }}>
           
           {/* EVENT CONTEXT */}
           <section className="desktop-only" style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '1.5rem' }}>
@@ -1517,24 +1723,6 @@ export default function CoordinatorScanner({ isNested = false }) {
             </div>
           </section>
 
-          {/* MOBILE EVENT CARD */}
-          <section className="mobile-only" style={{ background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ background: isLive ? '#dcfce7' : '#f1f5f9', color: isLive ? '#166534' : '#475569', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px' }}>{isLive ? 'LIVE' : 'UPCOMING'}</span>
-              <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px' }}>{eventData?.enable_registration === 'Yes' ? 'Registered Entry' : 'Open Entry'}</span>
-            </div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>{eventData?.event_name || 'Unknown Event'}</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
-               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={14} /> {eventData?.location || 'TBD'}</div>
-               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={14} /> {new Date(eventData?.start_date).toLocaleDateString()}</div>
-               <div>ID: {eventData?.event_id}</div>
-            </div>
-            {!isNested && (
-               <button onClick={() => navigate('/select-event')} style={{ width: '100%', padding: '0.75rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#334155', fontWeight: '600', marginTop: '0.5rem' }}>
-                 Switch Event
-               </button>
-            )}
-          </section>
 
           {isNested && (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: '#fff', padding: '0.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -1550,6 +1738,7 @@ export default function CoordinatorScanner({ isNested = false }) {
             </div>
           )}
 
+          {isMobile && activeModule === 'home' && renderMobileHomeModule()}
           {activeModule === 'scanner' && renderScannerModule()}
           {activeModule === 'attendance' && renderAttendanceModule()}
           {activeModule === 'registered' && renderRegisteredModule()}
@@ -1558,19 +1747,19 @@ export default function CoordinatorScanner({ isNested = false }) {
       </div>
 
       {/* MOBILE BOTTOM NAV */}
-      <nav className="mobile-bottom-nav desktop-only" style={{ display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #e2e8f0', zIndex: 100, height: '70px' }}>
+      <nav className="mobile-only" style={{ display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #e2e8f0', zIndex: 100, height: '70px', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', height: '100%', padding: '0 0.5rem' }}>
-          <button onClick={() => navigate('/')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: '#64748b', padding: '0.5rem' }}>
-            <LayoutDashboard size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Home</span>
+          <button onClick={() => setActiveModule('home')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'home' ? '#2446B8' : '#64748b', padding: '0.5rem' }}>
+            <LayoutDashboard size={24} /> <span style={{ fontSize: '0.65rem', fontWeight: '500' }}>Home</span>
           </button>
-          <button onClick={() => setActiveModule('scanner')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'scanner' ? '#1d4ed8' : '#64748b', padding: '0.5rem' }}>
-            <Scan size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Scan</span>
+          <button onClick={() => setActiveModule('scanner')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'scanner' ? '#2446B8' : '#64748b', padding: '0.5rem' }}>
+            <Scan size={24} /> <span style={{ fontSize: '0.65rem', fontWeight: '500' }}>Scan</span>
           </button>
-          <button onClick={() => setActiveModule('registered')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'registered' ? '#1d4ed8' : '#64748b', padding: '0.5rem' }}>
-            <Users size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Students</span>
+          <button onClick={() => setActiveModule('attendance')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'attendance' ? '#2446B8' : '#64748b', padding: '0.5rem' }}>
+            <Users size={24} /> <span style={{ fontSize: '0.65rem', fontWeight: '500' }}>Students</span>
           </button>
           <button onClick={() => setIsDrawerOpen(true)} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: '#64748b', padding: '0.5rem' }}>
-            <Menu size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>More</span>
+            <Menu size={24} /> <span style={{ fontSize: '0.65rem', fontWeight: '500' }}>More</span>
           </button>
         </div>
       </nav>
@@ -1595,7 +1784,15 @@ export default function CoordinatorScanner({ isNested = false }) {
           .coordinator-sidebar { display: none !important; }
           .layout-container { height: auto !important; padding-bottom: 80px; }
           .mobile-bottom-nav { display: block !important; }
-          main { padding: 1rem 0.5rem !important; }
+          .mobile-main-content {
+             background: #F6F8FC !important;
+             margin-top: -30px !important;
+             border-top-left-radius: 24px !important;
+             border-top-right-radius: 24px !important;
+             position: relative !important;
+             z-index: 95 !important;
+             padding: 1.5rem 1rem !important;
+          }
           .attendance-filters { flex-direction: column !important; width: 100%; align-items: stretch !important; }
           .attendance-filters select, .attendance-filters .search-container { width: 100% !important; }
         }
