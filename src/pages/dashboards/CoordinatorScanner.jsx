@@ -1727,9 +1727,11 @@ export default function CoordinatorScanner({ isNested = false }) {
                <button onClick={() => {setActiveModule('attendance'); setIsDrawerOpen(false);}} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'attendance' ? '#eff6ff' : 'transparent', color: activeModule === 'attendance' ? '#1d4ed8' : '#475569', fontWeight: '600', textAlign: 'left', width: '100%' }}>
                   <ListChecks size={18} /> Attendance
                </button>
-               <button onClick={() => {setActiveModule('registered'); setIsDrawerOpen(false);}} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'registered' ? '#eff6ff' : 'transparent', color: activeModule === 'registered' ? '#1d4ed8' : '#475569', fontWeight: '600', textAlign: 'left', width: '100%' }}>
-                  <Users size={18} /> Registered Students
-               </button>
+               {(eventData?.enable_registration === 'Yes' || eventData?.enable_registration === 'true' || eventData?.enable_registration === true) && (
+                 <button onClick={() => {setActiveModule('registered'); setIsDrawerOpen(false);}} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'registered' ? '#eff6ff' : 'transparent', color: activeModule === 'registered' ? '#1d4ed8' : '#475569', fontWeight: '600', textAlign: 'left', width: '100%' }}>
+                    <Users size={18} /> Registered Students
+                 </button>
+               )}
             </div>
             <div style={{ marginTop: 'auto', padding: '1rem', borderTop: '1px solid #f1f5f9' }}>
                <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff5f5', color: '#dc2626', fontWeight: '600', textAlign: 'left', width: '100%' }}>
@@ -1758,11 +1760,13 @@ export default function CoordinatorScanner({ isNested = false }) {
             style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'attendance' ? '#eff6ff' : 'transparent', color: activeModule === 'attendance' ? '#1d4ed8' : '#475569', fontWeight: activeModule === 'attendance' ? '600' : '500', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
             <ListChecks size={18} /> Attendance
           </button>
-          <button 
-            onClick={() => setActiveModule('registered')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'registered' ? '#eff6ff' : 'transparent', color: activeModule === 'registered' ? '#1d4ed8' : '#475569', fontWeight: activeModule === 'registered' ? '600' : '500', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
-            <Users size={18} /> Registered Students
-          </button>
+          {(eventData?.enable_registration === 'Yes' || eventData?.enable_registration === 'true' || eventData?.enable_registration === true) && (
+            <button 
+              onClick={() => setActiveModule('registered')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'registered' ? '#eff6ff' : 'transparent', color: activeModule === 'registered' ? '#1d4ed8' : '#475569', fontWeight: activeModule === 'registered' ? '600' : '500', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
+              <Users size={18} /> Registered Students
+            </button>
+          )}
 
           <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #f1f5f9' }}>
             <button 
