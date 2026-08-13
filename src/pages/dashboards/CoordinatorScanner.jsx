@@ -493,13 +493,18 @@ export default function CoordinatorScanner({ isNested = false }) {
           if (!stuData) {
             result = { status: 'NOT_FOUND' };
           } else {
-            // 2. Check if registered
-            const { data: regDataList, error: regErr } = await supabase.from('event_participants')
-              .select('*').eq('event_id', eventId).ilike('roll_number', rollNumber).limit(1);
+            // 2. Check if registered (ONLY if event requires registration)
+            const requiresRegistration = eventData?.enable_registration === 'Yes' || eventData?.enable_registration === 'true' || eventData?.enable_registration === true;
             
-            const regData = regDataList && regDataList.length > 0 ? regDataList[0] : null;
-              
-            if (!regData || !['Active', 'Registered', 'Approved'].includes(regData.registration_status)) {
+            let isRegistered = true;
+            if (requiresRegistration) {
+              const { data: regDataList } = await supabase.from('event_participants')
+                .select('*').eq('event_id', eventId).ilike('roll_number', rollNumber).limit(1);
+              const regData = regDataList && regDataList.length > 0 ? regDataList[0] : null;
+              isRegistered = regData && ['Active', 'Registered', 'Approved'].includes(regData.registration_status);
+            }
+
+            if (!isRegistered) {
                result = { status: 'NOT_REGISTERED', student: stuData };
             } else {
                // 3. Check if already marked present
