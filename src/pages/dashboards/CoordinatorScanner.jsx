@@ -862,7 +862,7 @@ export default function CoordinatorScanner({ isNested = false }) {
         </div>
         
         {/* MOBILE SEGMENTED CONTROL */}
-        <div className="mobile-only" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px', margin: '0 1.5rem 1rem 1.5rem' }}>
+        <div className="mobile-only-flex" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px', margin: '0 1.5rem 1rem 1.5rem' }}>
             <button 
               onClick={() => setInputMode('camera')}
               style={{ flex: 1, padding: '0.5rem 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', border: 'none', background: inputMode === 'camera' ? '#fff' : 'transparent', color: inputMode === 'camera' ? '#0f172a' : '#64748b', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', boxShadow: inputMode === 'camera' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none', transition: 'all 0.2s' }}>
