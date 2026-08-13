@@ -45,14 +45,19 @@ export default function HODDashboard() {
         console.error("Error fetching user profile:", profileError);
       }
 
-      const departmentCode = userProfile?.department || user?.department;
+      const rawDepartmentCode = userProfile?.department || user?.department;
+      
+      if (rawDepartmentCode) {
+        // Ensure the department code has the DEPT_ prefix for querying foreign keys
+        const departmentCode = rawDepartmentCode.startsWith('DEPT_') 
+          ? rawDepartmentCode 
+          : `DEPT_${rawDepartmentCode}`;
 
-      if (departmentCode) {
         const { data: dept } = await supabase.from('departments').select('department_name').eq('department_id', departmentCode).single();
-        setDepartmentName(dept?.department_name || departmentCode || 'Your Department');
+        setDepartmentName(dept?.department_name || rawDepartmentCode || 'Your Department');
         
         // Fetch stats scoped to department
-        const { count: eventsCount } = await supabase.from('events').select('*', { count: 'exact', head: true }).ilike('departments', `%${departmentCode}%`);
+        const { count: eventsCount } = await supabase.from('events').select('*', { count: 'exact', head: true }).ilike('departments', `%${rawDepartmentCode}%`);
         const { count: facultyCount } = await supabase.from('faculty').select('*', { count: 'exact', head: true }).eq('department_id', departmentCode);
         const { count: studentCount } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('department_id', departmentCode);
         
@@ -64,7 +69,7 @@ export default function HODDashboard() {
         });
 
         // Fetch Recent Events scoped to department
-        let query = supabase.from('events').select('event_id, event_name, start_date, event_status').ilike('departments', `%${departmentCode}%`).order('created_at', { ascending: false }).limit(5);
+        let query = supabase.from('events').select('event_id, event_name, start_date, event_status').ilike('departments', `%${rawDepartmentCode}%`).order('created_at', { ascending: false }).limit(5);
         
         if (filters.status !== 'All') {
           query = query.eq('event_status', filters.status);
@@ -84,8 +89,8 @@ export default function HODDashboard() {
         setRecentEvents(mappedEvents);
 
         // Fetch cross department activity
-        const rawDept = departmentCode.replace('DEPT_', '');
-        const { data: deptStudents } = await supabase.from('students').select('roll_number, student_name, section, year').ilike('department_id', `%${rawDept}%`);
+        const rawDept = rawDepartmentCode.replace('DEPT_', '');
+        const { data: deptStudents } = await supabase.from('students').select('roll_number, student_name, section, year').eq('department_id', departmentCode);
         
         if (deptStudents && deptStudents.length > 0) {
           const rollNumbers = deptStudents.map(s => s.roll_number);
