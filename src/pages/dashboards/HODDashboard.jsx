@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Users, Calendar, UserSquare2, BookOpen, Activity, Filter, Eye, UploadCloud } from 'lucide-react';
+import { Users, Calendar, UserSquare2, BookOpen, Activity, Filter, Eye, Upload } from 'lucide-react';
 import ImportStudentsModal from '../../components/widgets/ImportStudentsModal';
 
 export default function HODDashboard() {
@@ -156,7 +156,7 @@ export default function HODDashboard() {
           <p>Overview of your department's events, faculty, and students.</p>
         </div>
         <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <UploadCloud size={18} /> Import Students
+          <Upload size={18} /> Import Students
         </button>
       </div>
 

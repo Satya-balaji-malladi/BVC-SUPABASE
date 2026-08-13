@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Users, Calendar, CheckCircle, Building2, Trophy, ArrowUpRight, Plus, Download, Search, Shield, UploadCloud } from 'lucide-react';
+import { Users, Calendar, CheckCircle, Building2, Trophy, ArrowUpRight, Plus, Download, Search, Shield, Upload } from 'lucide-react';
 import ImportStudentsModal from '../../components/widgets/ImportStudentsModal';
 
 export default function SuperAdminDashboard() {
@@ -186,7 +186,7 @@ export default function SuperAdminDashboard() {
             <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>Manage Users</span>
           </button>
           <button onClick={() => setShowImportModal(true)} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%', border: '1px solid rgba(14, 165, 233, 0.2)', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '1rem', borderRadius: '50%', color: '#0ea5e9' }}><UploadCloud size={24} /></div>
+            <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '1rem', borderRadius: '50%', color: '#0ea5e9' }}><Upload size={24} /></div>
             <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>Import Students</span>
           </button>
           <button className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%', border: '1px solid rgba(245, 158, 11, 0.2)', cursor: 'pointer', transition: 'all 0.2s' }}>
