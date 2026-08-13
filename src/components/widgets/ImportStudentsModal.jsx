@@ -86,8 +86,7 @@ export default function ImportStudentsModal({ isOpen, onClose, onSuccess }) {
         student_name: p.student_name || 'Unknown',
         department_id: p.department_id,
         year: p.year,
-        section: p.section,
-        created_at: new Date().toISOString()
+        section: p.section
       }));
 
       const batchSize = 500;
