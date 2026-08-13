@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import SessionService from '../../services/SessionService';
 import { 
-  Scan, CheckCircle2, XCircle, AlertTriangle, User, 
+  Scan, CheckCircle2, XCircle, AlertTriangle, User, Menu,
   MapPin, Clock, Camera, Keyboard, RefreshCw, ArrowLeft, ArrowRight, Users, Calendar, Loader2, LayoutDashboard, Search, ListChecks, LogOut
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,7 @@ export default function CoordinatorScanner({ isNested = false }) {
   const [attendanceFilter, setAttendanceFilter] = useState('All');
   const [currentAttendanceDate, setCurrentAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [eventDays, setEventDays] = useState([]);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
   // Data State
   const [stats, setStats] = useState({ registered: 0, present: 0 });
@@ -772,7 +773,7 @@ export default function CoordinatorScanner({ isNested = false }) {
               (Select the day you are marking attendance for)
             </span>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+          <div className="event-day-timeline" style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
             {eventDays.map((dayDate, i) => {
               const isSelected = currentAttendanceDate === dayDate;
               return (
@@ -1176,7 +1177,7 @@ export default function CoordinatorScanner({ isNested = false }) {
           </h3>
           <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>View present and absent students</p>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div className="attendance-filters" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <select 
             value={attendanceFilter} 
             onChange={(e) => setAttendanceFilter(e.target.value)}
@@ -1186,20 +1187,20 @@ export default function CoordinatorScanner({ isNested = false }) {
             <option value="Present">Present Today</option>
             <option value="Absent">Remaining (Absent)</option>
           </select>
-          <div style={{ position: 'relative' }}>
+          <div className="search-container" style={{ position: 'relative' }}>
             <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
             <input 
               type="text" 
               placeholder="Search roll no or name..." 
               value={attendanceSearch}
               onChange={(e) => setAttendanceSearch(e.target.value)}
-              style={{ padding: '0.5rem 1rem 0.5rem 2.2rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
+              style={{ width: '100%', padding: '0.5rem 1rem 0.5rem 2.2rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
             />
           </div>
         </div>
       </div>
       <div className="responsive-table-wrapper" style={{ padding: '1rem' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+        <table className="desktop-only" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.85rem' }}>
               <th style={{ padding: '1rem 0.5rem' }}>Roll No</th>
@@ -1253,6 +1254,54 @@ export default function CoordinatorScanner({ isNested = false }) {
             )}
           </tbody>
         </table>
+
+        {/* MOBILE CARDS FOR ATTENDANCE */}
+        <div className="mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '0.75rem' }}>
+          {(attendanceFilter === 'All' || attendanceFilter === 'Present') && filteredAttendance.map((p, i) => (
+            <div key={`m_${i}`} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
+                  <span style={{ fontWeight: '600', color: '#0f172a', fontSize: '1rem' }}>{p.roll_number}</span>
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: '500' }}>{p.name}</div>
+                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.2rem' }}>{p.department} • {formatTime(p.attendance_timestamp)}</div>
+              </div>
+              <button 
+                onClick={() => toggleAttendance(p)}
+                disabled={togglingRoll === p.roll_number || isPastDay}
+                style={{ background: '#dcfce7', color: '#166534', padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '600', border: 'none', cursor: (togglingRoll === p.roll_number || isPastDay) ? 'not-allowed' : 'pointer', opacity: (togglingRoll === p.roll_number || isPastDay) ? 0.5 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                {togglingRoll === p.roll_number ? <Loader2 size={16} className="lucide-spin" /> : 'Present'}
+              </button>
+            </div>
+          ))}
+          {(attendanceFilter === 'All' || attendanceFilter === 'Absent') && filteredAbsent.map((p, i) => (
+            <div key={`m_abs_${i}`} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                  <span style={{ fontWeight: '600', color: '#0f172a', fontSize: '1rem' }}>{p.roll_number}</span>
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: '500' }}>{p.name}</div>
+                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.2rem' }}>{p.department}</div>
+              </div>
+              <button 
+                onClick={() => toggleAttendance(p)}
+                disabled={togglingRoll === p.roll_number || isPastDay}
+                style={{ background: '#fee2e2', color: '#991b1b', padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '600', border: 'none', cursor: (togglingRoll === p.roll_number || isPastDay) ? 'not-allowed' : 'pointer', opacity: (togglingRoll === p.roll_number || isPastDay) ? 0.5 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                {togglingRoll === p.roll_number ? <Loader2 size={16} className="lucide-spin" /> : 'Absent'}
+              </button>
+            </div>
+          ))}
+          {((attendanceFilter === 'All' && filteredAttendance.length === 0 && filteredAbsent.length === 0) ||
+            (attendanceFilter === 'Present' && filteredAttendance.length === 0) ||
+            (attendanceFilter === 'Absent' && filteredAbsent.length === 0)) && (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
+              <div style={{ fontSize: '1rem', fontWeight: '500', color: '#334155' }}>No students found</div>
+              <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Try changing the filter or search query</div>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -1271,12 +1320,12 @@ export default function CoordinatorScanner({ isNested = false }) {
             placeholder="Search roll no or name..." 
             value={registeredSearch}
             onChange={(e) => setRegisteredSearch(e.target.value)}
-            style={{ padding: '0.5rem 1rem 0.5rem 2.2rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
+            style={{ width: '100%', padding: '0.5rem 1rem 0.5rem 2.2rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
           />
         </div>
       </div>
       <div style={{ padding: '1rem', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <table className="desktop-only" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.85rem' }}>
               <th style={{ padding: '1rem 0.5rem' }}>Roll No</th>
@@ -1299,6 +1348,25 @@ export default function CoordinatorScanner({ isNested = false }) {
             )}
           </tbody>
         </table>
+
+        {/* MOBILE CARDS FOR REGISTERED STUDENTS */}
+        <div className="mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '0.75rem' }}>
+          {filteredRegistered.map((p, i) => (
+            <div key={`m_reg_${i}`} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: '600', color: '#0f172a', fontSize: '1.05rem' }}>{p.roll_number}</span>
+                <span style={{ fontSize: '0.75rem', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '10px' }}>Year {p.year}</span>
+              </div>
+              <div style={{ fontSize: '0.95rem', color: '#334155', fontWeight: '500' }}>{p.name}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Department: {p.department}</div>
+            </div>
+          ))}
+          {filteredRegistered.length === 0 && (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
+              <div style={{ fontSize: '1rem', fontWeight: '500', color: '#334155' }}>No students found</div>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -1308,7 +1376,7 @@ export default function CoordinatorScanner({ isNested = false }) {
       
       {/* HEADER */}
       {!isNested && (
-      <header style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
+      <header className="desktop-only" style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{ width: '40px', height: '40px', background: '#1e3a8a', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>
             BVC
@@ -1335,6 +1403,53 @@ export default function CoordinatorScanner({ isNested = false }) {
         </div>
       </header>
       )}
+
+      {/* MOBILE HEADER */}
+      {!isNested && (
+      <header className="mobile-only" style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '0 1rem', height: '64px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 90 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button onClick={() => setIsDrawerOpen(true)} style={{ background: 'none', border: 'none', padding: '0.25rem', color: '#0f172a' }}>
+            <Menu size={24} />
+          </button>
+          <h1 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: '600' }}>
+            {activeModule === 'scanner' ? 'Scan Student' : activeModule === 'attendance' ? 'Attendance' : 'Registered Students'}
+          </h1>
+        </div>
+        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+          <User size={16} />
+        </div>
+      </header>
+      )}
+
+      {/* MOBILE DRAWER */}
+      <div className="mobile-only" style={{ display: isDrawerOpen ? 'block' : 'none', position: 'fixed', inset: 0, zIndex: 999 }}>
+         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={() => setIsDrawerOpen(false)} />
+         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '280px', maxWidth: '85vw', background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '2px 0 8px rgba(0,0,0,0.1)' }}>
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ width: '32px', height: '32px', background: '#1e3a8a', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '0.8rem' }}>BVC</div>
+                  <span style={{ fontWeight: '600', color: '#0f172a' }}>Coordinator</span>
+               </div>
+               <button onClick={() => setIsDrawerOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b' }}><XCircle size={20} /></button>
+            </div>
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+               <button onClick={() => {setActiveModule('scanner'); setIsDrawerOpen(false);}} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'scanner' ? '#eff6ff' : 'transparent', color: activeModule === 'scanner' ? '#1d4ed8' : '#475569', fontWeight: '600', textAlign: 'left', width: '100%' }}>
+                  <Scan size={18} /> Scanner
+               </button>
+               <button onClick={() => {setActiveModule('attendance'); setIsDrawerOpen(false);}} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'attendance' ? '#eff6ff' : 'transparent', color: activeModule === 'attendance' ? '#1d4ed8' : '#475569', fontWeight: '600', textAlign: 'left', width: '100%' }}>
+                  <ListChecks size={18} /> Attendance
+               </button>
+               <button onClick={() => {setActiveModule('registered'); setIsDrawerOpen(false);}} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', background: activeModule === 'registered' ? '#eff6ff' : 'transparent', color: activeModule === 'registered' ? '#1d4ed8' : '#475569', fontWeight: '600', textAlign: 'left', width: '100%' }}>
+                  <Users size={18} /> Registered Students
+               </button>
+            </div>
+            <div style={{ marginTop: 'auto', padding: '1rem', borderTop: '1px solid #f1f5f9' }}>
+               <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fff5f5', color: '#dc2626', fontWeight: '600', textAlign: 'left', width: '100%' }}>
+                  <LogOut size={18} /> Logout
+               </button>
+            </div>
+         </div>
+      </div>
 
       <div className="layout-container" style={{ display: 'flex', maxWidth: isNested ? '100%' : '1400px', margin: '0 auto', height: isNested ? '100%' : 'calc(100vh - 73px)' }}>
         
@@ -1374,7 +1489,7 @@ export default function CoordinatorScanner({ isNested = false }) {
         <main style={{ flex: 1, padding: isNested ? '0' : '1.5rem', overflowY: 'auto' }}>
           
           {/* EVENT CONTEXT */}
-          <section style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '1.5rem' }}>
+          <section className="desktop-only" style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '1.5rem' }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                 <span style={{ background: isLive ? '#dcfce7' : '#f1f5f9', color: isLive ? '#166534' : '#475569', padding: '4px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1402,6 +1517,25 @@ export default function CoordinatorScanner({ isNested = false }) {
             </div>
           </section>
 
+          {/* MOBILE EVENT CARD */}
+          <section className="mobile-only" style={{ background: '#fff', padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ background: isLive ? '#dcfce7' : '#f1f5f9', color: isLive ? '#166534' : '#475569', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px' }}>{isLive ? 'LIVE' : 'UPCOMING'}</span>
+              <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px' }}>{eventData?.enable_registration === 'Yes' ? 'Registered Entry' : 'Open Entry'}</span>
+            </div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>{eventData?.event_name || 'Unknown Event'}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MapPin size={14} /> {eventData?.location || 'TBD'}</div>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={14} /> {new Date(eventData?.start_date).toLocaleDateString()}</div>
+               <div>ID: {eventData?.event_id}</div>
+            </div>
+            {!isNested && (
+               <button onClick={() => navigate('/select-event')} style={{ width: '100%', padding: '0.75rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#334155', fontWeight: '600', marginTop: '0.5rem' }}>
+                 Switch Event
+               </button>
+            )}
+          </section>
+
           {isNested && (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: '#fff', padding: '0.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <button onClick={() => setActiveModule('scanner')} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', background: activeModule === 'scanner' ? '#eff6ff' : 'transparent', color: activeModule === 'scanner' ? '#1d4ed8' : '#475569', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
@@ -1424,16 +1558,19 @@ export default function CoordinatorScanner({ isNested = false }) {
       </div>
 
       {/* MOBILE BOTTOM NAV */}
-      <nav className="mobile-bottom-nav" style={{ display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #e2e8f0', zIndex: 100 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-around', padding: '0.5rem' }}>
-          <button onClick={() => setActiveModule('scanner')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'scanner' ? '#1d4ed8' : '#64748b', padding: '0.5rem' }}>
-            <Scan size={20} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Scan</span>
+      <nav className="mobile-bottom-nav desktop-only" style={{ display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, background: '#fff', borderTop: '1px solid #e2e8f0', zIndex: 100, height: '70px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', height: '100%', padding: '0 0.5rem' }}>
+          <button onClick={() => navigate('/')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: '#64748b', padding: '0.5rem' }}>
+            <LayoutDashboard size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Home</span>
           </button>
-          <button onClick={() => setActiveModule('attendance')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'attendance' ? '#1d4ed8' : '#64748b', padding: '0.5rem' }}>
-            <ListChecks size={20} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Attendance</span>
+          <button onClick={() => setActiveModule('scanner')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'scanner' ? '#1d4ed8' : '#64748b', padding: '0.5rem' }}>
+            <Scan size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Scan</span>
           </button>
           <button onClick={() => setActiveModule('registered')} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: activeModule === 'registered' ? '#1d4ed8' : '#64748b', padding: '0.5rem' }}>
-            <Users size={20} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Registered</span>
+            <Users size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>Students</span>
+          </button>
+          <button onClick={() => setIsDrawerOpen(true)} style={{ background: 'transparent', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: '#64748b', padding: '0.5rem' }}>
+            <Menu size={22} /> <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>More</span>
           </button>
         </div>
       </nav>
@@ -1441,15 +1578,26 @@ export default function CoordinatorScanner({ isNested = false }) {
       <style>{`
         .hide-on-mobile { display: block; }
         .scanner-layout { grid-template-columns: 2fr 1fr; }
+        .desktop-only { display: block; }
+        .mobile-only { display: none !important; }
+        table.desktop-only { display: table; }
+        .event-day-timeline::-webkit-scrollbar { display: none; }
+        .event-day-timeline { -ms-overflow-style: none; scrollbar-width: none; }
         
         @media (max-width: 1024px) {
           .scanner-layout { grid-template-columns: 1fr; }
         }
-        @media (max-width: 768px) {
+        @media (max-width: 767px) {
+          .desktop-only { display: none !important; }
+          .mobile-only { display: block !important; }
+          .mobile-only-flex { display: flex !important; }
           .hide-on-mobile { display: none; }
           .coordinator-sidebar { display: none !important; }
-          .layout-container { height: auto !important; padding-bottom: 70px; }
+          .layout-container { height: auto !important; padding-bottom: 80px; }
           .mobile-bottom-nav { display: block !important; }
+          main { padding: 1rem 0.5rem !important; }
+          .attendance-filters { flex-direction: column !important; width: 100%; align-items: stretch !important; }
+          .attendance-filters select, .attendance-filters .search-container { width: 100% !important; }
         }
         
         #qr-reader { border: none !important; }
