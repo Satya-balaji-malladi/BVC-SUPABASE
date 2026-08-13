@@ -819,18 +819,23 @@ export default function CoordinatorScanner({ isNested = false }) {
 
       {/* STATISTICS */}
       <section className="desktop-only" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Registered', value: stats.registered, icon: <Users size={20} color="#3b82f6" />, bg: '#eff6ff', onClick: () => setActiveModule('registered') },
-          { label: 'Present Today', value: stats.present, icon: <CheckCircle2 size={20} color="#22c55e" />, bg: '#dcfce7', onClick: () => { setActiveModule('attendance'); setAttendanceFilter('Present'); } },
-          { label: 'Remaining', value: remaining, icon: <Clock size={20} color="#f59e0b" />, bg: '#fef3c7', onClick: () => { setActiveModule('attendance'); setAttendanceFilter('Absent'); } },
-          { label: 'Attendance %', value: `${percentage}%`, icon: <Scan size={20} color="#8b5cf6" />, bg: '#f3e8ff', onClick: () => setActiveModule('scanner') }
-        ].map((stat, i) => (
+        {(eventData?.enable_registration === 'Yes' || eventData?.enable_registration === 'true' || eventData?.enable_registration === true ? [
+          { label: 'Registered', value: stats.registered, icon: <Users size={20} color="#3b82f6" />, bg: '#eff6ff', clickable: true, onClick: () => setActiveModule('registered') },
+          { label: 'Present Today', value: stats.present, icon: <CheckCircle2 size={20} color="#22c55e" />, bg: '#dcfce7', clickable: true, onClick: () => { setActiveModule('attendance'); setAttendanceFilter('Present'); } },
+          { label: 'Remaining', value: remaining, icon: <Clock size={20} color="#f59e0b" />, bg: '#fef3c7', clickable: true, onClick: () => { setActiveModule('attendance'); setAttendanceFilter('Absent'); } },
+          { label: 'Attendance %', value: `${percentage}%`, icon: <Scan size={20} color="#8b5cf6" />, bg: '#f3e8ff', clickable: true, onClick: () => setActiveModule('scanner') }
+        ] : [
+          { label: 'Present Today', value: stats.present, icon: <CheckCircle2 size={20} color="#22c55e" />, bg: '#dcfce7', clickable: true, onClick: () => { setActiveModule('attendance'); setAttendanceFilter('Present'); } },
+          { label: 'Event Status', value: isLive ? 'LIVE' : 'UPCOMING', icon: <CheckCircle2 size={20} color="#3b82f6" />, bg: '#eff6ff', clickable: false, onClick: () => {} },
+          { label: 'Scanner Mode', value: 'Active', icon: <Scan size={20} color="#8b5cf6" />, bg: '#f3e8ff', clickable: false, onClick: () => {} },
+          { label: 'Registration', value: 'Open Entry', icon: <AlertTriangle size={20} color="#f59e0b" />, bg: '#fef3c7', clickable: false, onClick: () => {} }
+        ]).map((stat, i) => (
           <div 
             key={i} 
             onClick={stat.onClick}
-            style={{ background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 1px 2px rgba(0,0,0,0.02)', cursor: 'pointer', transition: 'transform 0.1s, box-shadow 0.1s' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)'; }}
+            style={{ background: '#fff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 1px 2px rgba(0,0,0,0.02)', cursor: stat.clickable ? 'pointer' : 'default', transition: 'transform 0.1s, box-shadow 0.1s' }}
+            onMouseOver={(e) => { if(stat.clickable) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)'; } }}
+            onMouseOut={(e) => { if(stat.clickable) { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)'; } }}
           >
             <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {stat.icon}
