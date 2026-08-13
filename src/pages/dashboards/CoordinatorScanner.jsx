@@ -440,8 +440,8 @@ export default function CoordinatorScanner({ isNested = false }) {
       let result = rpcResult || {};
 
       if (rpcError) {
-        if (rpcError.message.includes('Could not find the function') || rpcError.code === 'PGRST202') {
-          console.warn('RPC not found. Using client-side fallback for attendance...');
+        if (rpcError.message.includes('Could not find the function') || rpcError.code === 'PGRST202' || rpcError.message.includes('does not exist')) {
+          console.warn('RPC failed or missing dependencies. Using client-side fallback for attendance...');
           // 1. Check if student exists
           const { data: stuData } = await supabase.from('students').select('*').eq('roll_number', rollNumber).single();
           
