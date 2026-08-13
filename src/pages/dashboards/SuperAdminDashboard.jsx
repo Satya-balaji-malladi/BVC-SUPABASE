@@ -56,9 +56,10 @@ export default function SuperAdminDashboard() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
-      
-      {/* Welcome Banner */}
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
+        
+        {/* Welcome Banner */}
       <div style={{ 
         background: 'linear-gradient(135deg, #2563eb, #3b82f6)', 
         borderRadius: '12px', 
@@ -201,12 +202,13 @@ export default function SuperAdminDashboard() {
 
     </div>
     
-    <ImportStudentsModal 
-      isOpen={showImportModal} 
-      onClose={() => setShowImportModal(false)} 
-      onSuccess={() => {
-        setShowImportModal(false);
-      }} 
-    />
+      <ImportStudentsModal 
+        isOpen={showImportModal} 
+        onClose={() => setShowImportModal(false)} 
+        onSuccess={() => {
+          setShowImportModal(false);
+        }} 
+      />
+    </>
   );
 }
