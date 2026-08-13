@@ -30,12 +30,7 @@ export default function CoordinatorScanner({ isNested = false }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    if (isMobile && activeModule === 'scanner' && !localStorage.getItem('started_scanning')) {
-       setActiveModule('home');
-    }
-  }, [isMobile]);
-  
+
   // Data State
   const [stats, setStats] = useState({ registered: 0, present: 0 });
   const [recentScans, setRecentScans] = useState([]);
@@ -1628,7 +1623,8 @@ export default function CoordinatorScanner({ isNested = false }) {
       )}
 
       {/* MOBILE DRAWER */}
-      <div className="mobile-only" style={{ display: isDrawerOpen ? 'block' : 'none', position: 'fixed', inset: 0, zIndex: 999 }}>
+      {isDrawerOpen && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 999 }}>
          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={() => setIsDrawerOpen(false)} />
          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '280px', maxWidth: '85vw', background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '2px 0 8px rgba(0,0,0,0.1)' }}>
             <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1656,6 +1652,7 @@ export default function CoordinatorScanner({ isNested = false }) {
             </div>
          </div>
       </div>
+      )}
 
       <div className="layout-container" style={{ display: 'flex', maxWidth: isNested ? '100%' : '1400px', margin: '0 auto', height: isNested ? '100%' : 'calc(100vh - 73px)' }}>
         
