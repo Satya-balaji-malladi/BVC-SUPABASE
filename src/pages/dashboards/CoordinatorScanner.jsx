@@ -1453,7 +1453,7 @@ export default function CoordinatorScanner({ isNested = false }) {
             {isLive ? 'LIVE' : 'UPCOMING'}
           </span>
           <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '4px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.5px' }}>
-            {eventData?.enable_registration === 'Yes' ? 'Registered Entry' : 'Open Entry'}
+            {(eventData?.enable_registration === 'Yes' || eventData?.enable_registration === 'true' || eventData?.enable_registration === true) ? 'Registered Entry' : 'Open Entry'}
           </span>
         </div>
         <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>{eventData?.event_name || 'Unknown Event'}</h2>
@@ -1704,7 +1704,7 @@ export default function CoordinatorScanner({ isNested = false }) {
                   {isLive ? 'LIVE' : 'UPCOMING'}
                 </span>
                 <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '4px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '600' }}>
-                  {eventData?.enable_registration === 'Yes' ? 'Registered Entry' : 'Open Entry'}
+                  {(eventData?.enable_registration === 'Yes' || eventData?.enable_registration === 'true' || eventData?.enable_registration === true) ? 'Registered Entry' : 'Open Entry'}
                 </span>
               </div>
               <h2 style={{ margin: '0 0 0.25rem 0', fontSize: '1.5rem', color: '#0f172a' }}>{eventData?.event_name || 'Unknown Event'}</h2>
