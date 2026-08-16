@@ -194,7 +194,7 @@ class EventAdminService {
     // 2. Fetch event details (including scope field)
     const { data: event, error: eventErr } = await supabase
       .from('events')
-      .select('event_id, event_name, start_date, end_date, participant_eligibility, event_status, departments, venue, location')
+      .select('event_id, event_name, start_date, end_date, participant_eligibility, event_status, departments, location')
       .eq('event_id', eventId)
       .single();
     if (eventErr) throw eventErr;
