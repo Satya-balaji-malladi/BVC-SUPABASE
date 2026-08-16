@@ -131,38 +131,59 @@ export default function ViewEventModal({ isOpen, onClose, event }) {
 
     try {
       const dayDate = day.date || new Date(event.start_date);
-      const nextDay = new Date(dayDate);
-      nextDay.setDate(nextDay.getDate() + 1);
+      // Format date as YYYY-MM-DD for the `date` column
+      const dateStr = dayDate.toISOString().split('T')[0];
 
-      const [{ data: attData, error: attError }, { data: studentsData, error: stuError }] = await Promise.all([
-        supabase
-          .from('attendance')
-          .select('roll_number, attendance_status, created_at')
-          .eq('event_id', event.event_id)
-          .gte('created_at', dayDate.toISOString())
-          .lt('created_at', nextDay.toISOString()),
-        supabase
-          .from('students')
-          .select('roll_number, first_name, last_name, department, year, section')
-      ]);
+      const { data: attData, error: attError } = await supabase
+        .from('attendance')
+        .select('roll_number, attendance_status, timestamp, date')
+        .eq('event_id', event.event_id)
+        .eq('date', dateStr);
 
       if (attError) throw attError;
 
-      const studentMap = new Map();
-      if (studentsData) {
-        studentsData.forEach(s => studentMap.set(s.roll_number, s));
+      const rollNumbers = [...new Set((attData || []).map(r => r.roll_number))].filter(Boolean);
+      
+      let studentMap = new Map();
+      if (rollNumbers.length > 0) {
+        const [{ data: bvcStudents }, { data: otherStudents }] = await Promise.all([
+          supabase
+            .from('students')
+            .select('roll_number, student_name, department_id, year, section')
+            .in('roll_number', rollNumbers),
+          supabase
+            .from('other_college_students')
+            .select('roll_number, student_name, department, year')
+            .in('roll_number', rollNumbers)
+        ]);
+        (bvcStudents || []).forEach(s => studentMap.set(s.roll_number, {
+          name: s.student_name || s.roll_number,
+          department: s.department_id || '--',
+          year: s.year || '--',
+          section: s.section || '--'
+        }));
+        (otherStudents || []).forEach(s => {
+          if (!studentMap.has(s.roll_number)) {
+            studentMap.set(s.roll_number, {
+              name: s.student_name || s.roll_number,
+              department: s.department || '--',
+              year: s.year || '--',
+              section: '--'
+            });
+          }
+        });
       }
 
       const records = (attData || []).map(r => {
         const s = studentMap.get(r.roll_number);
         return {
           roll_number: r.roll_number,
-          name: s ? `${s.first_name || ''} ${s.last_name || ''}`.trim() : r.roll_number,
+          name: s?.name || r.roll_number,
           department: s?.department || '--',
           year: s?.year || '--',
           section: s?.section || '--',
           status: r.attendance_status || 'PRESENT',
-          timestamp: r.created_at,
+          timestamp: r.timestamp,
         };
       });
 
