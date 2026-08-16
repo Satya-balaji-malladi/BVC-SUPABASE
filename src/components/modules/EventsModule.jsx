@@ -10,6 +10,8 @@ import ViewEventModal from '../widgets/ViewEventModal';
 import ExportDropdown from '../widgets/ExportDropdown';
 import { getFormattedDate } from '../../services/exportService';
 import EventAdminService from '../../services/EventAdminService';
+import { normalizeRole, isHOD as checkIsHOD, isEventAdmin as checkIsEventAdmin, isSuperAdminOrDev } from '../../constants/Roles';
+import { normalizeDepartment } from '../../utils/departmentUtils';
 
 export default function EventsModule({ userRole, userDepartment }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,24 +56,24 @@ export default function EventsModule({ userRole, userDepartment }) {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const normalizedRole = (userRole || '').replace(/\s+/g, '');
+      const isEventAdmin = checkIsEventAdmin(userRole);
+      const isHOD = checkIsHOD(userRole);
+      const normUserDept = normalizeDepartment(userDepartment);
       let data = [];
 
-      if (normalizedRole === 'EventAdmin') {
-        // Secure backend-scoped fetching for Event Admin
-        let allAssignedEvents = await EventAdminService.getEvents();
-        // The user expects to only manage the event they selected on the previous screen
-        const selectedEventId = localStorage.getItem('selected_event_id');
-        if (selectedEventId) {
-          data = allAssignedEvents.filter(e => String(e.event_id) === String(selectedEventId));
-        } else {
-          data = allAssignedEvents;
+      if (isEventAdmin) {
+        try {
+           data = await EventAdminService.getEvents();
+        } catch(e) {
+           console.error('EventAdminService.getEvents() threw:', e);
+           // Handle error appropriately without falling back to insecure direct queries
+           throw new Error('Failed to fetch authorized events');
         }
       } else {
         // Legacy fetching for other roles
         let query = supabase.from('events').select('*');
-        if ((normalizedRole === 'HOD' || normalizedRole === 'DepartmentAdmin') && userDepartment) {
-          query = query.ilike('departments', `%${userDepartment}%`);
+        if (isHOD && normUserDept) {
+          query = query.ilike('departments', `%${normUserDept}%`);
         }
         const { data: qData, error } = await query.order('created_at', { ascending: false });
         if (error) throw error;
@@ -230,7 +232,7 @@ export default function EventsModule({ userRole, userDepartment }) {
       </div>
 
       {/* Top Stats Grid - Hidden for Event Admin */}
-      {userRole !== 'Event Admin' && userRole !== 'EventAdmin' && (
+      {!checkIsEventAdmin(userRole) && (
         <div className="glass-panel" style={{ padding: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem', borderRadius: '8px' }}>
           {statCards.map((card, idx) => (
             <div key={idx} style={{ textAlign: 'center', padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--glass-border)' }}>
@@ -246,7 +248,7 @@ export default function EventsModule({ userRole, userDepartment }) {
         
         {/* Filter Bar */}
         <div className="responsive-filter-grid">
-          {userRole !== 'Event Admin' && userRole !== 'EventAdmin' && (
+          {!checkIsEventAdmin(userRole) && (
             <>
               <div style={{ position: 'relative', width: '100%' }}>
                 <Search size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -452,7 +454,7 @@ export default function EventsModule({ userRole, userDepartment }) {
       </div>
 
       {isModalOpen && (
-        ['HOD', 'DepartmentAdmin', 'SuperAdmin'].includes((userRole || '').replace(/\s+/g, '')) ? (
+        (checkIsHOD(userRole) || isSuperAdminOrDev(userRole)) ? (
           <HodCreateEventModal 
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}

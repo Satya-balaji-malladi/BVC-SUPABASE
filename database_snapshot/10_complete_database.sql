@@ -61,6 +61,32 @@ CREATE TABLE IF NOT EXISTS departments (
     deletion_flag BOOLEAN DEFAULT FALSE
 );
 
+CREATE TABLE IF NOT EXISTS branches (
+    branch_id VARCHAR(50) PRIMARY KEY,
+    department_id VARCHAR(50) REFERENCES departments(department_id) ON DELETE CASCADE,
+    department_code VARCHAR(50),
+    branch_name VARCHAR(255) NOT NULL,
+    branch_code VARCHAR(50) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'Active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(department_id, branch_code)
+);
+
+CREATE TABLE IF NOT EXISTS sections (
+    section_id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) REFERENCES branches(branch_id) ON DELETE CASCADE,
+    branch_code VARCHAR(50),
+    section_name VARCHAR(255) NOT NULL,
+    section_code VARCHAR(50) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'Active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(branch_id, section_code)
+);
+
 CREATE TABLE IF NOT EXISTS students (
     student_id VARCHAR(50) PRIMARY KEY,
     roll_number VARCHAR(50) UNIQUE NOT NULL,
@@ -73,6 +99,7 @@ CREATE TABLE IF NOT EXISTS students (
     student_status VARCHAR(20) DEFAULT 'Active',
     phone_number VARCHAR(15),
     department_id VARCHAR(50) REFERENCES departments(department_id) ON DELETE SET NULL,
+    branch_id VARCHAR(50) REFERENCES branches(branch_id) ON DELETE SET NULL,
     parent_name VARCHAR(255),
     parent_phone VARCHAR(50),
     address TEXT,

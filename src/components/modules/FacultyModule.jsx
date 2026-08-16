@@ -43,7 +43,54 @@ export default function FacultyModule({ userRole, userDepartment }) {
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      setFaculty(data || []);
+
+      // --- DYNAMIC STATUS COMPUTATION ---
+      // Fetch all "active" events (Published)
+      const { data: activeEvents } = await supabase
+        .from('events')
+        .select('event_id, organizer, allowed_coordinator_ids')
+        .eq('event_status', 'Published');
+
+      // Fetch coordinators for active events
+      const activeEventIds = activeEvents ? activeEvents.map(e => e.event_id) : [];
+      let activeCoordinators = [];
+      if (activeEventIds.length > 0) {
+        const { data: coords } = await supabase
+          .from('event_coordinators')
+          .select('user_id')
+          .in('event_id', activeEventIds);
+        if (coords) activeCoordinators = coords;
+      }
+
+      // Create a set of active user IDs who are managing active events
+      const activeUserIds = new Set();
+      
+      if (activeEvents) {
+        activeEvents.forEach(evt => {
+          if (evt.organizer) activeUserIds.add(evt.organizer);
+          if (Array.isArray(evt.allowed_coordinator_ids)) {
+            evt.allowed_coordinator_ids.forEach(id => activeUserIds.add(id));
+          } else if (typeof evt.allowed_coordinator_ids === 'string') {
+             try {
+               const parsed = JSON.parse(evt.allowed_coordinator_ids);
+               if (Array.isArray(parsed)) parsed.forEach(id => activeUserIds.add(id));
+             } catch(e) {}
+          }
+        });
+      }
+      
+      activeCoordinators.forEach(c => {
+        if (c.user_id) activeUserIds.add(c.user_id);
+      });
+
+      // Map faculty data to overwrite status dynamically
+      const facultyWithDynamicStatus = (data || []).map(f => {
+        if (f.role === 'Super Admin') return { ...f, status: 'Active' };
+        const isActive = activeUserIds.has(f.user_id);
+        return { ...f, status: isActive ? 'Active' : 'Inactive' };
+      });
+
+      setFaculty(facultyWithDynamicStatus);
     } catch (err) {
       console.error('Error fetching faculty:', err);
     } finally {
@@ -195,7 +242,6 @@ export default function FacultyModule({ userRole, userDepartment }) {
                 <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Name</th>
                 <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Employee ID</th>
                 <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Department</th>
-                <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Role</th>
                 <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Status</th>
                 <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem', textAlign: 'right' }}>Actions</th>
               </tr>
@@ -233,15 +279,14 @@ export default function FacultyModule({ userRole, userDepartment }) {
                         {f.department || 'N/A'}
                       </span>
                     </td>
-                    <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{f.role}</td>
                     <td style={{ padding: '1rem' }}>
                       <span style={{ 
                         padding: '0.25rem 0.5rem', 
-                        background: 'rgba(34, 197, 94, 0.1)', 
-                        color: '#22c55e', 
+                        background: f.status === 'Inactive' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                        color: f.status === 'Inactive' ? '#ef4444' : '#22c55e', 
                         borderRadius: '999px', fontSize: '0.75rem', fontWeight: '600' 
                       }}>
-                        Active
+                        {f.status || 'Active'}
                       </span>
                     </td>
                     <td style={{ padding: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>

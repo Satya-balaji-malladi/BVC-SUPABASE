@@ -164,6 +164,7 @@ class DepartmentService {
         hod_name: finalHodName,
         hod_employee_id: finalHodEmpId,
         status: 'Active',
+        allowed_years: departmentData.allowedYears || [1, 2, 3, 4],
         created_by: currentUser?.employee_id || 'System',
         created_at: currentTimestamp,
         updated_at: currentTimestamp
@@ -313,6 +314,7 @@ class DepartmentService {
       const updatePayload = {
         department_name: updateData.name.trim(),
         department_code: newDeptCode,
+        allowed_years: updateData.allowedYears,
         updated_by: currentUser?.employee_id || 'System',
         updated_at: currentTimestamp
       };

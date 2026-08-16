@@ -16,21 +16,22 @@ INSERT INTO roles (role_id, role_name, description) VALUES
 ON CONFLICT (role_id) DO NOTHING;
 
 -- 2. SEED DEPARTMENTS (11 CORE DEPARTMENTS)
-INSERT INTO departments (department_id, department_name, department_code, status, created_at) VALUES
-('DEPT_CSE', 'Computer Science and Engineering', 'CSE', 'Active', CURRENT_TIMESTAMP),
-('DEPT_AIML', 'CSE (Artificial Intelligence & Machine Learning)', 'CSE-AIML', 'Active', CURRENT_TIMESTAMP),
-('DEPT_DS', 'CSE (Data Science)', 'CSE-DS', 'Active', CURRENT_TIMESTAMP),
-('DEPT_AIDS', 'Artificial Intelligence & Data Science', 'AI&DS', 'Active', CURRENT_TIMESTAMP),
-('DEPT_IT', 'Information Technology', 'IT', 'Active', CURRENT_TIMESTAMP),
-('DEPT_ECE', 'Electronics and Communication Engineering', 'ECE', 'Active', CURRENT_TIMESTAMP),
-('DEPT_EEE', 'Electrical and Electronics Engineering', 'EEE', 'Active', CURRENT_TIMESTAMP),
-('DEPT_ME', 'Mechanical Engineering', 'ME', 'Active', CURRENT_TIMESTAMP),
-('DEPT_CIVIL', 'Civil Engineering', 'CIVIL', 'Active', CURRENT_TIMESTAMP),
-('DEPT_MBA', 'Master of Business Administration', 'MBA', 'Active', CURRENT_TIMESTAMP),
-('DEPT_MCA', 'Master of Computer Applications', 'MCA', 'Active', CURRENT_TIMESTAMP)
-ON CONFLICT (department_code) DO UPDATE SET 
-  department_id = EXCLUDED.department_id,
-  department_name = EXCLUDED.department_name;
+INSERT INTO departments (department_id, department_name, department_code, status, created_at, allowed_years) VALUES
+('DEPT_CSE', 'Computer Science and Engineering', 'CSE', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_AIML', 'CSE (Artificial Intelligence & Machine Learning)', 'CSE-AIML', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_DS', 'CSE (Data Science)', 'CSE-DS', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_AIDS', 'Artificial Intelligence & Data Science', 'AI&DS', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_IT', 'Information Technology', 'IT', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_ECE', 'Electronics and Communication Engineering', 'ECE', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_EEE', 'Electrical and Electronics Engineering', 'EEE', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_ME', 'Mechanical Engineering', 'ME', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_CIVIL', 'Civil Engineering', 'CIVIL', 'Active', CURRENT_TIMESTAMP, '[1,2,3,4]'),
+('DEPT_MBA', 'Master of Business Administration', 'MBA', 'Active', CURRENT_TIMESTAMP, '[1,2]'),
+('DEPT_MCA', 'Master of Computer Applications', 'MCA', 'Active', CURRENT_TIMESTAMP, '[1,2]')
+ON CONFLICT (department_id) DO UPDATE SET 
+  department_code = EXCLUDED.department_code,
+  department_name = EXCLUDED.department_name,
+  allowed_years = EXCLUDED.allowed_years;
 
 -- 3. SEED DEFAULT SUPER ADMIN USER
 INSERT INTO users (

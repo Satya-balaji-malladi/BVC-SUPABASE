@@ -22,6 +22,14 @@ export const emailService = {
    */
   sendEventAssignment: async (data) => {
     return _sendPostRequest('sendEventAssignment', data);
+  },
+
+  /**
+   * Send Real-Time OTP for password reset
+   * @param {Object} data - { email, name, otp }
+   */
+  sendOTP: async (data) => {
+    return _sendPostRequest('sendOTP', data);
   }
 };
 

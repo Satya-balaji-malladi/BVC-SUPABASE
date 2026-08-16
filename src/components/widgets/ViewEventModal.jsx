@@ -683,12 +683,12 @@ export default function ViewEventModal({ isOpen, onClose, event }) {
         {/* Header */}
         <div style={{ background: '#212529', color: '#fff', padding: '1rem 1.5rem', borderRadius: '8px 8px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
           <div>
-            <h5 style={{ margin: '0 0 0.25rem 0', fontWeight: 700 }}>{event.event_name}</h5>
+            <h5 style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: '#fff' }}>{event.event_name}</h5>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ background: getStatusColor(computedStatus), color: '#fff', padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>
                 {computedStatus}
               </span>
-              <small style={{ color: 'rgba(255,255,255,0.5)' }}>ID: {event.event_id}</small>
+              <small style={{ color: 'rgba(255,255,255,0.85)' }}>ID: {event.event_id}</small>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1 }}>×</button>

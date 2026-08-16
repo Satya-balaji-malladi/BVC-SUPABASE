@@ -1,17 +1,31 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { X, Upload, Loader2, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import Papa from 'papaparse';
 
-export default function ImportStudentsModal({ isOpen, onClose, onSuccess }) {
+export default function ImportStudentsModal({ isOpen, onClose, onSuccess, userDepartment }) {
   const [file, setFile] = useState(null);
   const [parsedData, setParsedData] = useState(null);
   const [importing, setImporting] = useState(false);
   const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Success/Error
   const [stats, setStats] = useState({ success: 0, errors: 0 });
   const [errorDetails, setErrorDetails] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [branches, setBranches] = useState([]);
   
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      Promise.all([
+        supabase.from('departments').select('department_id, department_code, department_name'),
+        supabase.from('branches').select('branch_id, branch_code, branch_name, department_id')
+      ]).then(([deptRes, branchRes]) => {
+        if (deptRes.data) setDepartments(deptRes.data);
+        if (branchRes.data) setBranches(branchRes.data);
+      });
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -47,21 +61,72 @@ export default function ImportStudentsModal({ isOpen, onClose, onSuccess }) {
           const keyRoll = Object.keys(r).find(k => k.includes('roll'));
           const keyName = Object.keys(r).find(k => k.includes('name'));
           const keyDept = Object.keys(r).find(k => k.includes('dept') || k.includes('department'));
+          const keyBranch = Object.keys(r).find(k => k === 'branch' || k.includes('branch_code') || k.includes('branch code'));
           const keyYear = Object.keys(r).find(k => k === 'year');
           const keySec = Object.keys(r).find(k => k.includes('sec'));
           const keyEmail = Object.keys(r).find(k => k.includes('email'));
           const keyPhone = Object.keys(r).find(k => k.includes('phone') || k.includes('mobile'));
           
+          const csvDeptValue = (r[keyDept] || 'AIML').trim().toUpperCase();
+          let resolvedDeptId = null;
+
+          if (userDepartment) {
+            // Check if userDepartment is already an ID, or try to match it against code
+            const matched = departments.find(d => 
+              d.department_id === userDepartment || 
+              d.department_code.toUpperCase() === userDepartment.toUpperCase()
+            );
+            if (matched) resolvedDeptId = matched.department_id;
+          }
+
+          if (!resolvedDeptId) {
+            // Try to match CSV value against code, name or ID
+            const matched = departments.find(d => 
+              d.department_code.toUpperCase() === csvDeptValue ||
+              d.department_name.toUpperCase() === csvDeptValue ||
+              d.department_id === csvDeptValue ||
+              d.department_id === `DEPT_${csvDeptValue.replace('DEPT_', '')}`
+            );
+            if (matched) resolvedDeptId = matched.department_id;
+            else resolvedDeptId = `DEPT_${csvDeptValue.replace('DEPT_', '')}`; // Fallback
+          }
+
+          const finalDeptId = resolvedDeptId;
+
+          // Resolve Branch ID
+          let finalBranchId = null;
+          const csvBranchValue = (r[keyBranch] || '').trim().toUpperCase();
+          
+          if (csvBranchValue) {
+            const matchedBranch = branches.find(b => 
+              b.branch_code.toUpperCase() === csvBranchValue ||
+              b.branch_name.toUpperCase() === csvBranchValue ||
+              b.branch_id === csvBranchValue
+            );
+            if (matchedBranch) {
+              finalBranchId = matchedBranch.branch_id;
+            }
+          }
+
+          // If branch not specified in CSV but we know department, try to assign default branch for department
+          if (!finalBranchId && finalDeptId) {
+             const deptBranches = branches.filter(b => b.department_id === finalDeptId);
+             if (deptBranches.length > 0) {
+               finalBranchId = deptBranches[0].branch_id; // Default to first branch
+             }
+          }
+
           return {
             roll_number: (r[keyRoll] || '').trim().toUpperCase(),
             student_name: (r[keyName] || '').trim(),
-            department_id: `DEPT_${(r[keyDept] || 'AIML').trim().toUpperCase().replace('DEPT_', '')}`,
+            department_id: finalDeptId,
+            branch_id: finalBranchId,
             year: parseInt(r[keyYear]) || 1,
             section: (r[keySec] || 'A').trim().toUpperCase(),
             email: (r[keyEmail] || '').trim(),
             phone: (r[keyPhone] || '').trim()
           };
-        }).filter(r => r.roll_number); 
+        }).filter(r => r.roll_number);  
 
         setParsedData(mapped);
         setStep(2);
@@ -85,6 +150,7 @@ export default function ImportStudentsModal({ isOpen, onClose, onSuccess }) {
         roll_number: p.roll_number,
         student_name: p.student_name || 'Unknown',
         department_id: p.department_id,
+        branch_id: p.branch_id,
         year: p.year,
         section: p.section
       }));

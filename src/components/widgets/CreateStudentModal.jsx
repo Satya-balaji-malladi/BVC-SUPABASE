@@ -12,7 +12,7 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
     email_address: '',
     phone_number: '',
     department_id: '',
-    branch: '',
+    branch_id: '',
     section: '',
     year: '',
     gender: '',
@@ -95,6 +95,7 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
           email_address: formData.email_address.trim(),
           phone_number: formData.phone_number.trim(),
           department_id: formData.department_id,
+          branch_id: formData.branch_id || null,
           section: formData.section,
           year: parseInt(formData.year) || 1,
           gender: formData.gender,
@@ -184,17 +185,13 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', color: '#475569' }}>Branch</label>
-                <select name="branch" className="input-field" value={formData.branch} onChange={handleChange} style={{ width: '100%', padding: '0.75rem' }}>
+                <select name="branch_id" className="input-field" value={formData.branch_id} onChange={handleChange} style={{ width: '100%', padding: '0.75rem' }}>
                   <option value="">Select Branch</option>
                   {branches.filter(b => {
                     if (!formData.department_id) return true;
-                    const selectedDept = departments.find(d => d.department_id === formData.department_id);
-                    if (selectedDept) {
-                      return b.department_id === selectedDept.department_id || b.department_id === selectedDept.department_code || b.department_id === selectedDept.department_name || b.department_id === userDepartment;
-                    }
                     return b.department_id === formData.department_id;
                   }).map(b => (
-                    <option key={b.branch_id} value={b.branch_code || b.branch_name}>
+                    <option key={b.branch_id} value={b.branch_id}>
                       {b.branch_name || b.branch_code}
                     </option>
                   ))}
@@ -219,14 +216,8 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
                   <option value="">Select</option>
                   {(() => {
                     let filtered = sections;
-                    if (formData.branch) {
-                      filtered = sections.filter(s => {
-                        const relatedBranch = branches.find(b => b.branch_id === s.branch_id || b.branch_code === s.branch_code);
-                        if (relatedBranch) {
-                          return relatedBranch.branch_code === formData.branch || relatedBranch.branch_name === formData.branch;
-                        }
-                        return s.branch_code === formData.branch || s.branch_id === formData.branch;
-                      });
+                    if (formData.branch_id) {
+                      filtered = sections.filter(s => s.branch_id === formData.branch_id);
                     }
                     
                     if (filtered.length === 0) {

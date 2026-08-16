@@ -4,6 +4,7 @@ import { Search, Loader2, UserPlus, Download, Edit, Trash2, Eye } from 'lucide-r
 import TablePagination from '../widgets/TablePagination';
 import ViewStudentModal from '../widgets/ViewStudentModal';
 import CreateStudentModal from '../widgets/CreateStudentModal';
+import ImportStudentsModal from '../widgets/ImportStudentsModal';
 import ExportDropdown from '../widgets/ExportDropdown';
 import { getFormattedDate } from '../../services/exportService';
 import { getActiveInvolvements } from '../../services/activityService';
@@ -12,9 +13,11 @@ export default function StudentsModule({ userRole, userDepartment }) {
   const [students, setStudents] = useState([]);
   const [viewStudent, setViewStudent] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDept, setFilterDept] = useState('');
+  const [filterBranch, setFilterBranch] = useState('');
   const [filterYear, setFilterYear] = useState('');
   const [filterSection, setFilterSection] = useState('');
   const [filterGender, setFilterGender] = useState('');
@@ -35,7 +38,14 @@ export default function StudentsModule({ userRole, userDepartment }) {
       
       const normalizedRole = (userRole || '').replace(/\s+/g, '');
       if ((normalizedRole === 'HOD' || normalizedRole === 'DepartmentAdmin') && userDepartment) {
-        query = query.eq('department_id', userDepartment);
+        // Resolve userDepartment to actual department_id (e.g. AI&DS -> DEPT_AIDS)
+        const { data: deptData } = await supabase.from('departments')
+          .select('department_id')
+          .or(`department_code.eq.${userDepartment},department_id.eq.${userDepartment}`)
+          .maybeSingle();
+        
+        const resolvedDeptId = deptData?.department_id || userDepartment;
+        query = query.eq('department_id', resolvedDeptId);
       }
 
       const [{ data, error }, { activeStudents }] = await Promise.all([
@@ -64,6 +74,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
 
   const isHOD = (userRole || '').replace(/\s+/g, '').toUpperCase() === 'HOD';
   const uniqueDepts = [...new Set(students.map(s => s.department_id || s.department).filter(Boolean))];
+  const uniqueBranches = [...new Set(students.map(s => s.branch_id || s.branch).filter(Boolean))];
   const uniqueYears = [...new Set(students.map(s => String(s.year)).filter(Boolean))]
     .filter(y => isHOD ? y !== '1' : true)
     .sort();
@@ -77,6 +88,8 @@ export default function StudentsModule({ userRole, userDepartment }) {
       (student.email_address || '').toLowerCase().includes(q);
     const dept = student.department_id || student.department || '';
     const matchDept = !filterDept || dept === filterDept;
+    const branch = student.branch_id || student.branch || '';
+    const matchBranch = !filterBranch || branch === filterBranch;
     const matchYear = !filterYear || String(student.year) === filterYear;
     const matchSection = !filterSection || (student.section || '') === filterSection;
     const matchGender = !filterGender || (student.gender || '') === filterGender;
@@ -91,7 +104,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
       else if (filterPart === '3') matchPart = cnt >= 3;
     }
 
-    return matchSearch && matchDept && matchYear && matchSection && matchGender && matchStatus && matchActivity && matchPart;
+    return matchSearch && matchDept && matchBranch && matchYear && matchSection && matchGender && matchStatus && matchActivity && matchPart;
   });
 
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -101,6 +114,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
     { header: 'Roll Number', key: 'roll_number' },
     { header: 'Student Name', key: 'student_name' },
     { header: 'Department', key: s => s.department_id || s.department || '--' },
+    { header: 'Branch', key: s => s.branch_id || s.branch || '--' },
     { header: 'Year', key: s => s.year || '--' },
     { header: 'Section', key: s => s.section || '--' },
     { header: 'Gender', key: s => s.gender || '--' },
@@ -112,6 +126,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
 
   const appliedFilters = [
     filterDept ? `Dept: ${filterDept}` : 'All Depts',
+    filterBranch ? `Branch: ${filterBranch}` : 'All Branches',
     filterYear ? `Year: ${filterYear}` : 'All Years',
     filterSection ? `Sec: ${filterSection}` : 'All Sections',
     filterGender ? `Gender: ${filterGender}` : 'All Genders',
@@ -153,6 +168,9 @@ export default function StudentsModule({ userRole, userDepartment }) {
               { label: 'Inactive', value: filteredStudents.filter(s => s.student_status === 'Inactive').length },
             ]}
           />
+          <button onClick={() => setIsImportModalOpen(true)} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Download size={16} style={{ transform: 'rotate(180deg)' }} /> Import Students
+          </button>
           <button onClick={() => setIsCreateModalOpen(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#2563eb' }}>
             <UserPlus size={16} /> Add Student
           </button>
@@ -189,6 +207,11 @@ export default function StudentsModule({ userRole, userDepartment }) {
             {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           <select className="input-field" style={{ height: '40px', width: '100%' }}
+            value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setCurrentPage(1); }}>
+            <option value="">All Branches</option>
+            {uniqueBranches.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <select className="input-field" style={{ height: '40px', width: '100%' }}
             value={filterYear} onChange={e => { setFilterYear(e.target.value); setCurrentPage(1); }}>
             <option value="">All Years</option>
             {uniqueYears.map(y => <option key={y} value={y}>Year {y}</option>)}
@@ -218,9 +241,9 @@ export default function StudentsModule({ userRole, userDepartment }) {
             <option value="2">≥ 2 Events</option>
             <option value="3">≥ 3 Events</option>
           </select>
-          {(searchTerm || filterDept || filterYear || filterSection || filterGender || filterStatus || filterActivity || filterPart) && (
+          {(searchTerm || filterDept || filterBranch || filterYear || filterSection || filterGender || filterStatus || filterActivity || filterPart) && (
             <button className="btn btn-secondary" style={{ height: '40px', fontSize: '0.8rem', width: '100%' }}
-              onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterYear(''); setFilterSection(''); setFilterGender(''); setFilterStatus(''); setFilterActivity(''); setFilterPart(''); setCurrentPage(1); }}>
+              onClick={() => { setSearchTerm(''); setFilterDept(''); setFilterBranch(''); setFilterYear(''); setFilterSection(''); setFilterGender(''); setFilterStatus(''); setFilterActivity(''); setFilterPart(''); setCurrentPage(1); }}>
               ✕ Clear Filters
             </button>
           )}
@@ -229,7 +252,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
           <table className="hide-on-mobile" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1000px' }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-tertiary)', zIndex: 10 }}>
               <tr>
-                {['Roll Number', 'Name', 'Department', 'Year', 'Section', 'Email', 'Activity Status', 'Actions'].map((h, i) => (
+                {['Roll Number', 'Name', 'Department', 'Branch', 'Year', 'Section', 'Email', 'Activity Status', 'Actions'].map((h, i) => (
                   <th key={i} style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-primary)', fontWeight: '700', fontSize: '0.875rem' }}>
                     {h}
                   </th>
@@ -258,6 +281,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
                     <td style={{ padding: '1rem', fontWeight: '500' }}>{student.roll_number}</td>
                     <td style={{ padding: '1rem' }}>{student.student_name}</td>
                     <td style={{ padding: '1rem' }}>{student.department_id || '-'}</td>
+                    <td style={{ padding: '1rem' }}>{student.branch_id || '-'}</td>
                     <td style={{ padding: '1rem' }}>{student.year || '-'}</td>
                     <td style={{ padding: '1rem' }}>{student.section || '-'}</td>
                     <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>{student.email_address || '-'}</td>
@@ -378,14 +402,25 @@ export default function StudentsModule({ userRole, userDepartment }) {
 
       {isCreateModalOpen && (
         <CreateStudentModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          userRole={userRole}
-          userDepartment={userDepartment}
-          onSuccess={(newStudent) => {
-            setStudents(prev => [newStudent, ...prev]);
-            setIsCreateModalOpen(false);
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={() => {
+          setIsCreateModalOpen(false);
+          fetchStudents();
+        }}
+        prefillDept={isHOD ? userDepartment : ''}
+      />
+      )}
+
+      {isImportModalOpen && (
+        <ImportStudentsModal 
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            fetchStudents();
           }}
+          userDepartment={isHOD ? userDepartment : null}
         />
       )}
     </div>

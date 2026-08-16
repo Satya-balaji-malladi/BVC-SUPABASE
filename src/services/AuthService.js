@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import SessionService from './SessionService';
+import { emailService } from './emailService';
 
 class AuthService {
   
@@ -42,8 +43,10 @@ class AuthService {
       // Get basic browser details for session tracking
       const userAgent = navigator.userAgent;
       
+      const userId = user.user_id || user.id;
+
       const { data: sessionToken, error: sessionError } = await supabase.rpc('create_session', {
-        p_user_id: user.id,
+        p_user_id: userId,
         p_ip: 'Unknown', // In a real edge function we'd get the actual IP
         p_user_agent: userAgent
       });
@@ -93,12 +96,33 @@ class AuthService {
 
       if (error) throw error;
       
-      // NOTE: In production, the DB function would NOT return the OTP. 
-      // It would send an email. We return it here purely because we lack an email service right now.
-      return data; 
+      // Attempt to send the OTP via the Google Apps Script email service
+      if (data && data.otp && data.email_address) {
+        const emailResult = await emailService.sendOTP({
+          email: data.email_address,
+          name: data.first_name || 'User',
+          otp: data.otp
+        });
+        
+        if (!emailResult.success) {
+          console.warn('Failed to dispatch OTP email via external service.');
+          throw new Error('Unable to send OTP right now. Please try again.');
+        }
+      }
+
+      // SECURITY CRITICAL: Strip the OTP and raw email from the response before returning to UI
+      // The frontend UI must never have access to the raw OTP or full email in its state.
+      const safeResponse = {
+        success: data?.success,
+        message: 'OTP sent to your registered email.',
+        masked_email: data?.masked_email
+      };
+
+      return safeResponse; 
     } catch (error) {
-      console.error('Request OTP error:', error);
-      throw error;
+      // Do not log the raw error if it contains OTP details
+      console.error('Request OTP error:', error.message || 'Unknown error');
+      throw new Error(error.message || 'Unable to request OTP');
     }
   }
 

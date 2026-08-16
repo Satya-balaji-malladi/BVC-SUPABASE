@@ -8,6 +8,8 @@ import { getActiveInvolvements } from '../../services/activityService';
 import EventAdminService from '../../services/EventAdminService';
 import ImportParticipantsModal from '../widgets/ImportParticipantsModal';
 import ViewStudentModal from '../widgets/ViewStudentModal';
+import { normalizeRole, isHOD as checkIsHOD, isEventAdmin as checkIsEventAdmin } from '../../constants/Roles';
+import { normalizeDepartment } from '../../utils/departmentUtils';
 
 export default function ParticipantsModule({ userRole, userDepartment, selectedEventId }) {
   const [participants, setParticipants] = useState([]);
@@ -26,9 +28,10 @@ export default function ParticipantsModule({ userRole, userDepartment, selectedE
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [viewStudent, setViewStudent] = useState(null);
 
-  const normalizedRole = (userRole || '').replace(/\s+/g, '').toUpperCase();
-  const isHOD = normalizedRole === 'HOD' || normalizedRole === 'DEPARTMENTADMIN';
-  const effectiveDepartment = isHOD ? userDepartment : null;
+  const normalizedRole = normalizeRole(userRole);
+  const isHOD = checkIsHOD(userRole);
+  const isEventAdmin = checkIsEventAdmin(userRole);
+  const effectiveDepartment = isHOD ? normalizeDepartment(userDepartment) : null;
 
   useEffect(() => {
     fetchParticipants();
@@ -52,7 +55,7 @@ export default function ParticipantsModule({ userRole, userDepartment, selectedE
       const eventMap = new Map((evData || []).map(e => [e.event_id, e]));
 
       let rawList = epData || [];
-      if (normalizedRole === 'EVENTADMIN' && selectedEventId) {
+      if (isEventAdmin && selectedEventId) {
         rawList = rawList.filter(p => p.event_id === selectedEventId);
       }
 

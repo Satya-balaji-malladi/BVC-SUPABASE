@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Users, Calendar, UserSquare2, BookOpen, Activity, Filter, Eye, Upload } from 'lucide-react';
+import { Users, Calendar, UserSquare2, BookOpen, Activity, Filter, Eye, Upload, Settings } from 'lucide-react';
 import ImportStudentsModal from '../../components/widgets/ImportStudentsModal';
+import DepartmentSettingsModal from '../../components/departments/DepartmentSettingsModal';
 
 export default function HODDashboard() {
   const [stats, setStats] = useState({ events: 0, faculty: 0, students: 0, participants: 0 });
@@ -15,6 +16,9 @@ export default function HODDashboard() {
     status: 'All'
   });
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [departmentId, setDepartmentId] = useState('');
+  const [allowedYears, setAllowedYears] = useState([1, 2, 3, 4]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -48,24 +52,37 @@ export default function HODDashboard() {
       const rawDepartmentCode = userProfile?.department || user?.department;
       
       if (rawDepartmentCode) {
-        // Ensure the department code has the DEPT_ prefix for querying foreign keys
-        const departmentCode = rawDepartmentCode.startsWith('DEPT_') 
-          ? rawDepartmentCode 
-          : `DEPT_${rawDepartmentCode}`;
+        // Resolve rawDepartmentCode to actual department_id (e.g. AI&DS -> DEPT_AIDS)
+        const { data: deptData } = await supabase.from('departments')
+          .select('department_id, department_name, allowed_years')
+          .or(`department_code.eq.${rawDepartmentCode},department_id.eq.${rawDepartmentCode}`)
+          .maybeSingle();
 
-        const { data: dept } = await supabase.from('departments').select('department_name').eq('department_id', departmentCode).single();
+        const departmentCode = deptData?.department_id || (rawDepartmentCode.startsWith('DEPT_') ? rawDepartmentCode : `DEPT_${rawDepartmentCode}`);
+        
+        const dept = deptData;
         setDepartmentName(dept?.department_name || rawDepartmentCode || 'Your Department');
+        setDepartmentId(departmentCode);
+        if (dept?.allowed_years) {
+          setAllowedYears(dept.allowed_years);
+        }
         
         // Fetch stats scoped to department
         const { count: eventsCount } = await supabase.from('events').select('*', { count: 'exact', head: true }).ilike('departments', `%${rawDepartmentCode}%`);
         const { count: facultyCount } = await supabase.from('faculty').select('*', { count: 'exact', head: true }).eq('department_id', departmentCode);
         const { count: studentCount } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('department_id', departmentCode);
         
+        // Calculate real participants count by joining students and event_participants
+        const { count: participantsCount } = await supabase
+          .from('event_participants')
+          .select('*, students!inner(department_id)', { count: 'exact', head: true })
+          .eq('students.department_id', departmentCode);
+
         setStats({
           events: eventsCount || 0,
           faculty: facultyCount || 0,
           students: studentCount || 0,
-          participants: 0 // Mocked for now
+          participants: participantsCount || 0
         });
 
         // Fetch Recent Events scoped to department
@@ -160,9 +177,14 @@ export default function HODDashboard() {
           <h1 className="text-gradient">{departmentName} Dashboard</h1>
           <p>Overview of your department's events, faculty, and students.</p>
         </div>
-        <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Upload size={18} /> Import Students
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button onClick={() => setShowSettingsModal(true)} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Settings size={18} /> Settings
+          </button>
+          <button onClick={() => setShowImportModal(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Upload size={18} /> Import Students
+          </button>
+        </div>
       </div>
 
       {/* Stats Row */}
@@ -356,6 +378,17 @@ export default function HODDashboard() {
           setShowImportModal(false);
           fetchDashboardData();
         }} 
+      />
+
+      <DepartmentSettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        departmentId={departmentId}
+        currentYears={allowedYears}
+        onSuccess={(newYears) => {
+          setAllowedYears(newYears);
+          setShowSettingsModal(false);
+        }}
       />
     </div>
   );

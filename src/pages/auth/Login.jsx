@@ -54,13 +54,11 @@ export default function Login() {
         // Wait for OTP request
         const res = await AuthService.requestOtp(identifier);
         
-        // MOCK DEV LOGIC: Only log OTP in console, do not alert
-        if (res.mock_otp && process.env.NODE_ENV === 'development') {
-           console.log("[DEV ONLY] MOCK OTP:", res.mock_otp);
+        if (res.masked_email) {
+          setMaskedEmail(res.masked_email);
         }
         
         setResendCooldown(60); // 60 seconds cooldown
-
         setStep(3);
       } else {
         setStep(2);
@@ -328,9 +326,6 @@ export default function Login() {
                   try {
                     const res = await AuthService.requestOtp(identifier);
                     setError(null);
-                    if (res.mock_otp && process.env.NODE_ENV === 'development') {
-                       console.log("[DEV ONLY] MOCK OTP:", res.mock_otp);
-                    }
                     setResendCooldown(60);
                   } catch(e) {
                     setError(e.message || "Failed to resend OTP");

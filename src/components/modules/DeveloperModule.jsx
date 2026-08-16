@@ -22,11 +22,8 @@ export default function DeveloperModule() {
 
       if (error) {
         // Fallback for missing table during dev
-        console.warn('Could not fetch feedbacks, loading mock data');
-        setTickets([
-          { id: 1, type: 'Problem/Bug', description: 'The print button on the reports page is unresponsive.', status: 'Unsolved', created_at: new Date().toISOString(), user_role: 'Event Admin' },
-          { id: 2, type: 'Feedback', description: 'Love the new dark mode design!', status: 'Solved', created_at: new Date().toISOString(), user_role: 'Student' }
-        ]);
+        console.warn('Could not fetch feedbacks. The table might be missing or empty.');
+        setTickets([]);
         return;
       }
       setTickets(data || []);

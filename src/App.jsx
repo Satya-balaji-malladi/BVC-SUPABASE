@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { supabase } from './supabaseClient';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+// Auth Context & Roles
+import { useAuth } from './context/AuthContext';
+import { ROLES, getDashboardBasePathForRole } from './constants/Roles';
 
 // Layouts & Widgets
 import AppShell from './components/layout/AppShell';
 import FeedbackWidget from './components/widgets/FeedbackWidget';
 import ProtectedRoute from './components/layout/ProtectedRoute';
-import SessionService from './services/SessionService';
 
 // Auth Pages
 import Login from './pages/auth/Login';
@@ -14,7 +16,7 @@ import CompleteProfile from './pages/auth/CompleteProfile';
 import EventSelection from './pages/auth/EventSelection';
 import ForgotPassword from './pages/auth/ForgotPassword';
 
-// Dashboards (Placeholders for now)
+// Dashboards
 import SuperAdminDashboard from './pages/dashboards/SuperAdminDashboard';
 import HODDashboard from './pages/dashboards/HODDashboard';
 import EventAdminDashboard from './pages/dashboards/EventAdminDashboard';
@@ -24,94 +26,7 @@ import PublicRegistration from './pages/public/PublicRegistration';
 import ModuleRouter from './components/layout/ModuleRouter';
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState(null);
-  const [profileIncomplete, setProfileIncomplete] = useState(false);
-
-  useEffect(() => {
-    const loadSession = async () => {
-      // Fast check first
-      if (!SessionService.isAuthenticated()) {
-        setSession(null);
-        setUserRole(null);
-        setLoading(false);
-        return;
-      }
-      
-      const cachedUser = SessionService.getUser();
-      setSession(true);
-      setUserRole(cachedUser?.role);
-      
-      // We don't block the initial render on backend validation here 
-      // because ProtectedRoute handles the secure validation.
-      checkUserProfile(cachedUser?.id, cachedUser);
-    };
-
-    loadSession();
-
-    // Listen for custom login/logout events
-    window.addEventListener('auth_state_changed', loadSession);
-    
-    return () => window.removeEventListener('auth_state_changed', loadSession);
-  }, []);
-
-  const checkUserProfile = async (userId, cachedUser) => {
-    try {
-      // With custom auth, we might just trust the cached role to save a query, 
-      // but let's query to ensure it's up to date.
-      const { data: userProfile, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('user_id', userId) // legacy schema usually has user_id
-        .single();
-
-      let activeProfile = userProfile;
-      
-      // Fallback to id if user_id fails
-      if (error && error.code === 'PGRST116') {
-         const { data: fallbackProfile } = await supabase.from('users').select('*').eq('id', userId).single();
-         activeProfile = fallbackProfile;
-      }
-
-      if (!activeProfile && !cachedUser) {
-        setProfileIncomplete(true);
-      } else if (activeProfile || cachedUser) {
-        const finalProfile = activeProfile || cachedUser;
-        
-        // Check account expiry
-        if (finalProfile.account_expires_at && new Date(finalProfile.account_expires_at) < new Date()) {
-          alert('Your account has expired.');
-          SessionService.clearSession();
-          window.dispatchEvent(new Event('auth_state_changed'));
-          return;
-        }
-
-        // Check if mandatory fields are missing or if first_login is true
-        const normalizedRole = finalProfile.role ? finalProfile.role.replace(/\s+/g, '') : '';
-        const isSuperOrDev = normalizedRole === 'SuperAdmin' || normalizedRole === 'Developer';
-        const hasName = finalProfile.name || finalProfile.first_name;
-        const hasDept = finalProfile.department_code || finalProfile.department;
-        const isFirstLogin = finalProfile.first_login === true || finalProfile.first_login === 'true';
-        
-        if (!isSuperOrDev && (isFirstLogin || !hasName || !hasDept)) {
-          setProfileIncomplete(true);
-        } else {
-          setProfileIncomplete(false);
-        }
-        
-        setUserRole(finalProfile.role);
-      }
-    } catch (err) {
-      console.error('Error fetching user profile:', err);
-      // Fallback to cached role if DB fails so we don't get stuck in a login loop
-      if (cachedUser && cachedUser.role) {
-        setUserRole(cachedUser.role);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { isAuthenticated, loading, profileIncomplete, role } = useAuth();
 
   if (loading) {
     return (
@@ -124,26 +39,25 @@ function App() {
   }
 
   const getDashboardRoute = () => {
-    if (!session) return '/login';
+    if (!isAuthenticated) return '/login';
     if (profileIncomplete) return '/complete-profile';
-    if (!userRole) return '/select-event';
-    const normalized = userRole.replace(/\s+/g, '');
-    if (normalized === 'SuperAdmin') return '/super-admin';
-    if (normalized === 'HOD' || normalized === 'DepartmentAdmin') return '/department-admin';
-    if (normalized === 'Developer') return '/developer';
+    if (!role) return '/select-event';
     
-    if (['Coordinator', 'FacultyCoordinator', 'EventCoordinator', 'Student', 'Guest', 'STUDENT', 'GUEST', 'StudentCoordinator', 'GuestCoordinator'].includes(normalized)) {
-      if (localStorage.getItem('selected_event_id')) {
-        return '/coordinator';
-      }
-      return '/select-event';
+    const basePath = getDashboardBasePathForRole(role);
+    if (basePath === '/select-event') {
+       if (localStorage.getItem('selected_event_id')) {
+          // If a coordinator already selected an event, take them to their scanner directly.
+          // Note: Faculty and EventAdmin technically go to /event-admin after selection, 
+          // but the EventSelection component handles that post-selection redirect. 
+          // For now, if they land here, we can route them based on role.
+          const isCoordOrParticipant = [
+            ROLES.COORDINATOR, ROLES.FACULTY_COORDINATOR, ROLES.EVENT_COORDINATOR, 
+            ROLES.STUDENT_COORDINATOR, ROLES.GUEST_COORDINATOR, ROLES.STUDENT, ROLES.GUEST
+          ].includes(role);
+          if (isCoordOrParticipant) return '/coordinator';
+       }
     }
-    
-    if (['Faculty', 'EventAdmin'].includes(normalized)) {
-      return '/select-event';
-    }
-    
-    return '/select-event';
+    return basePath;
   };
 
   return (
@@ -152,15 +66,15 @@ function App() {
         <Route path="/register/:eventId" element={<PublicRegistration />} />
 
         {/* Public / Auth */}
-        <Route path="/login" element={!session ? <Login /> : <Navigate to={getDashboardRoute()} replace />} />
-        <Route path="/forgot-password" element={!session ? <ForgotPassword /> : <Navigate to={getDashboardRoute()} replace />} />
+        <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to={getDashboardRoute()} replace />} />
+        <Route path="/forgot-password" element={!isAuthenticated ? <ForgotPassword /> : <Navigate to={getDashboardRoute()} replace />} />
         
         {/* Full-screen Standalone Routes */}
         <Route 
           path="/complete-profile" 
           element={
-            session ? (
-              <CompleteProfile onComplete={() => setProfileIncomplete(false)} />
+            isAuthenticated ? (
+              <CompleteProfile />
             ) : (
               <Navigate to="/login" replace />
             )
@@ -169,10 +83,14 @@ function App() {
         <Route 
           path="/select-event" 
           element={
-            session && profileIncomplete ? (
+            isAuthenticated && profileIncomplete ? (
               <Navigate to="/complete-profile" replace />
-            ) : session ? (
-              <ProtectedRoute allowedRoles={['Faculty', 'Event Admin', 'Coordinator', 'Faculty Coordinator', 'Event Coordinator', 'Student', 'Guest', 'STUDENT', 'GUEST', 'Student Coordinator', 'Guest Coordinator']}>
+            ) : isAuthenticated ? (
+              <ProtectedRoute allowedRoles={[
+                ROLES.FACULTY, ROLES.EVENT_ADMIN, ROLES.COORDINATOR, ROLES.FACULTY_COORDINATOR, 
+                ROLES.EVENT_COORDINATOR, ROLES.STUDENT_COORDINATOR, ROLES.GUEST_COORDINATOR, 
+                ROLES.STUDENT, ROLES.GUEST
+              ]}>
                 <EventSelection />
               </ProtectedRoute>
             ) : (
@@ -183,10 +101,13 @@ function App() {
         <Route 
           path="/coordinator/*" 
           element={
-            session && profileIncomplete ? (
+            isAuthenticated && profileIncomplete ? (
               <Navigate to="/complete-profile" replace />
-            ) : session ? (
-              <ProtectedRoute allowedRoles={['Coordinator', 'Faculty Coordinator', 'Event Coordinator', 'Student', 'Guest', 'STUDENT', 'GUEST', 'Student Coordinator', 'Guest Coordinator']}>
+            ) : isAuthenticated ? (
+              <ProtectedRoute allowedRoles={[
+                ROLES.COORDINATOR, ROLES.FACULTY_COORDINATOR, ROLES.EVENT_COORDINATOR, 
+                ROLES.STUDENT_COORDINATOR, ROLES.GUEST_COORDINATOR, ROLES.STUDENT, ROLES.GUEST
+              ]}>
                 <CoordinatorScanner />
               </ProtectedRoute>
             ) : (
@@ -199,9 +120,9 @@ function App() {
         <Route 
           path="/" 
           element={
-            session && profileIncomplete ? (
+            isAuthenticated && profileIncomplete ? (
               <Navigate to="/complete-profile" replace />
-            ) : session ? (
+            ) : isAuthenticated ? (
               <AppShell />
             ) : (
               <Navigate to="/login" replace />
@@ -210,20 +131,20 @@ function App() {
         >
           <Route index element={<Navigate to={getDashboardRoute()} replace />} />
           
-          <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['Super Admin', 'Developer']}><SuperAdminDashboard /></ProtectedRoute>} />
-          <Route path="/super-admin/:module" element={<ProtectedRoute allowedRoles={['Super Admin', 'Developer']}><ModuleRouter userRole={userRole} baseRole="super-admin" /></ProtectedRoute>} />
+          <Route path="/super-admin" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.DEVELOPER]}><SuperAdminDashboard /></ProtectedRoute>} />
+          <Route path="/super-admin/:module" element={<ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN, ROLES.DEVELOPER]}><ModuleRouter baseRole="super-admin" /></ProtectedRoute>} />
 
-          <Route path="/department-admin" element={<ProtectedRoute allowedRoles={['HOD', 'Department Admin']}><HODDashboard /></ProtectedRoute>} />
-          <Route path="/department-admin/:module" element={<ProtectedRoute allowedRoles={['HOD', 'Department Admin']}><ModuleRouter userRole={userRole} baseRole="department-admin" /></ProtectedRoute>} />
+          <Route path="/department-admin" element={<ProtectedRoute allowedRoles={[ROLES.HOD, ROLES.DEPARTMENT_ADMIN]}><HODDashboard /></ProtectedRoute>} />
+          <Route path="/department-admin/:module" element={<ProtectedRoute allowedRoles={[ROLES.HOD, ROLES.DEPARTMENT_ADMIN]}><ModuleRouter baseRole="department-admin" /></ProtectedRoute>} />
           
-          <Route path="/event-admin" element={<ProtectedRoute allowedRoles={['Event Admin', 'Student', 'Guest', 'Faculty Coordinator', 'Event Coordinator']}><EventAdminDashboard /></ProtectedRoute>} />
-          <Route path="/event-admin/:module" element={<ProtectedRoute allowedRoles={['Event Admin', 'Student', 'Guest', 'Faculty Coordinator', 'Event Coordinator']}><ModuleRouter userRole={userRole} baseRole="event-admin" /></ProtectedRoute>} />
+          <Route path="/event-admin" element={<ProtectedRoute allowedRoles={[ROLES.EVENT_ADMIN, ROLES.FACULTY, ROLES.COORDINATOR, ROLES.FACULTY_COORDINATOR, ROLES.EVENT_COORDINATOR, ROLES.STUDENT, ROLES.GUEST]}><EventAdminDashboard /></ProtectedRoute>} />
+          <Route path="/event-admin/:module" element={<ProtectedRoute allowedRoles={[ROLES.EVENT_ADMIN, ROLES.FACULTY, ROLES.COORDINATOR, ROLES.FACULTY_COORDINATOR, ROLES.EVENT_COORDINATOR, ROLES.STUDENT, ROLES.GUEST]}><ModuleRouter baseRole="event-admin" /></ProtectedRoute>} />
           
-          <Route path="developer/*" element={<ProtectedRoute allowedRoles={['Developer', 'Super Admin']}><DeveloperDashboard /></ProtectedRoute>} />
+          <Route path="developer/*" element={<ProtectedRoute allowedRoles={[ROLES.DEVELOPER, ROLES.SUPER_ADMIN]}><DeveloperDashboard /></ProtectedRoute>} />
         </Route>
       </Routes>
       
-      {session && !profileIncomplete && <FeedbackWidget />}
+      {isAuthenticated && !profileIncomplete && <FeedbackWidget />}
     </BrowserRouter>
   );
 }

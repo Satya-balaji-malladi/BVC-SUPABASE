@@ -17,7 +17,6 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [mockOtp, setMockOtp] = useState(null); // For dev purposes only
   
   const navigate = useNavigate();
 
@@ -30,10 +29,7 @@ export default function ForgotPassword() {
     try {
       const response = await AuthService.requestOtp(identifier);
       setSuccess(response.message);
-      if (response.mock_otp) {
-        setMockOtp(response.mock_otp); // DEV ONLY
-        setOtp(response.mock_otp); // Auto-fill for easier testing
-      }
+      
       if (response.masked_email) {
         setMaskedEmail(response.masked_email);
       }
@@ -108,7 +104,6 @@ export default function ForgotPassword() {
         {success && step < 4 && (
           <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '0.75rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
             {success}
-            {mockOtp && <div style={{ marginTop: '0.5rem', fontWeight: 'bold' }}>DEV MOCK OTP: {mockOtp}</div>}
           </div>
         )}
 
@@ -143,11 +138,6 @@ export default function ForgotPassword() {
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                 OTP sent to: <strong>{maskedEmail || identifier}</strong>
               </div>
-              {mockOtp && (
-                <div style={{ background: '#fef3c7', color: '#d97706', padding: '0.5rem', borderRadius: '4px', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 'bold', textAlign: 'center' }}>
-                  Testing OTP: {mockOtp}
-                </div>
-              )}
               <input
                 type="text"
                 required

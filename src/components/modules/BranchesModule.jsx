@@ -15,6 +15,7 @@ export default function BranchesModule({ userRole, userDepartment }) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [resolvedDeptId, setResolvedDeptId] = useState(null);
   
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -59,11 +60,21 @@ export default function BranchesModule({ userRole, userDepartment }) {
     try {
       let branchQuery = supabase.from('branches').select('*');
       let sectionQuery = supabase.from('sections').select('*');
-      let studQuery = supabase.from('students').select('roll_number, department_id, section');
+      let studQuery = supabase.from('students').select('roll_number, department_id, branch_id, section');
 
       if (isHOD && effectiveDepartment) {
-        branchQuery = branchQuery.or(`department_id.eq.${effectiveDepartment},department_code.eq.${effectiveDepartment}`);
-        const rawDept = effectiveDepartment.replace('DEPT_', '');
+        // Resolve effectiveDepartment to actual department_id (e.g. AI&DS -> DEPT_AIDS)
+        const { data: deptData } = await supabase.from('departments')
+          .select('department_id, department_code')
+          .or(`department_code.eq.${effectiveDepartment},department_id.eq.${effectiveDepartment}`)
+          .maybeSingle();
+
+        const resDeptId = deptData?.department_id || effectiveDepartment;
+        setResolvedDeptId(resDeptId);
+        const resolvedDeptCode = deptData?.department_code || effectiveDepartment;
+        
+        branchQuery = branchQuery.or(`department_id.eq.${resDeptId},department_code.eq.${resolvedDeptCode}`);
+        const rawDept = resDeptId.replace('DEPT_', '');
         studQuery = studQuery.ilike('department_id', `%${rawDept}%`);
       }
 
@@ -79,10 +90,13 @@ export default function BranchesModule({ userRole, userDepartment }) {
 
       if (branchErr) {
         // Default demo branch dataset fallback
+        const deptIdToUse = isHOD ? (effectiveDepartment.startsWith('DEPT_') ? effectiveDepartment : `DEPT_${effectiveDepartment.replace(/[^A-Z]/ig, '')}`) : 'AIML';
+        const deptCodeToUse = effectiveDepartment || 'AIML';
+
         const defaultBranches = [
-          { branch_id: 'BR-001', department_id: effectiveDepartment || 'AIML', branch_name: `${effectiveDepartment || 'AIML'} Core Program`, branch_code: effectiveDepartment || 'AIML', description: `Main specialization branch for ${effectiveDepartment || 'AIML'} department.`, status: 'Active', created_at: new Date().toISOString() },
-          { branch_id: 'BR-002', department_id: effectiveDepartment || 'AIML', branch_name: `${effectiveDepartment || 'AIML'} Advanced Studies`, branch_code: `${effectiveDepartment || 'AIML'}-ADV`, description: 'Specialized honors and advanced research branch.', status: 'Active', created_at: new Date().toISOString() },
-          { branch_id: 'BR-003', department_id: effectiveDepartment || 'AIML', branch_name: `${effectiveDepartment || 'AIML'} Applied Research`, branch_code: `${effectiveDepartment || 'AIML'}-AR`, description: 'Applied industry projects and research program.', status: 'Inactive', created_at: new Date().toISOString() },
+          { branch_id: 'BR-001', department_id: deptIdToUse, branch_name: `${deptCodeToUse} Core Program`, branch_code: deptCodeToUse, description: `Main specialization branch for ${deptCodeToUse} department.`, status: 'Active', created_at: new Date().toISOString() },
+          { branch_id: 'BR-002', department_id: deptIdToUse, branch_name: `${deptCodeToUse} Advanced Studies`, branch_code: `${deptCodeToUse}-ADV`, description: 'Specialized honors and advanced research branch.', status: 'Active', created_at: new Date().toISOString() },
+          { branch_id: 'BR-003', department_id: deptIdToUse, branch_name: `${deptCodeToUse} Applied Research`, branch_code: `${deptCodeToUse}-AR`, description: 'Applied industry projects and research program.', status: 'Inactive', created_at: new Date().toISOString() },
         ];
         setBranches(defaultBranches);
       } else {
@@ -91,10 +105,11 @@ export default function BranchesModule({ userRole, userDepartment }) {
 
       if (sectionErr || !sectionData || sectionData.length === 0) {
         // Default sections dataset mapped to fallback branches
+        const deptCodeToUse = effectiveDepartment || 'AIML';
         const defaultSections = [
-          { section_id: 'SEC-001', branch_id: 'BR-001', branch_code: effectiveDepartment || 'AIML', section_name: 'Section A', section_code: 'A', description: 'Primary section A roster', status: 'Active', created_at: new Date().toISOString() },
-          { section_id: 'SEC-002', branch_id: 'BR-001', branch_code: effectiveDepartment || 'AIML', section_name: 'Section B', section_code: 'B', description: 'Primary section B roster', status: 'Active', created_at: new Date().toISOString() },
-          { section_id: 'SEC-003', branch_id: 'BR-002', branch_code: `${effectiveDepartment || 'AIML'}-ADV`, section_name: 'Section A', section_code: 'A', description: 'Honors section A roster', status: 'Active', created_at: new Date().toISOString() },
+          { section_id: 'SEC-001', branch_id: 'BR-001', branch_code: deptCodeToUse, section_name: 'Section A', section_code: 'A', description: 'Primary section A roster', status: 'Active', created_at: new Date().toISOString() },
+          { section_id: 'SEC-002', branch_id: 'BR-001', branch_code: deptCodeToUse, section_name: 'Section B', section_code: 'B', description: 'Primary section B roster', status: 'Active', created_at: new Date().toISOString() },
+          { section_id: 'SEC-003', branch_id: 'BR-002', branch_code: `${deptCodeToUse}-ADV`, section_name: 'Section A', section_code: 'A', description: 'Honors section A roster', status: 'Active', created_at: new Date().toISOString() },
         ];
         setSections(defaultSections);
       } else {
@@ -114,29 +129,39 @@ export default function BranchesModule({ userRole, userDepartment }) {
     return sections.filter(s => s.branch_id === branchId || s.branch_code === branchCode);
   };
 
-  const getBranchStudentCount = (code, name, departmentId) => {
+  const sanitizeMatch = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace('dept', '');
+
+  const getBranchStudentCount = (branchId, departmentId) => {
     if (!students || students.length === 0) return 0;
-    const c = (code || '').toLowerCase();
-    const n = (name || '').toLowerCase();
-    const dId = (departmentId || '').toLowerCase().replace('dept_', '');
     
     return students.filter(s => {
-      const sb = (s.department_id || s.department || '').toLowerCase().replace('dept_', '');
-      return sb === c || sb === n || sb.includes(c) || sb === dId;
+      if (s.branch_id === branchId) return true;
+      // Fallback for students without branch_id (legacy or unassigned), if they match department
+      if (!s.branch_id) {
+        const sb = sanitizeMatch(s.department_id || s.department);
+        const dId = sanitizeMatch(departmentId);
+        return dId && sb === dId;
+      }
+      return false;
     }).length;
   };
 
-  const getSectionStudentCount = (branchCode, sectionCode, departmentId) => {
+  const getSectionStudentCount = (branchId, sectionCode, departmentId) => {
     if (!students || students.length === 0) return 0;
-    const bc = (branchCode || '').toLowerCase();
-    const sc = (sectionCode || '').toLowerCase();
-    const dId = (departmentId || '').toLowerCase().replace('dept_', '');
+    const sc = sanitizeMatch(sectionCode);
     
     return students.filter(s => {
-      const sb = (s.department_id || s.department || '').toLowerCase().replace('dept_', '');
-      const sec = (s.section || '').toLowerCase();
-      const branchMatch = (sb === bc || sb.includes(bc) || sb === dId);
-      return branchMatch && (sec === sc || sec.includes(sc));
+      const sec = sanitizeMatch(s.section);
+      const isSecMatch = sc && (sec === sc || sec.includes(sc));
+      
+      if (s.branch_id === branchId) return isSecMatch;
+      // Fallback
+      if (!s.branch_id) {
+        const sb = sanitizeMatch(s.department_id || s.department);
+        const dId = sanitizeMatch(departmentId);
+        return (dId && sb === dId) && isSecMatch;
+      }
+      return false;
     }).length;
   };
 
@@ -192,7 +217,7 @@ export default function BranchesModule({ userRole, userDepartment }) {
     try {
       const newBranch = {
         branch_id: `BR-${Date.now()}`,
-        department_id: effectiveDepartment || 'GENERAL',
+        department_id: resolvedDeptId || effectiveDepartment || 'GENERAL',
         department_code: effectiveDepartment || 'GENERAL',
         branch_name: branchFormData.branch_name.trim(),
         branch_code: branchFormData.branch_code.trim().toUpperCase(),
@@ -475,7 +500,6 @@ export default function BranchesModule({ userRole, userDepartment }) {
               ) : (
                 paginatedBranches.map(b => {
                   const branchSecs = getBranchSections(b.branch_id, b.branch_code);
-                  const studentCount = getBranchStudentCount(b.branch_code, b.branch_name, b.department_id);
                   return (
                     <tr key={b.branch_id || b.branch_code} style={{ borderBottom: '1px solid var(--glass-border)' }}>
                       <td style={{ padding: '1rem', fontWeight: '600', color: '#0f172a' }}>{b.branch_name}</td>
@@ -494,7 +518,7 @@ export default function BranchesModule({ userRole, userDepartment }) {
                         </button>
                       </td>
                       <td style={{ padding: '1rem', fontWeight: '600', color: '#2563eb' }}>
-                        {studentCount} Students
+                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{getBranchStudentCount(b.branch_id, b.department_id)}</div>
                       </td>
                       <td style={{ padding: '1rem' }}>
                         <span style={{
@@ -630,7 +654,7 @@ export default function BranchesModule({ userRole, userDepartment }) {
                       }
 
                       return branchSecs.map(s => {
-                        const secStudents = getSectionStudentCount(activeSectionBranch.branch_code, s.section_code, activeSectionBranch.department_id);
+                        const secStudents = getSectionStudentCount(activeSectionBranch.branch_id, s.section_code, activeSectionBranch.department_id);
                         return (
                           <tr key={s.section_id || s.section_code} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '0.75rem 1rem', fontWeight: '600', color: '#0f172a' }}>{s.section_name}</td>

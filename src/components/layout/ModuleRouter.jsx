@@ -16,6 +16,8 @@ import DepartmentsModule from '../modules/DepartmentsModule';
 import BranchesModule from '../modules/BranchesModule';
 import CoordinatorScanner from '../../pages/dashboards/CoordinatorScanner';
 
+import { useAuth } from '../../context/AuthContext';
+
 function PlaceholderModule({ title }) {
   const displayTitle = title.charAt(0).toUpperCase() + title.slice(1);
   return (
@@ -28,19 +30,9 @@ function PlaceholderModule({ title }) {
   );
 }
 
-export default function ModuleRouter({ userRole, baseRole }) {
+export default function ModuleRouter({ baseRole }) {
   const { module } = useParams();
-  
-  // Get department from session
-  const sessionStr = localStorage.getItem('bvc_cached_user') || localStorage.getItem('custom_auth_session');
-  let userDepartment = null;
-  if (sessionStr) {
-    try {
-      const sessionData = JSON.parse(sessionStr);
-      // Fallback for different session structures
-      userDepartment = sessionData?.department || sessionData?.user?.department || null;
-    } catch (e) {}
-  }
+  const { role: userRole, department: userDepartment } = useAuth();
 
   // Get selected event for Event Admins / Coordinators
   const selectedEventId = localStorage.getItem('selected_event_id');

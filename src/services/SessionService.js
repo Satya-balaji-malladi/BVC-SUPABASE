@@ -10,11 +10,12 @@ class SessionService {
   static setSession(token, user) {
     // Sanitize user object to only store non-sensitive UI routing info
     const sanitizedUser = {
-      id: user.id,
-      email: user.email,
+      user_id: user.user_id || user.id, // Standardize on user_id
+      id: user.user_id || user.id, // Keep id for legacy fallback briefly during migration
+      email: user.email || user.email_address,
       role: user.role,
-      name: user.name,
-      department: user.department
+      name: user.name || user.first_name,
+      department: user.department || user.department_id
     };
     localStorage.setItem(SESSION_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(sanitizedUser));

@@ -394,8 +394,8 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
         {/* Header */}
         <div style={{ background: '#212529', color: '#fff', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h5 style={{ margin: 0, fontWeight: 600 }}>Manage Event: {event.event_name}</h5>
-            <small style={{ color: 'rgba(255,255,255,0.7)' }}>ID: {event.event_id}</small>
+            <h5 style={{ margin: 0, fontWeight: 600, color: '#fff' }}>Manage Event: {event.event_name}</h5>
+            <small style={{ color: 'rgba(255,255,255,0.85)' }}>ID: {event.event_id}</small>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}>×</button>
         </div>

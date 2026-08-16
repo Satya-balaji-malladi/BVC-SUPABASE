@@ -31,22 +31,28 @@ export default function BranchDetailView({ branch, effectiveDepartment, onBack }
   const fetchBranchStudents = async () => {
     setLoading(true);
     try {
-      // Fetch all students belonging to this branch
-      const rawDept = (branch.department_id || effectiveDepartment || '').replace('DEPT_', '');
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .ilike('department_id', `%${rawDept}%`);
+      let query = supabase.from('students').select('*');
       
+      if (branch.branch_id) {
+        query = query.eq('branch_id', branch.branch_id);
+      } else {
+        // Fallback for legacy data without branch_id
+        const rawDept = (branch.department_id || effectiveDepartment || '').replace('DEPT_', '');
+        query = query.ilike('department_id', `%${rawDept}%`);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       
-      // Filter out only those matching this branch code dynamically since we used an OR query
-      const filtered = (data || []).filter(s => {
-        const sb = (s.department_id || s.department || '').toLowerCase().replace('dept_', '');
-        const bc = (branch.branch_code || '').toLowerCase();
-        const dId = (branch.department_id || '').toLowerCase().replace('dept_', '');
-        return sb === bc || sb.includes(bc) || sb === dId;
-      });
+      let filtered = data || [];
+      if (!branch.branch_id) {
+        filtered = filtered.filter(s => {
+          const sb = (s.department_id || s.department || '').toLowerCase().replace('dept_', '');
+          const bc = (branch.branch_code || '').toLowerCase();
+          const dId = (branch.department_id || '').toLowerCase().replace('dept_', '');
+          return sb === bc || sb.includes(bc) || sb === dId;
+        });
+      }
       
       setStudents(filtered);
     } catch (err) {

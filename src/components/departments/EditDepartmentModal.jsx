@@ -10,7 +10,8 @@ export default function EditDepartmentModal({ department, onClose, onSuccess }) 
   // Form State initialized with department data
   const [departmentData, setDepartmentData] = useState({
     name: department.department_name || '',
-    code: department.department_code || ''
+    code: department.department_code || '',
+    allowedYears: department.allowed_years || [1, 2, 3, 4]
   });
   
   const [hodOption, setHodOption] = useState('none'); // 'none' | 'existing' | 'new'
@@ -145,6 +146,28 @@ export default function EditDepartmentModal({ department, onClose, onSuccess }) 
                   onChange={e => setDepartmentData({...departmentData, code: e.target.value})}
                   style={{ width: '100%', padding: '0.75rem', textTransform: 'uppercase' }}
                 />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Allowed Student Years *</label>
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                {[1, 2, 3, 4].map(year => (
+                  <label key={year} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox"
+                      checked={departmentData.allowedYears.includes(year)}
+                      onChange={(e) => {
+                        const newYears = e.target.checked 
+                          ? [...departmentData.allowedYears, year].sort()
+                          : departmentData.allowedYears.filter(y => y !== year);
+                        setDepartmentData({...departmentData, allowedYears: newYears});
+                      }}
+                      style={{ accentColor: 'var(--primary)', width: '1.1rem', height: '1.1rem', cursor: 'pointer' }}
+                    />
+                    Year {year}
+                  </label>
+                ))}
               </div>
             </div>
 

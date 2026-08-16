@@ -21,7 +21,7 @@ export async function getActiveInvolvements() {
 
     const activeEvents = (allEvents || []).filter(e => {
       const st = (e.status || e.event_status || '').toLowerCase();
-      return st === 'active';
+      return ['active', 'published', 'ongoing'].includes(st);
     });
 
     const activeStudents = new Map();
@@ -42,6 +42,23 @@ export async function getActiveInvolvements() {
       };
       
       const orgKeys = [event.organizer, event.created_by, event.organizer_id].filter(Boolean);
+      
+      if (event.allowed_coordinator_ids) {
+        let additionalAdmins = [];
+        if (Array.isArray(event.allowed_coordinator_ids)) {
+          additionalAdmins = event.allowed_coordinator_ids;
+        } else if (typeof event.allowed_coordinator_ids === 'string') {
+          try {
+            additionalAdmins = JSON.parse(event.allowed_coordinator_ids);
+          } catch(e) {}
+        }
+        if (Array.isArray(additionalAdmins)) {
+          additionalAdmins.forEach(id => {
+            if (id && !orgKeys.includes(id)) orgKeys.push(id);
+          });
+        }
+      }
+
       orgKeys.forEach(key => {
         if (!activeUsers.has(key)) {
           activeUsers.set(key, []);
@@ -80,8 +97,8 @@ export async function getActiveInvolvements() {
 
     // 4. Fetch assignments for these active events (coordinators)
     const { data: assignments, error: assignError } = await supabase
-      .from('event_assignments')
-      .select('user_id, event_id, role')
+      .from('event_coordinators')
+      .select('user_id, event_id, assignment_role')
       .in('event_id', eventIds);
 
     if (!assignError && assignments) {
@@ -99,10 +116,10 @@ export async function getActiveInvolvements() {
         const userEvents = activeUsers.get(a.user_id);
         if (!userEvents.some(e => e.event_id === a.event_id)) {
           userEvents.push({
-            ...event,
-            venue: event.venue || event.location || 'TBD',
-            role: a.role || 'Coordinator'
-          });
+          ...event,
+          venue: event.venue || event.location || 'TBD',
+          role: a.assignment_role || 'Coordinator'
+        });
         }
       });
     }

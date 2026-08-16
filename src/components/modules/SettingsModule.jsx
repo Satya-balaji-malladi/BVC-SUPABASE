@@ -23,7 +23,8 @@ export default function SettingsModule({ userRole, userDepartment }) {
     email: `${(effectiveDepartment || 'dept').toLowerCase()}hod@bvcgroup.in`,
     phone: '+91 94901 23456',
     location: 'Block-B, 2nd Floor, Room 204',
-    description: `Department of ${effectiveDepartment || 'Engineering'} focused on academic excellence, technical workshops, and student event participation.`
+    description: `Department of ${effectiveDepartment || 'Engineering'} focused on academic excellence, technical workshops, and student event participation.`,
+    allowedYears: [1, 2, 3, 4]
   });
 
   const [eventPrefs, setEventPrefs] = useState({
@@ -78,7 +79,8 @@ export default function SettingsModule({ userRole, userDepartment }) {
           name: current.department_name || prev.name,
           code: current.department_code || current.department_id || prev.code,
           email: current.contact_email || prev.email,
-          location: current.location || prev.location
+          location: current.location || prev.location,
+          allowedYears: current.allowed_years || prev.allowedYears
         }));
       } else {
         setDepartments(data || []);
@@ -107,9 +109,19 @@ export default function SettingsModule({ userRole, userDepartment }) {
     }
   };
 
-  const handleSave = () => {
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+  const handleSave = async () => {
+    try {
+      if (isHOD && activeTab === 'profile' && effectiveDepartment) {
+        await supabase.from('departments').update({
+          allowed_years: deptProfile.allowedYears
+        }).or(`department_id.eq.${effectiveDepartment},department_code.eq.${effectiveDepartment}`);
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      alert('Failed to save settings.');
+    }
   };
 
   return (
@@ -250,6 +262,36 @@ export default function SettingsModule({ userRole, userDepartment }) {
                     onChange={e => setDeptProfile({ ...deptProfile, description: e.target.value })} 
                   />
                 </div>
+
+                {/* ALLOWED STUDENT YEARS */}
+                <div className="input-group" style={{ gridColumn: 'span 2', marginTop: '1rem' }}>
+                  <label style={{ fontSize: '0.9rem', fontWeight: '600', color: '#0f172a', marginBottom: '0.5rem' }}>
+                    Allowed Student Years
+                  </label>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem', marginTop: 0 }}>
+                    Select the academic years of students present in your department. This determines which years are available when importing students or selecting audiences for events.
+                  </p>
+                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    {[1, 2, 3, 4].map(year => (
+                      <label key={year} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={deptProfile.allowedYears.includes(year)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setDeptProfile({ ...deptProfile, allowedYears: [...deptProfile.allowedYears, year].sort() });
+                            } else {
+                              setDeptProfile({ ...deptProfile, allowedYears: deptProfile.allowedYears.filter(y => y !== year) });
+                            }
+                          }}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.95rem', fontWeight: '500' }}>Year {year}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
               </div>
             </div>
           )}

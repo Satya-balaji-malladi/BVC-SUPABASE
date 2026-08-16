@@ -9,6 +9,8 @@ import CreateUserModal from '../widgets/CreateUserModal';
 import { getFormattedDate } from '../../services/exportService';
 import { getActiveInvolvements } from '../../services/activityService';
 import EventAdminService from '../../services/EventAdminService';
+import { normalizeRole, isHOD as checkIsHOD, isEventAdmin as checkIsEventAdmin, isSuperAdminOrDev } from '../../constants/Roles';
+import { normalizeDepartment, getDepartmentLabel } from '../../utils/departmentUtils';
 
 export default function UsersModule({ userRole, userDepartment }) {
   const [users, setUsers] = useState([]);
@@ -22,8 +24,10 @@ export default function UsersModule({ userRole, userDepartment }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  const normalizedRole = (userRole || '').replace(/\s+/g, '').toUpperCase();
-  const isHOD = normalizedRole === 'HOD' || normalizedRole === 'DEPARTMENTADMIN';
+  const normalizedRole = normalizeRole(userRole);
+  const isHOD = checkIsHOD(userRole);
+  const isEventAdmin = checkIsEventAdmin(userRole);
+  const normUserDept = normalizeDepartment(userDepartment);
 
   useEffect(() => {
     fetchUsers();
@@ -34,7 +38,7 @@ export default function UsersModule({ userRole, userDepartment }) {
     try {
       let enrichedUsers = [];
 
-      if (normalizedRole === 'EVENTADMIN') {
+      if (isEventAdmin) {
         const teamData = await EventAdminService.getTeam();
         enrichedUsers = teamData.map(t => ({
           ...t,
@@ -43,8 +47,8 @@ export default function UsersModule({ userRole, userDepartment }) {
         }));
       } else {
         let userQuery = supabase.from('users').select('*').or('status.eq.Active,status.is.null').order('created_at', { ascending: false });
-        if (isHOD && userDepartment) {
-          userQuery = userQuery.ilike('department', `%${userDepartment}%`);
+        if (isHOD && normUserDept) {
+          userQuery = userQuery.ilike('department', `%${normUserDept}%`);
         }
 
         const [{ data, error }, { activeUsers }] = await Promise.all([
@@ -63,10 +67,22 @@ export default function UsersModule({ userRole, userDepartment }) {
             activeUsers.get(user.email) || 
             activeUsers.get(user.username) || [];
 
+          // Compute dynamic role
+          let dynamicRole = user.role;
+          if (involvements && involvements.length > 0) {
+             const isEventAdmin = involvements.some(i => i.role === 'Host / Organizer');
+             const isCoordinator = involvements.some(i => i.role && i.role.includes('Coordinator'));
+             
+             if (isEventAdmin && isCoordinator) dynamicRole = 'Event Admin / Coordinator';
+             else if (isEventAdmin) dynamicRole = 'Event Admin';
+             else if (isCoordinator) dynamicRole = 'Event Coordinator';
+          }
+
           return {
             ...user,
             activity_status: involvements && involvements.length > 0 ? 'Active' : 'Inactive',
-            current_events: involvements
+            current_events: involvements,
+            role: dynamicRole
           };
         });
       }
@@ -136,9 +152,9 @@ export default function UsersModule({ userRole, userDepartment }) {
         isOpen={isCreateModalOpen} 
         onClose={() => setIsCreateModalOpen(false)} 
         onUserCreated={fetchUsers} 
-        isSuperAdmin={normalizedRole === 'SUPERADMIN' || normalizedRole === 'DEVELOPER'}
+        isSuperAdmin={isSuperAdminOrDev(userRole)}
         isHOD={isHOD}
-        userDepartment={userDepartment}
+        userDepartment={normUserDept}
       />
       <div className="page-header-flex">
         <div>
@@ -219,7 +235,7 @@ export default function UsersModule({ userRole, userDepartment }) {
               </>
             )}
           </select>
-          {userRole !== 'Event Admin' && userRole !== 'EventAdmin' && (
+          {!isEventAdmin && (
             <select className="input-field" style={{ height: '42px', width: '100%' }}
               value={filterActivity} onChange={e => { setFilterActivity(e.target.value); setCurrentPage(1); }}>
               <option value="">Activity: All</option>
