@@ -240,23 +240,24 @@ class EventAdminService {
           .in('roll_number', rollNumbers)
       ]);
 
-      (bvcStudents || []).forEach(s => {
+      (otherStudents || []).forEach(s => {
         studentMap[s.roll_number] = {
           name: s.student_name || 'N/A',
-          dept: s.department_id || 'Unknown',
+          dept: s.department || 'Unknown',
           year: s.year ? String(s.year) : 'Unknown',
-          section: s.section || '-',
-          college: 'BVC Engineering College'
+          section: '-',
+          college: s.college_name || 'Other Institution'
         };
       });
-      (otherStudents || []).forEach(s => {
+
+      (bvcStudents || []).forEach(s => {
         if (!studentMap[s.roll_number]) {
           studentMap[s.roll_number] = {
             name: s.student_name || 'N/A',
-            dept: s.department || 'Unknown',
+            dept: s.department_id || 'Unknown',
             year: s.year ? String(s.year) : 'Unknown',
-            section: '-',
-            college: s.college_name || 'Other Institution'
+            section: s.section || '-',
+            college: 'BVC Engineering College'
           };
         }
       });
