@@ -24,6 +24,14 @@
           window.history.replaceState(null, null,
               l.pathname.slice(0, -1) + decoded + l.hash
           );
+        } else if (l.search.indexOf('?p=/') === 0) {
+          // Handle ?p=/... format
+          var params = new URLSearchParams(l.search);
+          var p = params.get('p') || '';
+          var q = params.get('q') ? '?' + params.get('q').replace(/~and~/g, '&') : '';
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + p + q + l.hash
+          );
         }
       }(window.location))
     </script>
