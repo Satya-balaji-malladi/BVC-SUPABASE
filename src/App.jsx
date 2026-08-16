@@ -46,15 +46,12 @@ function App() {
     const basePath = getDashboardBasePathForRole(role);
     if (basePath === '/select-event') {
        if (localStorage.getItem('selected_event_id')) {
-          // If a coordinator already selected an event, take them to their scanner directly.
-          // Note: Faculty and EventAdmin technically go to /event-admin after selection, 
-          // but the EventSelection component handles that post-selection redirect. 
-          // For now, if they land here, we can route them based on role.
           const isCoordOrParticipant = [
             ROLES.COORDINATOR, ROLES.FACULTY_COORDINATOR, ROLES.EVENT_COORDINATOR, 
             ROLES.STUDENT_COORDINATOR, ROLES.GUEST_COORDINATOR, ROLES.STUDENT, ROLES.GUEST
           ].includes(role);
           if (isCoordOrParticipant) return '/coordinator';
+          return '/event-admin'; // Admin/Faculty go to event-admin
        }
     }
     return basePath;
