@@ -10,18 +10,38 @@ class EventAdminService {
     const user = SessionService.getUser();
     if (!user) throw new Error("No active session");
     
-    // Fallback to direct query instead of RPC
     const userId = user.user_id || user.id;
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('organizer', userId);
-      
-    if (error) {
-      console.error("Direct Fetch Error getEvents:", JSON.stringify(error, null, 2));
-      throw error;
+    const role = (user.role || '').replace(/\s+/g, '');
+
+    let assignedEventIds = [];
+    if (userId) {
+      const { data: assignments } = await supabase
+        .from('event_assignments')
+        .select('event_id')
+        .eq('user_id', userId)
+        .eq('deletion_flag', false);
+      if (assignments) {
+        assignedEventIds = assignments.map(a => a.event_id).filter(Boolean);
+      }
     }
-    return data || [];
+
+    if (['SuperAdmin', 'Admin'].includes(role)) {
+      const { data, error } = await supabase.from('events').select('*').order('start_date', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    } else {
+      const queries = [];
+      if (userId) queries.push(supabase.from('events').select('*').eq('organizer', userId));
+      if (assignedEventIds.length > 0) queries.push(supabase.from('events').select('*').in('event_id', assignedEventIds));
+      
+      const results = await Promise.all(queries);
+      const map = new Map();
+      results.forEach(res => {
+        if (res.data) res.data.forEach(ev => map.set(ev.event_id, ev));
+        else if (res.error) console.warn("Error fetching events:", res.error);
+      });
+      return Array.from(map.values()).sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+    }
   }
 
   async getTeam() {
