@@ -27,17 +27,25 @@ export default function FeedbackWidget() {
       const sessionStr = localStorage.getItem('custom_auth_session');
       const sessionData = sessionStr ? JSON.parse(sessionStr) : null;
       
+      const tableName = type === 'Feedback' ? 'feedback' : 'problems';
+      const insertData = {
+        description: description,
+        user_id: sessionData?.user?.id || null
+      };
+      
+      if (tableName === 'problems') {
+        insertData.status = 'unsolved';
+      }
+
       const { error } = await supabase
-        .from('feedbacks')
-        .insert([{
-          type: type,
-          description: description,
-          user_id: sessionData?.user?.id || null,
-          user_role: sessionData?.user?.role || 'Guest',
-          status: 'Unsolved'
-        }]);
+        .from(tableName)
+        .insert([insertData]);
         
-      if (error) throw error;
+      if (error) {
+        alert(`Failed to submit: ${error.message || error.details || JSON.stringify(error)}`);
+        throw error;
+      }
+
       
       // Attempt to send email to developer asynchronously
       let role = 'Unknown Role';
