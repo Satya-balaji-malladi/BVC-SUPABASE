@@ -4,6 +4,7 @@ import { Search, Loader2, UserPlus, Download, Edit, Trash2, Eye } from 'lucide-r
 import TablePagination from '../widgets/TablePagination';
 import ViewStudentModal from '../widgets/ViewStudentModal';
 import CreateStudentModal from '../widgets/CreateStudentModal';
+import EditStudentModal from '../widgets/EditStudentModal';
 import ImportStudentsModal from '../widgets/ImportStudentsModal';
 import ExportDropdown from '../widgets/ExportDropdown';
 import { getFormattedDate } from '../../services/exportService';
@@ -12,6 +13,7 @@ import { getActiveInvolvements } from '../../services/activityService';
 export default function StudentsModule({ userRole, userDepartment }) {
   const [students, setStudents] = useState([]);
   const [viewStudent, setViewStudent] = useState(null);
+  const [editStudent, setEditStudent] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -305,7 +307,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
                     <td style={{ padding: '1rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button className="btn btn-secondary" style={{ padding: '0.5rem', height: 'auto', display: 'flex' }} title="View Details" onClick={() => setViewStudent(student)}><Eye size={16} /></button>
-                        <button className="btn btn-secondary" style={{ padding: '0.5rem', height: 'auto', display: 'flex' }} title="Edit"><Edit size={16} /></button>
+                        <button className="btn btn-secondary" style={{ padding: '0.5rem', height: 'auto', display: 'flex' }} title="Edit" onClick={() => setEditStudent(student)}><Edit size={16} /></button>
                         <button className="btn btn-secondary" style={{ padding: '0.5rem', height: 'auto', display: 'flex', color: '#ef4444' }} title="Delete"><Trash2 size={16} /></button>
                       </div>
                     </td>
@@ -372,7 +374,7 @@ export default function StudentsModule({ userRole, userDepartment }) {
                     >
                       <Eye size={15} /> View
                     </button>
-                    <button className="btn btn-secondary" style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}>
+                    <button className="btn btn-secondary" style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }} onClick={() => setEditStudent(student)}>
                       <Edit size={15} /> Edit
                     </button>
                   </div>
@@ -403,6 +405,8 @@ export default function StudentsModule({ userRole, userDepartment }) {
       {isCreateModalOpen && (
         <CreateStudentModal
         isOpen={isCreateModalOpen}
+        userRole={userRole}
+        userDepartment={userDepartment}
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={() => {
           setIsCreateModalOpen(false);
@@ -415,6 +419,8 @@ export default function StudentsModule({ userRole, userDepartment }) {
       {isImportModalOpen && (
         <ImportStudentsModal 
           isOpen={isImportModalOpen}
+          userRole={userRole}
+          userDepartment={userDepartment}
           onClose={() => setIsImportModalOpen(false)}
           onSuccess={() => {
             setIsImportModalOpen(false);
@@ -423,6 +429,20 @@ export default function StudentsModule({ userRole, userDepartment }) {
           userDepartment={isHOD ? userDepartment : null}
         />
       )}
+      {editStudent && (
+        <EditStudentModal
+          isOpen={!!editStudent}
+          student={editStudent}
+          userRole={userRole}
+          userDepartment={userDepartment}
+          onClose={() => setEditStudent(null)}
+          onSuccess={() => {
+            setEditStudent(null);
+            fetchStudents();
+          }}
+        />
+      )}
+
     </div>
   );
 }

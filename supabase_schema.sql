@@ -170,6 +170,7 @@ CREATE TABLE events (
     remarks TEXT,
     departments TEXT,
     years VARCHAR(100),
+    participant_eligibility VARCHAR(50) DEFAULT 'bvc_only',
     last_action VARCHAR(100),
     last_action_at TIMESTAMP WITH TIME ZONE,
     last_action_by VARCHAR(100),

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Save, Loader2, AlertCircle } from 'lucide-react';
+import { X, Save, Loader2, AlertCircle, Edit } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
-export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRole, userDepartment }) {
+export default function EditStudentModal({ isOpen, onClose, onSuccess, userRole, userDepartment, student }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
@@ -29,12 +29,29 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
     }
   }, [isOpen, userDepartment]);
 
+  useEffect(() => {
+    if (student) {
+      setFormData({
+        roll_number: student.roll_number || '',
+        student_name: student.student_name || '',
+        email_address: student.email_address || '',
+        phone_number: student.phone_number || '',
+        department_id: student.department_id || '',
+        branch_id: student.branch_id || '',
+        section: student.section || '',
+        year: student.year || '',
+        gender: student.gender || '',
+        college: student.college || 'BVC Engineering College'
+      });
+    }
+  }, [student]);
+
   const fetchDropdownData = async () => {
     try {
       const { data: deps } = await supabase.from('departments').select('*');
       if (deps) {
         setDepartments(deps);
-        if (userDepartment) {
+        if (userDepartment && !student?.department_id) {
           const matched = deps.find(d => d.department_code === userDepartment || d.department_name === userDepartment || d.department_id === userDepartment);
           if (matched) {
             setFormData(prev => ({ ...prev, department_id: matched.department_id }));
@@ -52,7 +69,7 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !student) return null;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -71,25 +88,25 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
     setLoading(true);
     try {
       const cleanRoll = formData.roll_number.trim().toUpperCase();
-      const newStudentId = `STU_${Date.now()}`;
 
-      // Check if student already exists
-      const { data: existing } = await supabase
-        .from('students')
-        .select('roll_number')
-        .eq('roll_number', cleanRoll)
-        .single();
+      // Check if another student already has this roll number
+      if (cleanRoll !== student.roll_number) {
+        const { data: existing } = await supabase
+          .from('students')
+          .select('roll_number')
+          .eq('roll_number', cleanRoll)
+          .single();
 
-      if (existing) {
-        setError(`Student with roll number ${cleanRoll} already exists.`);
-        setLoading(false);
-        return;
+        if (existing) {
+          setError(`Student with roll number ${cleanRoll} already exists.`);
+          setLoading(false);
+          return;
+        }
       }
 
-      const { data, error: insertErr } = await supabase
+      const { data, error: updateErr } = await supabase
         .from('students')
-        .insert([{
-          student_id: newStudentId,
+        .update({
           roll_number: cleanRoll,
           student_name: formData.student_name.trim(),
           email_address: formData.email_address.trim(),
@@ -99,17 +116,17 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
           section: formData.section,
           year: parseInt(formData.year) || 1,
           gender: formData.gender,
-          college: formData.college,
-          student_status: 'Active'
-        }])
+          college: formData.college
+        })
+        .eq('student_id', student.student_id)
         .select();
 
-      if (insertErr) throw insertErr;
+      if (updateErr) throw updateErr;
 
       onSuccess(data[0]);
     } catch (err) {
-      console.error("Error creating student:", err);
-      setError(err.message || "Failed to add student. Please try again.");
+      console.error("Error updating student:", err);
+      setError(err.message || "Failed to update student. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -132,7 +149,7 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
         {/* Header */}
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1.25rem', color: '#0f172a' }}>
-            <UserPlus size={24} color="#3b82f6" /> Add New Student
+            <Edit size={24} color="#3b82f6" /> Edit Student
           </h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}>
             <X size={24} />
@@ -147,7 +164,7 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
             </div>
           )}
 
-          <form id="create-student-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form id="edit-student-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             
             <div className="responsive-form-row">
               <div>
@@ -253,9 +270,9 @@ export default function CreateStudentModal({ isOpen, onClose, onSuccess, userRol
           <button type="button" onClick={onClose} className="btn btn-secondary" style={{ padding: '0.5rem 1rem', background: '#fff' }}>
             Cancel
           </button>
-          <button type="submit" form="create-student-form" disabled={loading} className="btn btn-primary" style={{ padding: '0.5rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px' }}>
+          <button type="submit" form="edit-student-form" disabled={loading} className="btn btn-primary" style={{ padding: '0.5rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px' }}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {loading ? 'Saving...' : 'Add Student'}
+            {loading ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>

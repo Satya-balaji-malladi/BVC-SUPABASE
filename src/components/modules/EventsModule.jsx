@@ -105,6 +105,9 @@ export default function EventsModule({ userRole, userDepartment }) {
         const ev = data[0];
         if (ev.event_status === 'Draft' || ev.status === 'Draft') {
           setManageEvent(ev);
+          // Clear URL parameter so it doesn't auto-open on page refresh
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, document.title, newUrl);
         }
       }
 
@@ -187,7 +190,8 @@ export default function EventsModule({ userRole, userDepartment }) {
 
   const statCards = [
     { label: 'Total Events', value: filteredEvents.length.toString(), color: 'var(--text-primary)' },
-    { label: 'Upcoming', value: filteredEvents.filter(e => getEventStatusStr(e) === 'upcoming' || getEventStatusStr(e) === 'draft').length.toString(), color: '#3b82f6' },
+    { label: 'Draft', value: filteredEvents.filter(e => getEventStatusStr(e) === 'draft').length.toString(), color: '#8b5cf6' },
+    { label: 'Upcoming', value: filteredEvents.filter(e => getEventStatusStr(e) === 'upcoming').length.toString(), color: '#3b82f6' },
     { label: 'Active', value: filteredEvents.filter(e => getEventStatusStr(e) === 'active').length.toString(), color: '#22c55e' },
     { label: 'Stopped', value: filteredEvents.filter(e => getEventStatusStr(e) === 'stopped').length.toString(), color: 'var(--text-primary)' },
     { label: 'Completed', value: filteredEvents.filter(e => getEventStatusStr(e) === 'completed').length.toString(), color: '#0ea5e9' },
@@ -268,13 +272,15 @@ export default function EventsModule({ userRole, userDepartment }) {
                 <option value="">All Statuses</option>
                 {uniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <select className="input-field" style={{ height: '40px', width: '100%' }}
-                value={filterDept}
-                onChange={e => { setFilterDept(e.target.value); setCurrentPage(1); }}
-              >
-                <option value="">All Departments</option>
-                {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+              {isSuperAdminOrDev(userRole) && (
+                <select className="input-field" style={{ height: '40px', width: '100%' }}
+                  value={filterDept}
+                  onChange={e => { setFilterDept(e.target.value); setCurrentPage(1); }}
+                >
+                  <option value="">All Departments</option>
+                  {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              )}
               <select className="input-field" style={{ height: '40px', width: '100%' }}
                 value={filterCoord}
                 onChange={e => { setFilterCoord(e.target.value); setCurrentPage(1); }}

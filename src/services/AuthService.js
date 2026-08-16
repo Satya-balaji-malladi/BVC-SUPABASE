@@ -37,6 +37,15 @@ class AuthService {
         throw new Error(authResponse?.error || 'Invalid credentials');
       }
 
+      // 1.5. Check Account Expiry
+      const authUserId = authResponse.user.user_id || authResponse.user.id;
+      const { data: validityData } = await supabase.from('users').select('account_expires_at').eq('user_id', authUserId).single();
+      if (validityData?.account_expires_at) {
+        if (new Date(validityData.account_expires_at) < new Date()) {
+          throw new Error('Your account validity has expired.');
+        }
+      }
+
       // 2. Create secure backend session
       const user = authResponse.user;
       

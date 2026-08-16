@@ -112,6 +112,7 @@ export default function AppShell() {
             <NavLink
               key={item.name}
               to={item.path}
+              end
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >
               {item.icon}

@@ -108,7 +108,7 @@ export const AuthProvider = ({ children }) => {
   const hasName = profile?.name || profile?.first_name || user?.name;
   const hasDept = profile?.department_code || profile?.department || user?.department;
   const isFirstLogin = profile?.first_login === true || profile?.first_login === 'true';
-  const profileIncomplete = !isSuperOrDev && (isFirstLogin || !hasName || !hasDept);
+  const profileIncomplete = !isSuperOrDev && (isFirstLogin || !hasName || !hasDept || !(profile?.phone_number || user?.phone_number));
 
   const value = {
     user,

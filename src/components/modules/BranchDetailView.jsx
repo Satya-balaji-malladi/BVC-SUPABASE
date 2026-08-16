@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { ArrowLeft, Users, UserCheck, UserMinus, Search, Filter, Loader2, ChevronRight, GraduationCap, Calendar, Award, Layers } from 'lucide-react';
+import { Users, UserCheck, UserX, UserMinus, FileText, ArrowLeft, MoreVertical, Edit, Search, Layers, Calendar, Loader2, Award } from 'lucide-react';
 import TablePagination from '../widgets/TablePagination';
+import EditStudentModal from '../widgets/EditStudentModal';
 
 export default function BranchDetailView({ branch, effectiveDepartment, onBack }) {
   const [students, setStudents] = useState([]);
@@ -18,6 +19,8 @@ export default function BranchDetailView({ branch, effectiveDepartment, onBack }
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  const [editStudent, setEditStudent] = useState(null);
   
   // Drawer state
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -193,7 +196,7 @@ export default function BranchDetailView({ branch, effectiveDepartment, onBack }
         <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', overflowY: 'auto' }}>
           <div>
             <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <GraduationCap size={18} color="#64748b" />
+              <Layers size={18} color="#64748b" />
               Year Distribution
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -339,9 +342,12 @@ export default function BranchDetailView({ branch, effectiveDepartment, onBack }
                           {s.student_status || 'Unknown'}
                         </span>
                       </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                        <button className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={(e) => { e.stopPropagation(); handleStudentClick(s); }}>
                           View
+                        </button>
+                        <button className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={(e) => { e.stopPropagation(); setEditStudent(s); }}>
+                          <Edit size={12} /> Edit
                         </button>
                       </td>
                     </tr>
@@ -464,6 +470,18 @@ export default function BranchDetailView({ branch, effectiveDepartment, onBack }
             </div>
           </div>
         </div>
+      )}
+
+      {editStudent && (
+        <EditStudentModal
+          isOpen={!!editStudent}
+          student={editStudent}
+          onClose={() => setEditStudent(null)}
+          onSuccess={() => {
+            setEditStudent(null);
+            fetchBranchStudents();
+          }}
+        />
       )}
       
       <style dangerouslySetInnerHTML={{__html: `

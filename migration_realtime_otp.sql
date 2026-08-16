@@ -16,9 +16,20 @@ BEGIN
         RETURN json_build_object('success', true, 'message', 'If the account exists, an OTP has been sent.');
     END IF;
 
-    -- Mask the email (e.g. a***b@gmail.com) for safe frontend display
-    IF length(v_user.email_address) > 4 AND position('@' in v_user.email_address) > 0 THEN
-        v_masked_email := substring(v_user.email_address from 1 for 2) || '****' || substring(v_user.email_address from position('@' in v_user.email_address));
+    -- Mask the email (e.g. ad***in@gmail.com) for safe frontend display
+    IF position('@' in v_user.email_address) > 0 THEN
+        DECLARE
+            v_local_part VARCHAR := split_part(v_user.email_address, '@', 1);
+            v_domain_part VARCHAR := split_part(v_user.email_address, '@', 2);
+        BEGIN
+            IF length(v_local_part) <= 2 THEN
+                v_masked_email := substring(v_local_part from 1 for 1) || '***@' || v_domain_part;
+            ELSIF length(v_local_part) <= 4 THEN
+                v_masked_email := substring(v_local_part from 1 for 1) || '***' || substring(v_local_part from length(v_local_part)) || '@' || v_domain_part;
+            ELSE
+                v_masked_email := substring(v_local_part from 1 for 2) || '***' || substring(v_local_part from length(v_local_part) - 1) || '@' || v_domain_part;
+            END IF;
+        END;
     ELSE
         v_masked_email := '****';
     END IF;

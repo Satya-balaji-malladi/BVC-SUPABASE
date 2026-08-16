@@ -34,7 +34,8 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
     maximum_seats: '',
     allow_spot_registration: 'Yes',
     registration_fields: [],
-    terms: ''
+    terms: '',
+    include_default_fields: true
   });
 
   // Coordinator Tab State
@@ -48,13 +49,20 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
 
   useEffect(() => {
     if (isOpen && event) {
+      const getYearsStr = () => {
+        if (!event.years && !event.target_years) return '';
+        const y = event.years || event.target_years;
+        if (Array.isArray(y)) return y.join(', ');
+        return String(y);
+      };
+      
       setForm({
         event_name: event.event_name || '',
         description: event.description || '',
         participant_eligibility: event.participant_eligibility || 'bvc_only',
         attendance_type: event.attendance_type || 'Fixed',
-        departments: event.departments || '',
-        target_years: event.years || event.target_years || '',
+        departments: event.departments ? String(event.departments) : '',
+        target_years: getYearsStr(),
         start_date: event.start_date || '',
         end_date: event.end_date || '',
         start_time: event.start_time || '',
@@ -64,9 +72,16 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
         event_status: event.event_status || 'Draft',
       });
       let parsedFields = [];
+      let incDef = true;
       try {
         if (event.registration_fields) {
-          parsedFields = typeof event.registration_fields === 'string' ? JSON.parse(event.registration_fields) : event.registration_fields;
+          const raw = typeof event.registration_fields === 'string' ? JSON.parse(event.registration_fields) : event.registration_fields;
+          if (raw.length > 0 && raw[0].name === '_system_config') {
+            incDef = raw[0].includeDefaults !== false;
+            parsedFields = raw.slice(1);
+          } else {
+            parsedFields = raw;
+          }
         }
       } catch (e) {
         console.error("Failed to parse registration_fields", e);
@@ -79,14 +94,15 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
         maximum_seats: event.maximum_seats || '',
         allow_spot_registration: event.allow_spot_registration || 'Yes',
         registration_fields: parsedFields,
-        terms: event.terms_and_conditions || event.terms || ''
+        terms: event.terms_and_conditions || event.terms || '',
+        include_default_fields: incDef
       });
       fetchCoordinators();
       setActiveTab('DETAILS');
       setError('');
       setSuccess('');
     }
-  }, [isOpen, event?.event_id]);
+  }, [isOpen, JSON.stringify(event)]);
 
   const fetchCoordinators = async () => {
     if (!event) return;
@@ -141,6 +157,12 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
         else if (now > end) finalStatus = 'Completed';
       }
 
+      let parsedCapacity = null;
+      if (form.capacity !== '' && form.capacity !== null && form.capacity !== undefined) {
+        const val = parseInt(form.capacity);
+        if (!isNaN(val)) parsedCapacity = val;
+      }
+
       const payload = {
         event_name: form.event_name,
         description: form.description,
@@ -153,7 +175,7 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
         start_time: form.start_time,
         end_time: form.end_time,
         location: form.venue, // Map venue to location in DB
-        capacity: form.capacity ? parseInt(form.capacity) : null,
+        capacity: parsedCapacity,
         event_status: finalStatus,
       };
 
@@ -180,13 +202,16 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
     setSuccess('');
     try {
       const maxSeats = regForm.enable_registration && regForm.maximum_seats ? parseInt(regForm.maximum_seats) : null;
+      const configObj = { name: '_system_config', type: 'system', includeDefaults: regForm.include_default_fields };
+      const fieldsToSave = [configObj, ...regForm.registration_fields];
+
       const payload = {
         enable_registration: regForm.enable_registration ? 'Yes' : 'No',
         registration_open: regForm.enable_registration ? (regForm.registration_open || null) : null,
         registration_close: regForm.enable_registration ? (regForm.registration_close || null) : null,
         maximum_seats: maxSeats,
         allow_spot_registration: regForm.allow_spot_registration,
-        registration_fields: regForm.enable_registration && regForm.registration_fields.length > 0 ? JSON.stringify(regForm.registration_fields) : null,
+        registration_fields: regForm.enable_registration ? JSON.stringify(fieldsToSave) : null,
         terms_and_conditions: regForm.enable_registration ? (regForm.terms || null) : null,
       };
 
@@ -504,11 +529,18 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
                        <label key={y} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem', cursor: 'pointer' }}>
                          <input 
                            type="checkbox" 
-                           checked={(form.target_years || '').includes(y)}
+                           checked={(typeof form.target_years === 'string' ? form.target_years : '').includes(y)}
                            onChange={e => {
-                              const arr = (form.target_years || '').split(',').map(s=>s.trim()).filter(Boolean);
+                              let arr = [];
+                              if (typeof form.target_years === 'string') {
+                                arr = form.target_years.split(',').map(s=>s.trim()).filter(Boolean);
+                              } else if (Array.isArray(form.target_years)) {
+                                arr = [...form.target_years];
+                              }
+                              
                               if (e.target.checked && !arr.includes(y)) arr.push(y);
-                              else if (!e.target.checked) arr.splice(arr.indexOf(y), 1);
+                              else if (!e.target.checked) arr = arr.filter(item => item !== y);
+                              
                               setForm({...form, target_years: arr.join(', ')});
                            }}
                          />
@@ -521,11 +553,11 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={labelStyle}>Start Date</label>
-                  <input type="date" style={inputStyle} value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} />
+                  <input type="date" style={inputStyle} min={new Date().toISOString().split('T')[0]} value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} />
                 </div>
                 <div>
                   <label style={labelStyle}>End Date</label>
-                  <input type="date" style={inputStyle} value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} />
+                  <input type="date" style={inputStyle} min={form.start_date || new Date().toISOString().split('T')[0]} value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
@@ -581,11 +613,25 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
                       <label style={labelStyle}>Registration Opens At</label>
-                      <input type="datetime-local" style={inputStyle} value={regForm.registration_open} onChange={e => setRegForm({...regForm, registration_open: e.target.value})} />
+                      <input 
+                        type="datetime-local" 
+                        style={inputStyle} 
+                        value={regForm.registration_open} 
+                        min={form.start_date ? `${form.start_date}T${form.start_time || '00:00'}` : undefined}
+                        max={regForm.registration_close || (form.end_date ? `${form.end_date}T${form.end_time || '23:59'}` : undefined)}
+                        onChange={e => setRegForm({...regForm, registration_open: e.target.value})} 
+                      />
                     </div>
                     <div>
                       <label style={labelStyle}>Registration Closes At</label>
-                      <input type="datetime-local" style={inputStyle} value={regForm.registration_close} onChange={e => setRegForm({...regForm, registration_close: e.target.value})} />
+                      <input 
+                        type="datetime-local" 
+                        style={inputStyle} 
+                        value={regForm.registration_close} 
+                        min={regForm.registration_open || (form.start_date ? `${form.start_date}T${form.start_time || '00:00'}` : undefined)}
+                        max={form.end_date ? `${form.end_date}T${form.end_time || '23:59'}` : undefined}
+                        onChange={e => setRegForm({...regForm, registration_close: e.target.value})} 
+                      />
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -607,36 +653,46 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
 
                   {/* Dynamic Registration Default Fields */}
                   <div style={{ background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#495057', marginBottom: '0.5rem' }}>
-                      📋 Default Form Fields for {form.participant_eligibility === 'bvc_only' ? 'BVC Students Only' : 'All College Students'}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#495057' }}>
+                        📋 Standard Form Fields for {form.participant_eligibility === 'bvc_only' ? 'BVC Students Only' : 'All College Students'}
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 600, color: '#0d6efd', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={regForm.include_default_fields} onChange={e => setRegForm({...regForm, include_default_fields: e.target.checked})} />
+                        Include these fields
+                      </label>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                      {form.participant_eligibility === 'bvc_only' ? (
-                        [
-                          'Roll Number',
-                          'Student Name',
-                          'Email Address',
-                          'Branch (Dropdown)',
-                          'Year & Section',
-                          'Phone Number',
-                          'College Name (BVC - Auto)'
-                        ].map(f => (
-                          <span key={f} style={{ background: '#2563eb', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 500 }}>{f}</span>
-                        ))
-                      ) : (
-                        [
-                          'Student Name',
-                          'Email Address',
-                          'Department',
-                          'Year & Section',
-                          'Phone Number',
-                          'Branch (Text Input)',
-                          'College Name (Dropdown Selection)'
-                        ].map(f => (
-                          <span key={f} style={{ background: '#059669', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 500 }}>{f}</span>
-                        ))
-                      )}
-                    </div>
+                    {regForm.include_default_fields ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {form.participant_eligibility === 'bvc_only' ? (
+                          [
+                            'Roll Number',
+                            'Student Name',
+                            'Email Address',
+                            'Branch (Dropdown)',
+                            'Year & Section',
+                            'Phone Number',
+                            'College Name (BVC - Auto)'
+                          ].map(f => (
+                            <span key={f} style={{ background: '#2563eb', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 500 }}>{f}</span>
+                          ))
+                        ) : (
+                          [
+                            'Student Name',
+                            'Email Address',
+                            'Department',
+                            'Year & Section',
+                            'Phone Number',
+                            'Branch (Text Input)',
+                            'College Name (Dropdown Selection)'
+                          ].map(f => (
+                            <span key={f} style={{ background: '#059669', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 500 }}>{f}</span>
+                          ))
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', color: '#6c757d', fontStyle: 'italic' }}>Standard fields are disabled. Only custom fields below will be shown.</div>
+                    )}
                   </div>
 
                   {/* Custom Fields Builder */}
@@ -659,6 +715,7 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
                             <option value="email">Email</option>
                             <option value="select">Select</option>
                             <option value="checkbox">Checkbox</option>
+                            <option value="yesno">Yes/No (Radio)</option>
                           </select>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', whiteSpace: 'nowrap', cursor: 'pointer' }}>
                             <input type="checkbox" checked={f.required} onChange={e => updateField(i, 'required', e.target.checked)} />
@@ -753,6 +810,7 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
                 isOpen={showInlineModal}
                 onClose={() => setShowInlineModal(false)}
                 eventId={event.event_id}
+                eventName={form.event_name}
                 onCoordinatorCreated={async () => {
                   await fetchCoordinators();
                   onEventUpdated?.();

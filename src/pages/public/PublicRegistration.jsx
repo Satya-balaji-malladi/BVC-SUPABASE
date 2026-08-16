@@ -411,6 +411,17 @@ export default function PublicRegistration() {
                       <option value="Option 2">Option 2</option>
                       <option value="Option 3">Option 3</option>
                     </select>
+                  ) : field.type === 'yesno' ? (
+                    <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+                        <input type="radio" name={field.name} value="Yes" required={field.required} checked={customData[field.name] === 'Yes'} onChange={e => setCustomData({...customData, [field.name]: e.target.value})} style={{ width: '16px', height: '16px' }} />
+                        Yes
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
+                        <input type="radio" name={field.name} value="No" required={field.required} checked={customData[field.name] === 'No'} onChange={e => setCustomData({...customData, [field.name]: e.target.value})} style={{ width: '16px', height: '16px' }} />
+                        No
+                      </label>
+                    </div>
                   ) : (
                     <input
                       type={field.type}

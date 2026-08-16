@@ -256,11 +256,11 @@ export default function UsersModule({ userRole, userDepartment }) {
           <table className="hide-on-mobile" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-tertiary)', zIndex: 10 }}>
               <tr>
-                <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>User</th>
-                <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Role</th>
-                <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Department</th>
-                <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem' }}>Activity Status</th>
-                <th style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.875rem', textAlign: 'right' }}>Actions</th>
+                <th style={{ width: '35%', padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.875rem' }}>User</th>
+                <th style={{ width: '15%', padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.875rem' }}>Role</th>
+                <th style={{ width: '20%', padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.875rem' }}>Department</th>
+                <th style={{ width: '20%', padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.875rem' }}>Activity Status</th>
+                <th style={{ width: '10%', padding: '1rem', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.875rem' }}>Actions</th>
               </tr>
             </thead>
             <tbody>

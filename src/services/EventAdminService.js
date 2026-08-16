@@ -7,12 +7,18 @@ class EventAdminService {
   }
 
   async getEvents() {
-    const token = this.getToken();
-    if (!token) throw new Error("No active session");
+    const user = SessionService.getUser();
+    if (!user) throw new Error("No active session");
     
-    const { data, error } = await supabase.rpc('ea_get_events', { p_token: token });
+    // Fallback to direct query instead of RPC
+    const userId = user.user_id || user.id;
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('organizer', userId);
+      
     if (error) {
-      console.error("RPC Error ea_get_events:", JSON.stringify(error, null, 2));
+      console.error("Direct Fetch Error getEvents:", JSON.stringify(error, null, 2));
       throw error;
     }
     return data || [];
@@ -439,7 +445,7 @@ class EventAdminService {
    * Inline Coordinator Creation & Event Assignment logic
    * Supports STUDENT, GUEST, and FACULTY types with strict duplicate checks
    */
-  async createInlineCoordinator({ coordinatorType, name, identifier, email, eventId, facultyUserId }) {
+  async createInlineCoordinator({ coordinatorType, name, identifier, email, expiresAt, eventId, facultyUserId }) {
     try {
       const currentToken = this.getToken();
       if (!currentToken) throw new Error("No active session token");
@@ -460,35 +466,42 @@ class EventAdminService {
         const { data: existingEmailUser, error: emailErr } = await supabase
           .from('users')
           .select('user_id, employee_id, email_address')
-          .ilike('email_address', cleanEmail)
+          .eq('email_address', cleanEmail)
           .maybeSingle();
 
-        if (emailErr && emailErr.code !== 'PGRST116') throw emailErr;
+        if (emailErr) throw emailErr;
 
-        if (existingEmailUser) {
-          if (existingEmailUser.employee_id && existingEmailUser.employee_id.toLowerCase() !== cleanId.toLowerCase()) {
-            throw new Error('An account with this email already exists.');
-          }
-        }
-
-        // 2. Check duplicate Roll No / ID in users table
+        // 2. Check duplicate ID
         const { data: existingIdUser, error: idErr } = await supabase
           .from('users')
           .select('user_id, employee_id, email_address')
-          .ilike('employee_id', cleanId)
+          .eq('employee_id', cleanId)
           .maybeSingle();
 
-        if (idErr && idErr.code !== 'PGRST116') throw idErr;
+        if (idErr) throw idErr;
 
-        if (existingIdUser) {
-          if (existingIdUser.email_address && existingIdUser.email_address.toLowerCase() !== cleanEmail) {
-            throw new Error('An account with this Roll No / ID already exists.');
+        let targetUserId = null;
+
+        if (existingEmailUser || existingIdUser) {
+          if (existingEmailUser?.user_id !== existingIdUser?.user_id && existingEmailUser && existingIdUser) {
+            throw new Error('Email and ID belong to different existing accounts.');
           }
+          const existingUser = existingEmailUser || existingIdUser;
+          if (existingUser.email_address !== cleanEmail || existingUser.employee_id !== cleanId) {
+             throw new Error('Provided Email/ID does not match the existing account records.');
+          }
+          targetUserId = existingUser.user_id;
         }
 
-        let targetUserId = existingEmailUser?.user_id || existingIdUser?.user_id;
+        if (targetUserId && expiresAt) {
+          const { error: updateExpiryErr } = await supabase
+            .from('users')
+            .update({ account_expires_at: new Date(`${expiresAt}T23:59:59`).toISOString() })
+            .eq('user_id', targetUserId);
+          if (updateExpiryErr) console.warn('Failed to update account expiry for existing user:', updateExpiryErr);
+        }
 
-        // 3. Create User if account doesn't exist
+        // 3. Create User if not exists
         if (!targetUserId) {
           targetUserId = `U-${Date.now()}`;
           const defaultPassword = 'Bvc@123';
@@ -506,7 +519,8 @@ class EventAdminService {
             default_role: coordinatorType,
             status: 'Active',
             profile_completed: true,
-            first_login: false
+            first_login: false,
+            account_expires_at: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null
           };
 
           const { error: insertUserErr } = await supabase.from('users').insert([newUserPayload]);
@@ -552,7 +566,8 @@ class EventAdminService {
           success: true,
           user_id: targetUserId,
           name: name.trim(),
-          role: coordinatorType
+          role: coordinatorType,
+          isNewUser: !existingEmailUser && !existingIdUser
         };
       }
 

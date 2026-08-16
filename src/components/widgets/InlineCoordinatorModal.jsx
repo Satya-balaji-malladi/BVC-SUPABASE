@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Search, UserCheck, ShieldCheck, AlertCircle, X, Check } from 'lucide-react';
 import EventAdminService from '../../services/EventAdminService';
+import { emailService } from '../../services/emailService';
 
-export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoordinatorCreated }) {
+export default function InlineCoordinatorModal({ isOpen, onClose, eventId, eventName, onCoordinatorCreated }) {
   const [type, setType] = useState('STUDENT'); // 'STUDENT' | 'GUEST' | 'FACULTY'
   
-  // Student / Guest Form State (ONLY Name, Roll No/ID, Email, Role)
+  // Student / Guest Form State
   const [form, setForm] = useState({
     name: '',
     identifier: '',
     email: '',
+    expiresAt: ''
   });
 
   // Faculty Search State
@@ -26,7 +28,7 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
   useEffect(() => {
     if (isOpen) {
       setType('STUDENT');
-      setForm({ name: '', identifier: '', email: '' });
+      setForm({ name: '', identifier: '', email: '', expiresAt: '' });
       setFacultySearch('');
       setFacultyResults([]);
       setSelectedFaculty(null);
@@ -71,10 +73,34 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
         name: form.name.trim(),
         identifier: form.identifier.trim(),
         email: form.email.trim(),
+        expiresAt: form.expiresAt || null,
         eventId: eventId || null
       });
 
-      setSuccess(`${type === 'STUDENT' ? 'Student' : 'Guest'} Coordinator created successfully!`);
+      // Send email notification
+      try {
+        const roleName = type === 'STUDENT' ? 'Student Coordinator' : 'Guest Coordinator';
+        if (result.isNewUser) {
+          await emailService.sendInlineCredentials({
+            email: form.email.trim(),
+            name: form.name.trim(),
+            role: roleName,
+            eventName: eventName || 'the Event',
+            password: 'Bvc@123'
+          });
+        } else {
+          await emailService.sendEventAssignment({
+            email: form.email.trim(),
+            name: form.name.trim(),
+            role: roleName,
+            eventName: eventName || 'the Event'
+          });
+        }
+      } catch (emailErr) {
+        console.warn('Failed to send email:', emailErr);
+      }
+
+      setSuccess(`${type === 'STUDENT' ? 'Student' : 'Guest'} Coordinator created. An email with the application link has been sent!`);
       setTimeout(() => {
         onCoordinatorCreated?.(result);
         onClose();
@@ -100,7 +126,19 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
         eventId: eventId || null
       });
 
-      setSuccess(`Faculty Coordinator (${selectedFaculty.faculty_name}) assigned successfully!`);
+      // Send email notification
+      try {
+        await emailService.sendEventAssignment({
+          email: selectedFaculty.email_address,
+          name: selectedFaculty.first_name || 'Faculty',
+          role: 'Faculty Coordinator',
+          eventName: eventName || 'the Event'
+        });
+      } catch (emailErr) {
+        console.warn('Failed to send email:', emailErr);
+      }
+
+      setSuccess(`Faculty Coordinator (${selectedFaculty.faculty_name}) assigned. An email with the application link has been sent!`);
       setTimeout(() => {
         onCoordinatorCreated?.({ ...result, ...selectedFaculty });
         onClose();
@@ -125,7 +163,7 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
     }}>
       
       <div style={{
-        background: '#ffffff', borderRadius: '12px', width: '100%', maxWidth: '580px',
+        background: '#ffffff', borderRadius: '12px', width: '100%', maxWidth: '580px', maxHeight: '90vh',
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
         overflow: 'hidden', display: 'flex', flexDirection: 'column'
       }} onClick={(e) => e.stopPropagation()}>
@@ -136,7 +174,7 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>Inline Coordinator Setup</h3>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#ffffff' }}>Inline Coordinator Setup</h3>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
               Assign or create event coordinators
             </p>
@@ -171,8 +209,8 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
                   padding: '0.6rem 0.75rem', border: 'none', borderRadius: '6px',
                   fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer',
                   transition: 'all 0.2s',
-                  background: type === t.id ? '#2563eb' : 'transparent',
-                  color: type === t.id ? '#ffffff' : '#64748b',
+                  background: type === t.id ? '#2563eb' : '#e2e8f0',
+                  color: type === t.id ? '#ffffff' : '#475569',
                   boxShadow: type === t.id ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
                 }}
               >
@@ -264,6 +302,25 @@ export default function InlineCoordinatorModal({ isOpen, onClose, eventId, onCoo
                       boxSizing: 'border-box'
                     }}
                   />
+                </div>
+                
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '0.4rem', display: 'block' }}>
+                    Account Expiry Date (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={form.expiresAt}
+                    onChange={e => setForm({ ...form, expiresAt: e.target.value })}
+                    style={{
+                      width: '100%', padding: '0.6rem 0.85rem', border: '1px solid #cbd5e1',
+                      borderRadius: '6px', fontSize: '0.9rem', color: '#1e293b', outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem', display: 'block' }}>
+                    After this date, the coordinator will no longer be able to login.
+                  </span>
                 </div>
 
                 <div>

@@ -92,15 +92,13 @@ export default function CreateFacultyModal({ isOpen, onClose, onFacultyCreated }
 
           <div className="responsive-form-row">
             <div className="input-group">
-              <label>Employee ID</label>
-              <input type="text" className="input-field" placeholder="Optional" value={formData.employee_id} onChange={(e) => setFormData({...formData, employee_id: e.target.value})} />
+              <label>Employee ID *</label>
+              <input type="text" className="input-field" placeholder="e.g. EMP1024" required value={formData.employee_id} onChange={(e) => setFormData({...formData, employee_id: e.target.value})} />
             </div>
             <div className="input-group">
               <label>Role</label>
               <select className="input-field" value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})}>
                 <option value="Faculty">Faculty</option>
-                <option value="Event Admin">Event Admin</option>
-                <option value="Coordinator">Coordinator</option>
               </select>
             </div>
           </div>
