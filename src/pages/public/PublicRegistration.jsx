@@ -382,7 +382,7 @@ export default function PublicRegistration() {
           {customFields.length > 0 && (
             <>
               <h4 style={{ margin: '1.5rem 0 1rem 0', color: 'var(--text-primary)' }}>Additional Information</h4>
-              {customFields.map((field, idx) => (
+              {customFields.filter(f => f.name !== '_system_config').map((field, idx) => (
                 <div key={idx} className="input-group">
                   {field.type !== 'checkbox' && (
                     <label>{field.name} {field.required && <span style={{ color: 'var(--error)' }}>*</span>}</label>
