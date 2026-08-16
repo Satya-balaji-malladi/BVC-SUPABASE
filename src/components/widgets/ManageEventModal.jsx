@@ -738,7 +738,7 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
                     <div style={{ display: 'flex', gap: '1.5rem', background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '8px', padding: '1.5rem', marginBottom: '1.5rem', alignItems: 'center' }}>
                       <div style={{ background: '#fff', padding: '0.5rem', border: '1px solid #dee2e6', borderRadius: '8px' }}>
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '/register/' + event.event_id)}`}
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + import.meta.env.BASE_URL + 'register/' + event.event_id)}`}
                           alt="Registration QR Code"
                           width="120" height="120"
                         />
@@ -750,13 +750,13 @@ export default function ManageEventModal({ isOpen, onClose, event, onEventUpdate
                           <input 
                             type="text" 
                             style={{ ...inputStyle, background: '#fff', margin: 0 }}
-                            value={`${window.location.origin}/register/${event.event_id}`}
+                            value={`${window.location.origin}${import.meta.env.BASE_URL}register/${event.event_id}`}
                             readOnly
                           />
                           <button 
                             type="button"
                             onClick={() => {
-                              navigator.clipboard.writeText(`${window.location.origin}/register/${event.event_id}`);
+                              navigator.clipboard.writeText(`${window.location.origin}${import.meta.env.BASE_URL}register/${event.event_id}`);
                               setSuccess('Link copied!');
                               setTimeout(() => setSuccess(''), 2000);
                             }}
