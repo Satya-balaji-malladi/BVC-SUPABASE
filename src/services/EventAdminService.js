@@ -172,109 +172,151 @@ class EventAdminService {
 
   /**
    * Generates a complete analytics payload for a single selected event.
-   * Handles Multi-Day and Single-Day calculations purely in javascript
-   * using a small number of optimized backend queries.
+   * Auto-detects scenario from participant_eligibility + duration:
+   *   A: bvc_only   + single_day
+   *   B: bvc_only   + multi_day
+   *   C: all_colleges + single_day
+   *   D: all_colleges + multi_day
    */
   async getSingleEventAnalytics(eventId) {
     if (!eventId) throw new Error("Event ID is required");
-    
+
     const token = this.getToken();
     if (!token) throw new Error("No active session");
-    
+
     // 1. Validate authorization
     const events = await this.getEvents();
     const authorizedIds = events.map(e => String(e.event_id));
     if (!authorizedIds.includes(String(eventId))) {
-        throw new Error("You are not authorized to view analytics for this event.");
+      throw new Error("You are not authorized to view analytics for this event.");
     }
 
-    // 2. Fetch event details
+    // 2. Fetch event details (including scope field)
     const { data: event, error: eventErr } = await supabase
       .from('events')
-      .select('event_id, event_name, start_date, end_date')
+      .select('event_id, event_name, start_date, end_date, participant_eligibility, event_status, departments, venue, location')
       .eq('event_id', eventId)
       .single();
     if (eventErr) throw eventErr;
 
-    // Calculate duration
-    const startDate = new Date(event.start_date);
-    const endDate = new Date(event.end_date);
-    const duration = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    event.duration = duration;
+    // 3. Classify event
+    // Use UTC date parts only to avoid timezone drift
+    const startParts = (event.start_date || '').split('-').map(Number);
+    const endParts = (event.end_date || event.start_date || '').split('-').map(Number);
+    const startUTC = Date.UTC(startParts[0], startParts[1] - 1, startParts[2]);
+    const endUTC = Date.UTC(endParts[0], endParts[1] - 1, endParts[2]);
+    const duration = Math.round((endUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1;
 
-    // 3. Fetch participants
+    const scope = (event.participant_eligibility || 'bvc_only') === 'all_colleges'
+      ? 'ALL_COLLEGE_STUDENTS'
+      : 'BVC_STUDENTS_ONLY';
+    const durationType = duration >= 2 ? 'MULTI_DAY' : 'SINGLE_DAY';
+
+    event.duration = duration;
+    event.scope = scope;
+    event.durationType = durationType;
+
+    // 4. Fetch registered participants
     const { data: participantsData, error: partErr } = await supabase
       .from('event_participants')
-      .select('participant_id, roll_number, registration_status, attendance_status')
+      .select('participant_id, roll_number, registration_status, registration_timestamp, registration_type')
       .eq('event_id', eventId)
       .eq('deletion_flag', false);
-    
     if (partErr) throw partErr;
     const participants = participantsData || [];
-
-    // 4. Fetch student details for these participants
-    const studentMap = {};
     const rollNumbers = [...new Set(participants.map(p => p.roll_number))].filter(Boolean);
+
+    // 5. Fetch student details from BOTH tables in parallel
+    const studentMap = {};
     if (rollNumbers.length > 0) {
-      const { data: studentsData, error: stuErr } = await supabase
-        .from('students')
-        .select('roll_number, student_name, department_id, year, section')
-        .in('roll_number', rollNumbers);
-        
-      if (!stuErr && studentsData) {
-        studentsData.forEach(s => {
+      const [{ data: bvcStudents }, { data: otherStudents }] = await Promise.all([
+        supabase
+          .from('students')
+          .select('roll_number, student_name, department_id, year, section')
+          .in('roll_number', rollNumbers),
+        supabase
+          .from('other_college_students')
+          .select('roll_number, student_name, department, college_name, year')
+          .in('roll_number', rollNumbers)
+      ]);
+
+      (bvcStudents || []).forEach(s => {
+        studentMap[s.roll_number] = {
+          name: s.student_name || 'N/A',
+          dept: s.department_id || 'Unknown',
+          year: s.year ? String(s.year) : 'Unknown',
+          section: s.section || '-',
+          college: 'BVC Engineering College'
+        };
+      });
+      (otherStudents || []).forEach(s => {
+        if (!studentMap[s.roll_number]) {
           studentMap[s.roll_number] = {
             name: s.student_name || 'N/A',
-            dept: s.department_id || 'Unknown',
+            dept: s.department || 'Unknown',
             year: s.year ? String(s.year) : 'Unknown',
-            section: s.section || '-'
+            section: '-',
+            college: s.college_name || 'Other Institution'
           };
-        });
-      }
+        }
+      });
     }
 
-    // 4. Fetch attendance records
+    // Populate defaults for unrecognized roll numbers
+    participants.forEach(p => {
+      if (!studentMap[p.roll_number]) {
+        studentMap[p.roll_number] = { name: 'N/A', dept: 'Unknown', year: 'Unknown', section: '-', college: 'Unknown' };
+      }
+    });
+
+    // 6. Fetch attendance records
     const { data: attendanceData, error: attErr } = await supabase
       .from('attendance')
       .select('attendance_id, roll_number, attendance_status, date, timestamp')
       .eq('event_id', eventId)
       .eq('deletion_flag', false);
-      
     if (attErr) throw attErr;
     const attendance = attendanceData || [];
 
-    // --- PROCESS ANALYTICS ---
-    const totalParticipants = participants.length;
-    
-    // Map roll_number -> Student data already done above
-    // Populate defaults for missing students
-    participants.forEach(p => {
-      if (!studentMap[p.roll_number]) {
-        studentMap[p.roll_number] = {
-          name: 'N/A',
-          dept: 'Unknown',
-          year: 'Unknown',
-          section: '-'
-        };
-      }
+    // 7. Build daily attendance map (deduplicated per day)
+    const dailyMap = {};
+    attendance.filter(a => a.attendance_status === 'Present').forEach(a => {
+      const dStr = a.date || (a.timestamp ? a.timestamp.split('T')[0] : null);
+      if (!dStr) return;
+      if (!dailyMap[dStr]) dailyMap[dStr] = new Set();
+      dailyMap[dStr].add(a.roll_number);
     });
 
-    // We consider "Present" if they have at least one attendance record.
-    // For single-day, simple count. For multi-day, attendance calculations differ.
-    const attendedRolls = new Set(attendance.filter(a => a.attendance_status === 'Present').map(a => a.roll_number));
-    const totalPresent = attendedRolls.size;
-    const totalAbsent = Math.max(0, totalParticipants - totalPresent);
-    const attendanceRate = totalParticipants > 0 ? ((totalPresent / totalParticipants) * 100).toFixed(1) : 0;
+    // Build the full event date sequence (include days with zero attendance)
+    const eventDateSequence = [];
+    let cursor = new Date(startUTC);
+    const endCursor = new Date(endUTC);
+    while (cursor <= endCursor) {
+      eventDateSequence.push(cursor.toISOString().split('T')[0]);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    const sortedDays = eventDateSequence;
 
-    // Department Stats
+    // 8. Core metrics
+    const totalParticipants = participants.length;
+    const attendedRolls = new Set();
+    Object.values(dailyMap).forEach(daySet => daySet.forEach(r => attendedRolls.add(r)));
+    const totalPresent = [...attendedRolls].filter(r => rollNumbers.includes(r)).length;
+    const totalAbsent = Math.max(0, totalParticipants - totalPresent);
+    const attendanceRate = totalParticipants > 0 ? ((totalPresent / totalParticipants) * 100).toFixed(1) : '0.0';
+
+    // 9. Department / Year / College distribution
     const deptMap = {};
     const yearMap = {};
-    
+    const collegeMap = {};
+
     participants.forEach(p => {
-      const dept = studentMap[p.roll_number]?.dept || 'Unknown';
-      const year = studentMap[p.roll_number]?.year || 'Unknown';
+      const s = studentMap[p.roll_number];
+      const dept = s?.dept || 'Unknown';
+      const year = s?.year || 'Unknown';
+      const college = s?.college || 'Unknown';
       const isPresent = attendedRolls.has(p.roll_number);
-      
+
       if (!deptMap[dept]) deptMap[dept] = { dept, registered: 0, present: 0 };
       deptMap[dept].registered++;
       if (isPresent) deptMap[dept].present++;
@@ -282,103 +324,151 @@ class EventAdminService {
       if (!yearMap[year]) yearMap[year] = { year, registered: 0, present: 0 };
       yearMap[year].registered++;
       if (isPresent) yearMap[year].present++;
+
+      if (!collegeMap[college]) collegeMap[college] = { college, registered: 0, present: 0 };
+      collegeMap[college].registered++;
+      if (isPresent) collegeMap[college].present++;
     });
 
-    // Daily Attendance (Multi-day)
-    const dailyMap = {}; // { '2026-08-12': Set of roll_numbers }
-    attendance.filter(a => a.attendance_status === 'Present').forEach(a => {
-      const dStr = a.date || new Date(a.timestamp).toISOString().split('T')[0];
-      if (!dailyMap[dStr]) dailyMap[dStr] = new Set();
-      dailyMap[dStr].add(a.roll_number);
+    // 10. Daily Attendance stats per event day
+    const dailyAttendance = sortedDays.map((dStr, idx) => {
+      const presentSet = dailyMap[dStr] || new Set();
+      const presentRegistered = [...presentSet].filter(r => rollNumbers.includes(r)).length;
+      return {
+        dayLabel: `Day ${idx + 1}`,
+        date: dStr,
+        registered: totalParticipants,
+        present: presentRegistered,
+        rate: totalParticipants > 0 ? ((presentRegistered / totalParticipants) * 100).toFixed(1) : '0.0'
+      };
     });
-    
-    const sortedDays = Object.keys(dailyMap).sort();
-    const dailyAttendance = sortedDays.map((dStr, idx) => ({
-      dayLabel: `Day ${idx + 1}`,
-      date: dStr,
-      present: dailyMap[dStr].size
-    }));
 
-    // Retention (Returning participants based on Day 1)
+    // 11. Attendance trend (for multi-day)
+    let trend = 'STABLE';
+    if (dailyAttendance.length >= 2) {
+      const rates = dailyAttendance.map(d => parseFloat(d.rate));
+      const mid = Math.ceil(rates.length / 2);
+      const avgFirst = rates.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
+      const avgSecond = rates.slice(mid).reduce((a, b) => a + b, 0) / Math.max(1, rates.length - mid);
+      if (avgSecond - avgFirst > 5) trend = 'INCREASING';
+      else if (avgFirst - avgSecond > 5) trend = 'DECLINING';
+    }
+
+    // 12. Retention from Day 1
     const retention = [];
-    if (sortedDays.length > 0) {
+    if (sortedDays.length > 0 && dailyMap[sortedDays[0]]) {
       const day1Rolls = dailyMap[sortedDays[0]];
       sortedDays.forEach((dStr, idx) => {
+        const daySet = dailyMap[dStr] || new Set();
         let retained = 0;
-        dailyMap[dStr].forEach(r => {
-          if (day1Rolls.has(r)) retained++;
-        });
+        daySet.forEach(r => { if (day1Rolls.has(r)) retained++; });
         retention.push({
           dayLabel: `Day ${idx + 1}`,
-          retained: retained,
-          rate: day1Rolls.size > 0 ? ((retained / day1Rolls.size) * 100).toFixed(1) : 0
+          retained,
+          rate: day1Rolls.size > 0 ? ((retained / day1Rolls.size) * 100).toFixed(1) : '0.0'
         });
       });
     }
 
-    // Completion Rate (Attended all days)
+    // 13. Consistency + Heatmap (multi-day)
     let completedCount = 0;
-    const participantConsistencyMap = { '0': 0 }; // Days attended -> count
-    
-    if (duration > 1) {
-      participants.forEach(p => {
-        let daysAttended = 0;
-        sortedDays.forEach(dStr => {
-          if (dailyMap[dStr] && dailyMap[dStr].has(p.roll_number)) daysAttended++;
-        });
-        if (daysAttended === duration) completedCount++;
-        
-        participantConsistencyMap[daysAttended] = (participantConsistencyMap[daysAttended] || 0) + 1;
+    const participantConsistencyMap = {};
+    const heatmapRows = [];
+
+    participants.forEach(p => {
+      let daysAttended = 0;
+      const flags = sortedDays.map(dStr => {
+        const present = dailyMap[dStr] && dailyMap[dStr].has(p.roll_number);
+        if (present) daysAttended++;
+        return present;
       });
-    }
-    const completionRate = totalParticipants > 0 ? ((completedCount / totalParticipants) * 100).toFixed(1) : 0;
-    
+      if (daysAttended === duration) completedCount++;
+      participantConsistencyMap[daysAttended] = (participantConsistencyMap[daysAttended] || 0) + 1;
+
+      if (heatmapRows.length < 60) {
+        const s = studentMap[p.roll_number];
+        heatmapRows.push({
+          roll_number: p.roll_number,
+          name: s?.name || p.roll_number,
+          dept: s?.dept || 'Unknown',
+          flags
+        });
+      }
+    });
+
+    const completionRate = totalParticipants > 0 ? ((completedCount / totalParticipants) * 100).toFixed(1) : '0.0';
+    const avgDailyRate = dailyAttendance.length > 0
+      ? (dailyAttendance.reduce((s, d) => s + parseFloat(d.rate), 0) / dailyAttendance.length).toFixed(1)
+      : '0.0';
+
     const consistencyArray = Object.keys(participantConsistencyMap)
-      .map(Number)
-      .sort((a,b) => b-a)
+      .map(Number).sort((a, b) => b - a)
       .map(days => ({
         daysAttended: days,
-        label: days === duration ? 'All Days' : `${days} Day(s)`,
-        count: participantConsistencyMap[days]
+        label: days === duration ? 'All Days' : (days === 0 ? 'No Days' : `${days} Day${days > 1 ? 's' : ''}`),
+        count: participantConsistencyMap[days],
+        pct: totalParticipants > 0 ? ((participantConsistencyMap[days] / totalParticipants) * 100).toFixed(0) : 0
       }));
 
-    // Generate enriched participant list for the table
+    // 14. Enriched participant table
     const enrichedParticipants = participants.map(p => {
+      const s = studentMap[p.roll_number];
       let daysAttended = 0;
-      const attendanceArr = sortedDays.map(dStr => {
-        const isPresent = dailyMap[dStr] && dailyMap[dStr].has(p.roll_number);
-        if (isPresent) daysAttended++;
-        return isPresent;
+      const attendanceFlags = sortedDays.map(dStr => {
+        const present = dailyMap[dStr] && dailyMap[dStr].has(p.roll_number);
+        if (present) daysAttended++;
+        return present;
       });
-      
-      const pRate = duration > 0 ? ((daysAttended / duration) * 100).toFixed(0) : (attendedRolls.has(p.roll_number) ? 100 : 0);
+      const pRate = duration > 0
+        ? ((daysAttended / duration) * 100).toFixed(0)
+        : (attendedRolls.has(p.roll_number) ? 100 : 0);
+
+      const checkinRecord = durationType === 'SINGLE_DAY'
+        ? attendance.find(a => a.roll_number === p.roll_number && a.attendance_status === 'Present')
+        : null;
 
       return {
         roll_number: p.roll_number,
-        name: studentMap[p.roll_number]?.name,
-        department: studentMap[p.roll_number]?.dept,
-        year: studentMap[p.roll_number]?.year,
+        name: s?.name || 'N/A',
+        department: s?.dept || 'Unknown',
+        year: s?.year || 'Unknown',
+        section: s?.section || '-',
+        college: s?.college || 'Unknown',
+        registration_type: p.registration_type || 'Online',
         days_attended: daysAttended,
         attendance_percentage: pRate,
-        attendance_flags: attendanceArr // array of booleans mapped to days
+        attendance_flags: attendanceFlags,
+        checkin_time: checkinRecord?.timestamp || null
       };
     });
 
     return {
-      event: event,
+      event,
+      scenario: { scope, durationType, duration },
       overview: {
         totalParticipants,
         totalPresent,
         totalAbsent,
         attendanceRate,
+        avgDailyRate,
+        completionRate,
         departmentCount: Object.keys(deptMap).length,
-        completionRate
+        collegeCount: Object.keys(collegeMap).length,
+        trend
       },
-      departments: Object.values(deptMap).map(d => ({ ...d, rate: d.registered > 0 ? ((d.present/d.registered)*100).toFixed(1) : 0 })).sort((a,b) => b.registered - a.registered),
-      years: Object.values(yearMap).map(y => ({ ...y, rate: y.registered > 0 ? ((y.present/y.registered)*100).toFixed(1) : 0 })).sort((a,b) => a.year.localeCompare(b.year)),
+      departments: Object.values(deptMap)
+        .map(d => ({ ...d, rate: d.registered > 0 ? ((d.present / d.registered) * 100).toFixed(1) : '0.0' }))
+        .sort((a, b) => b.registered - a.registered),
+      years: Object.values(yearMap)
+        .map(y => ({ ...y, rate: y.registered > 0 ? ((y.present / y.registered) * 100).toFixed(1) : '0.0' }))
+        .sort((a, b) => String(a.year).localeCompare(String(b.year))),
+      colleges: Object.values(collegeMap)
+        .map(c => ({ ...c, rate: c.registered > 0 ? ((c.present / c.registered) * 100).toFixed(1) : '0.0' }))
+        .sort((a, b) => b.registered - a.registered),
       dailyAttendance,
       retention,
       consistency: consistencyArray,
+      heatmap: { days: sortedDays.map((d, i) => ({ date: d, label: `Day ${i + 1}` })), rows: heatmapRows },
       participants: enrichedParticipants
     };
   }

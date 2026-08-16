@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import EventAdminService from '../../services/EventAdminService';
-import { Loader2, Calendar, Users, TrendingUp, Search, Download, AlertTriangle } from 'lucide-react';
+import {
+  Loader2, Calendar, Users, TrendingUp, TrendingDown, Minus,
+  Search, Download, AlertTriangle, RefreshCw
+} from 'lucide-react';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement,
   ArcElement, Title, Tooltip, Legend, Filler
@@ -9,464 +12,542 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Title, Tooltip, Legend, Filler);
 
-const COLORS = ['#0d6efd', '#20c997', '#ffc107', '#fd7e14', '#6f42c1', '#e83e8c', '#198754', '#dc3545'];
+const PALETTE = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899','#84cc16','#14b8a6'];
+
+function ScopeBadge({ scope }) {
+  const isBvc = scope === 'BVC_STUDENTS_ONLY';
+  return (
+    <span style={{ padding:'0.2rem 0.75rem', borderRadius:'999px', fontSize:'0.75rem', fontWeight:700,
+      background: isBvc ? 'rgba(59,130,246,0.12)' : 'rgba(139,92,246,0.12)',
+      color: isBvc ? '#2563eb' : '#7c3aed' }}>
+      {isBvc ? '🏫 BVC Students Only' : '🌐 All College Students'}
+    </span>
+  );
+}
+
+function DurationBadge({ durationType, duration }) {
+  const isMulti = durationType === 'MULTI_DAY';
+  return (
+    <span style={{ padding:'0.2rem 0.75rem', borderRadius:'999px', fontSize:'0.75rem', fontWeight:700,
+      background: isMulti ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+      color: isMulti ? '#059669' : '#d97706' }}>
+      {isMulti ? `📅 ${duration} Days` : '📅 1 Day'}
+    </span>
+  );
+}
+
+function TrendBadge({ trend }) {
+  if (!trend) return null;
+  const cfg = {
+    INCREASING: { icon: <TrendingUp size={13}/>, label:'Increasing', color:'#059669', bg:'rgba(16,185,129,0.1)' },
+    DECLINING:  { icon: <TrendingDown size={13}/>, label:'Declining', color:'#dc2626', bg:'rgba(239,68,68,0.1)' },
+    STABLE:     { icon: <Minus size={13}/>, label:'Stable', color:'#6b7280', bg:'rgba(107,114,128,0.1)' }
+  }[trend] || {};
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:'0.3rem', padding:'0.2rem 0.6rem',
+      borderRadius:'999px', fontSize:'0.75rem', fontWeight:700, background:cfg.bg, color:cfg.color }}>
+      {cfg.icon}{cfg.label}
+    </span>
+  );
+}
+
+function KpiCard({ label, value, sub, color='var(--text-primary)', icon }) {
+  return (
+    <div className="glass-panel" style={{ padding:'1.25rem' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <div>
+          <div style={{ color:'var(--text-secondary)', fontSize:'0.82rem', fontWeight:600,
+            marginBottom:'0.4rem', textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</div>
+          <div style={{ fontSize:'2rem', fontWeight:800, color, lineHeight:1 }}>{value}</div>
+          {sub && <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'0.35rem' }}>{sub}</div>}
+        </div>
+        {icon && <div style={{ opacity:0.18, fontSize:'2rem' }}>{icon}</div>}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ title, children }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
+      <h3 style={{ fontSize:'1rem', fontWeight:700, margin:0, color:'var(--text-primary)' }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ message }) {
+  return (
+    <div style={{ padding:'2.5rem', textAlign:'center', color:'var(--text-muted)', fontSize:'0.875rem' }}>
+      <Users size={32} style={{ margin:'0 auto 0.75rem', opacity:0.3 }}/>
+      <div>{message}</div>
+    </div>
+  );
+}
 
 export default function EventAdminAnalytics() {
   const [analytics, setAnalytics] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // Table state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterDept, setFilterDept] = useState('ALL');
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [searchTerm, setSearchTerm]     = useState('');
+  const [filterDept, setFilterDept]     = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [tablePage, setTablePage]       = useState(0);
+  const PAGE_SIZE = 50;
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
+  useEffect(() => { loadAnalytics(); }, []);
 
   const loadAnalytics = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const selectedEventId = localStorage.getItem('selected_event_id');
-      if (!selectedEventId) {
-        throw new Error("No event selected. Please return to Event Selection and choose an event.");
-      }
+      if (!selectedEventId) throw new Error('No event selected. Please return to Event Selection and choose an event.');
       const data = await EventAdminService.getSingleEventAnalytics(selectedEventId);
       setAnalytics(data);
     } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to load analytics.");
-    } finally {
-      setLoading(false);
-    }
+      setError(err.message || 'Failed to load analytics.');
+    } finally { setLoading(false); }
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '1rem' }}>
-        <Loader2 className="animate-spin text-accent-blue" size={40} />
-        <p style={{ color: 'var(--text-secondary)' }}>Crunching analytics data...</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:'1rem' }}>
+      <Loader2 className="animate-spin" size={40} color="var(--accent-blue)"/>
+      <p style={{ color:'var(--text-secondary)' }}>Crunching analytics data...</p>
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '2rem' }}>
-        <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', maxWidth: '500px', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
-          <AlertTriangle size={48} color="var(--error)" style={{ margin: '0 auto 1rem auto' }} />
-          <h3 style={{ color: 'var(--error)', marginBottom: '0.5rem' }}>Error Loading Analytics</h3>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>{error}</p>
-          <button className="btn btn-primary" onClick={() => window.location.href = '/event-admin'}>Back to Dashboard</button>
-        </div>
+  if (error) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', padding:'2rem' }}>
+      <div className="glass-panel" style={{ padding:'2rem', textAlign:'center', maxWidth:'480px' }}>
+        <AlertTriangle size={48} color="var(--error)" style={{ margin:'0 auto 1rem' }}/>
+        <h3 style={{ color:'var(--error)', marginBottom:'0.5rem' }}>Error Loading Analytics</h3>
+        <p style={{ color:'var(--text-secondary)', marginBottom:'1.5rem' }}>{error}</p>
+        <button className="btn btn-primary" onClick={loadAnalytics}
+          style={{ display:'inline-flex', alignItems:'center', gap:'0.5rem' }}>
+          <RefreshCw size={14}/> Retry
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
 
   if (!analytics) return null;
 
-  const { event, overview, departments, years, dailyAttendance, retention, consistency, participants } = analytics;
-  const isMultiDay = event.duration > 1;
+  const { event, scenario, overview, departments, years, colleges, dailyAttendance, retention, consistency, heatmap, participants } = analytics;
+  const { scope, durationType, duration } = scenario;
+  const isMultiDay    = durationType === 'MULTI_DAY';
+  const isAllColleges = scope === 'ALL_COLLEGE_STUDENTS';
 
-  // --- CHART DATA PREPARATION --- //
+  const filteredParticipants = useMemo(() => {
+    return participants.filter(p => {
+      const q = searchTerm.toLowerCase();
+      const matchSearch  = !q || p.roll_number?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q);
+      const matchDept    = filterDept === 'ALL' || p.department === filterDept;
+      const matchStatus  = filterStatus === 'ALL'
+        || (filterStatus === 'PRESENT' && Number(p.attendance_percentage) > 0)
+        || (filterStatus === 'ABSENT'  && Number(p.attendance_percentage) === 0);
+      return matchSearch && matchDept && matchStatus;
+    });
+  }, [participants, searchTerm, filterDept, filterStatus]);
 
-  // 1. Single-Day Attendance Donut
-  const donutData = {
-    labels: ['Present', 'Absent'],
-    datasets: [{
-      data: [overview.totalPresent, overview.totalAbsent],
-      backgroundColor: ['#198754', '#dc3545'],
-      borderWidth: 0,
-      hoverOffset: 4
-    }]
+  const paginatedParticipants = filteredParticipants.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredParticipants.length / PAGE_SIZE);
+
+  const exportCSV = () => {
+    const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [];
+    if (isMultiDay) {
+      const dayHeaders = heatmap.days.map(d => d.label);
+      rows.push(['Roll Number','Name','Department','Year','College',...dayHeaders,'Days Attended','Attendance %'].map(esc).join(','));
+      filteredParticipants.forEach(p => {
+        rows.push([p.roll_number, p.name, p.department, p.year, p.college,
+          ...p.attendance_flags.map(f => f ? 'Present' : 'Absent'),
+          p.days_attended, `${p.attendance_percentage}%`].map(esc).join(','));
+      });
+    } else {
+      rows.push(['Roll Number','Name','Department','Year','Section','College','Status','Check-in Time'].map(esc).join(','));
+      filteredParticipants.forEach(p => {
+        const status = Number(p.attendance_percentage) > 0 ? 'Present' : 'Absent';
+        const time   = p.checkin_time ? new Date(p.checkin_time).toLocaleString() : '--';
+        rows.push([p.roll_number, p.name, p.department, p.year, p.section, p.college, status, time].map(esc).join(','));
+      });
+    }
+    const blob = new Blob([rows.join('\n')], { type:'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href:url, download:`${event.event_name.replace(/\s+/g,'_')}_analytics.csv` });
+    a.click(); URL.revokeObjectURL(url);
   };
 
-  // 2. Department Bar Chart (Registered vs Present)
+  // Chart data
+  const donutData = {
+    labels: ['Present','Absent'],
+    datasets:[{ data:[overview.totalPresent, overview.totalAbsent], backgroundColor:['#10b981','#ef4444'], borderWidth:0, hoverOffset:4 }]
+  };
   const deptBarData = {
     labels: departments.map(d => d.dept),
-    datasets: [
-      {
-        label: 'Registered',
-        data: departments.map(d => d.registered),
-        backgroundColor: 'rgba(13, 110, 253, 0.2)',
-        borderColor: '#0d6efd',
-        borderWidth: 1,
-        borderRadius: 4
-      },
-      {
-        label: 'Present',
-        data: departments.map(d => d.present),
-        backgroundColor: '#0d6efd',
-        borderRadius: 4
-      }
+    datasets:[
+      { label:'Registered', data:departments.map(d => d.registered), backgroundColor:'rgba(59,130,246,0.2)', borderColor:'#3b82f6', borderWidth:1.5, borderRadius:4 },
+      { label:'Present',    data:departments.map(d => d.present),    backgroundColor:'#10b981', borderRadius:4 }
     ]
   };
-
-  // 3. Year Bar Chart
-  const yearBarData = {
-    labels: years.map(y => y.year + (y.year.includes('Year') ? '' : ' Year')),
-    datasets: [
-      {
-        label: 'Registered',
-        data: years.map(y => y.registered),
-        backgroundColor: 'rgba(111, 66, 193, 0.2)',
-        borderColor: '#6f42c1',
-        borderWidth: 1,
-        borderRadius: 4
-      },
-      {
-        label: 'Present',
-        data: years.map(y => y.present),
-        backgroundColor: '#6f42c1',
-        borderRadius: 4
-      }
-    ]
+  const collegeBarData = {
+    labels: colleges.map(c => c.college),
+    datasets:[{ label:'Registered', data:colleges.map(c => c.registered), backgroundColor:PALETTE, borderWidth:0, borderRadius:6 }]
   };
-
-  // MULTI-DAY: Daily Attendance Line
   const dailyLineData = {
     labels: dailyAttendance.map(d => d.dayLabel),
-    datasets: [{
-      label: 'Present Participants',
-      data: dailyAttendance.map(d => d.present),
-      borderColor: '#0d6efd',
-      backgroundColor: 'rgba(13, 110, 253, 0.1)',
-      fill: true,
-      tension: 0.3,
-      pointBackgroundColor: '#0d6efd',
-      pointRadius: 4
-    }]
+    datasets:[{ label:'Attendance %', data:dailyAttendance.map(d => parseFloat(d.rate)),
+      borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.08)', fill:true, tension:0.35, pointBackgroundColor:'#3b82f6', pointRadius:5 }]
   };
-
-  // MULTI-DAY: Retention Line
   const retentionLineData = {
     labels: retention.map(d => d.dayLabel),
-    datasets: [{
-      label: 'Retention %',
-      data: retention.map(d => d.rate),
-      borderColor: '#20c997',
-      backgroundColor: 'rgba(32, 201, 151, 0.1)',
-      fill: true,
-      tension: 0.3,
-      pointBackgroundColor: '#20c997',
-      pointRadius: 4
-    }]
+    datasets:[{ label:'Retention %', data:retention.map(d => parseFloat(d.rate)),
+      borderColor:'#10b981', backgroundColor:'rgba(16,185,129,0.08)', fill:true, tension:0.35, pointBackgroundColor:'#10b981', pointRadius:5 }]
   };
-
-  // MULTI-DAY: Consistency Histogram (Bar)
-  const consistencyBarData = {
-    labels: consistency.map(c => c.label),
-    datasets: [{
-      label: 'Participants',
-      data: consistency.map(c => c.count),
-      backgroundColor: '#fd7e14',
-      borderRadius: 4
-    }]
-  };
-
-  // Table Filtering
-  const filteredParticipants = participants.filter(p => {
-    const matchesSearch = p.roll_number?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDept = filterDept === 'ALL' || p.department === filterDept;
-    return matchesSearch && matchesDept;
+  const baseLineOpts = (yMax) => ({
+    maintainAspectRatio:false,
+    plugins:{ legend:{ display:false } },
+    scales:{
+      y:{ beginAtZero:true, max:yMax, grid:{ color:'rgba(0,0,0,0.04)' }, ticks:{ font:{ size:11 } } },
+      x:{ grid:{ display:false }, ticks:{ font:{ size:11 } } }
+    }
   });
+  const barOpts = {
+    maintainAspectRatio:false, indexAxis:'y',
+    plugins:{ legend:{ position:'top', align:'end', labels:{ usePointStyle:true, boxWidth:8, padding:14, font:{ size:11 } } } },
+    scales:{
+      x:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,0.04)' }, ticks:{ font:{ size:11 } } },
+      y:{ grid:{ display:false }, ticks:{ font:{ size:11 } } }
+    }
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%', overflowY: 'auto', paddingRight: '0.5rem' }}>
-      
-      {/* HEADER */}
-      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>{event.event_name}</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Calendar size={14} />
-              {new Date(event.start_date).toLocaleDateString()} {isMultiDay && `— ${new Date(event.end_date).toLocaleDateString()}`}
-            </span>
-            <span style={{ padding: '0.15rem 0.6rem', background: 'rgba(13, 110, 253, 0.1)', color: '#0d6efd', borderRadius: '12px', fontWeight: 600, fontSize: '0.75rem' }}>
-              {event.duration} {event.duration === 1 ? 'Day' : 'Days'}
-            </span>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Event Analytics</div>
-          <div style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>{isMultiDay ? 'Multi-Day View' : 'Single-Day View'}</div>
-        </div>
-      </div>
+    <div style={{ display:'flex', flexDirection:'column', gap:'1.5rem', height:'100%', overflowY:'auto', paddingRight:'0.25rem' }}>
 
-      {/* KPIs */}
-      <div className="responsive-grid">
-        <div className="glass-panel" style={{ padding: '1.25rem' }}>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.5rem' }}>Total Participants</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>{overview.totalParticipants}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Registered for this event</div>
-        </div>
-        <div className="glass-panel" style={{ padding: '1.25rem' }}>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.5rem' }}>Unique Attendees</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#198754' }}>{overview.totalPresent}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{overview.totalAbsent} participants absent</div>
-        </div>
-        <div className="glass-panel" style={{ padding: '1.25rem' }}>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.5rem' }}>{isMultiDay ? 'Overall Turnout' : 'Attendance Rate'}</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0dcaf0' }}>{overview.attendanceRate}%</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Based on registration</div>
-        </div>
-        <div className="glass-panel" style={{ padding: '1.25rem' }}>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.5rem' }}>{isMultiDay ? 'Completion Rate' : 'Departments'}</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#6f42c1' }}>{isMultiDay ? `${overview.completionRate}%` : overview.departmentCount}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{isMultiDay ? 'Attended all days' : 'Unique depts represented'}</div>
-        </div>
-      </div>
-
-      {/* SINGLE DAY CHARTS */}
-      {!isMultiDay && (
-        <>
-          <div className="responsive-grid">
-            {/* Donut Chart */}
-            <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Attendance Overview</h3>
-              <div style={{ flex: 1, position: 'relative', minHeight: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Doughnut 
-                  data={donutData} 
-                  options={{ 
-                    maintainAspectRatio: false, 
-                    cutout: '75%',
-                    plugins: {
-                      legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
-                    }
-                  }} 
-                />
-                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none', marginTop: '-15px' }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>{overview.attendanceRate}%</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Present</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Department Bar */}
-            <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Department Participation</h3>
-              <div style={{ height: '300px' }}>
-                <Bar 
-                  data={deptBarData} 
-                  options={{ 
-                    maintainAspectRatio: false,
-                    indexAxis: 'y',
-                    plugins: {
-                      legend: { position: 'top', align: 'end' }
-                    },
-                    scales: {
-                      x: { grid: { color: 'rgba(0,0,0,0.05)' } },
-                      y: { grid: { display: false } }
-                    }
-                  }} 
-                />
-              </div>
+      {/* SECTION 1: HEADER */}
+      <div className="glass-panel" style={{ padding:'1.5rem' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'1rem' }}>
+          <div>
+            <h2 style={{ fontSize:'1.5rem', fontWeight:800, margin:'0 0 0.5rem 0', color:'var(--text-primary)' }}>
+              {event.event_name}
+            </h2>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'0.5rem', alignItems:'center' }}>
+              <ScopeBadge scope={scope}/>
+              <DurationBadge durationType={durationType} duration={duration}/>
+              {isMultiDay && <TrendBadge trend={overview.trend}/>}
+              <span style={{ fontSize:'0.8rem', color:'var(--text-muted)', display:'flex', alignItems:'center', gap:'0.3rem' }}>
+                <Calendar size={12}/>
+                {new Date(event.start_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}
+                {isMultiDay && ` — ${new Date(event.end_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}`}
+              </span>
             </div>
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
-            <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Year-wise Analysis</h3>
-              <div style={{ height: '300px' }}>
-                <Bar 
-                  data={yearBarData} 
-                  options={{ 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top', align: 'end' } },
-                    scales: {
-                      y: { grid: { color: 'rgba(0,0,0,0.05)' } },
-                      x: { grid: { display: false } }
-                    },
-                    barPercentage: 0.6
-                  }} 
-                />
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* MULTI DAY CHARTS */}
-      {isMultiDay && (
-        <>
-          <div className="responsive-grid">
-            {/* Daily Trend */}
-            <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Daily Attendance Trend</h3>
-              <div style={{ height: '280px' }}>
-                <Line 
-                  data={dailyLineData}
-                  options={{
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                      x: { grid: { display: false } }
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            
-            {/* Retention Rate */}
-            <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Retention Analysis</h3>
-              <div style={{ height: '280px' }}>
-                <Line 
-                  data={retentionLineData}
-                  options={{
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                      y: { beginAtZero: true, max: 100, grid: { color: 'rgba(0,0,0,0.05)' } },
-                      x: { grid: { display: false } }
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem' }}>
-            {/* Consistency Histogram */}
-            <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Attendance Consistency</h3>
-              <div style={{ height: '250px' }}>
-                <Bar 
-                  data={consistencyBarData}
-                  options={{
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                      x: { grid: { display: false } }
-                    },
-                    barPercentage: 0.5
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Department Bar */}
-            <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 1.5rem 0' }}>Department Participation (Unique)</h3>
-              <div style={{ height: '250px' }}>
-                <Bar 
-                  data={deptBarData} 
-                  options={{ 
-                    maintainAspectRatio: false,
-                    indexAxis: 'y',
-                    plugins: { legend: { position: 'top', align: 'end' } },
-                    scales: {
-                      x: { grid: { color: 'rgba(0,0,0,0.05)' } },
-                      y: { grid: { display: false } }
-                    }
-                  }} 
-                />
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* PARTICIPANT DETAILS TABLE */}
-      <div className="glass-panel" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Participant Details</h3>
-          
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <select 
-              className="input-field" 
-              style={{ width: '150px' }}
-              value={filterDept}
-              onChange={(e) => setFilterDept(e.target.value)}
-            >
-              <option value="ALL">All Depts</option>
-              {departments.map(d => (
-                <option key={d.dept} value={d.dept}>{d.dept}</option>
-              ))}
-            </select>
-            
-            <div style={{ position: 'relative' }}>
-              <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input 
-                type="text" 
-                placeholder="Search..." 
-                className="input-field" 
-                style={{ paddingLeft: '2.5rem', width: '200px' }}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
-            <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Download size={16} /> Export
+          <div style={{ display:'flex', gap:'0.5rem' }}>
+            <button className="btn btn-secondary" onClick={loadAnalytics}
+              style={{ display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.8rem' }}>
+              <RefreshCw size={13}/> Refresh
+            </button>
+            <button className="btn btn-primary" onClick={exportCSV}
+              style={{ display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.8rem' }}>
+              <Download size={13}/> Export CSV
             </button>
           </div>
         </div>
+      </div>
+
+      {/* SECTION 2: KPI CARDS */}
+      <div className="responsive-grid">
+        <KpiCard label="Registered" value={overview.totalParticipants} sub="participants" icon="👥"/>
+        <KpiCard label="Present" value={overview.totalPresent} sub={`${overview.totalAbsent} absent`} color="#10b981" icon="✅"/>
+        <KpiCard
+          label={isMultiDay ? 'Avg Daily Attendance' : 'Attendance Rate'}
+          value={`${isMultiDay ? overview.avgDailyRate : overview.attendanceRate}%`}
+          sub={isMultiDay ? `Overall: ${overview.attendanceRate}%` : 'of registered'}
+          color="#3b82f6" icon="📊"/>
+        <KpiCard
+          label={isMultiDay ? 'Full Completion' : 'Departments'}
+          value={isMultiDay ? `${overview.completionRate}%` : overview.departmentCount}
+          sub={isMultiDay ? 'Attended all days' : 'Unique depts'}
+          color="#8b5cf6" icon={isMultiDay ? '🏆' : '🏛️'}/>
+      </div>
+
+      {/* SECTION 3: OVERVIEW CHARTS */}
+      <div className="responsive-grid">
+        <div className="glass-panel" style={{ padding:'1.5rem' }}>
+          <SectionHeader title="Attendance Overview"/>
+          {overview.totalParticipants === 0 ? <EmptyState message="No participants registered yet."/> : (
+            <div style={{ position:'relative', height:'260px', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Doughnut data={donutData} options={{ maintainAspectRatio:false, cutout:'72%',
+                plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, padding:18, font:{ size:12 } } } } }}/>
+              <div style={{ position:'absolute', textAlign:'center', pointerEvents:'none' }}>
+                <div style={{ fontSize:'1.6rem', fontWeight:800, color:'var(--text-primary)' }}>{overview.attendanceRate}%</div>
+                <div style={{ fontSize:'0.72rem', color:'var(--text-secondary)' }}>Present</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="glass-panel" style={{ padding:'1.5rem' }}>
+          <SectionHeader title="Department Participation"/>
+          {departments.length === 0 ? <EmptyState message="No department data available."/> : (
+            <div style={{ height:'260px' }}><Bar data={deptBarData} options={barOpts}/></div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION: COLLEGE DISTRIBUTION (all_colleges only) */}
+      {isAllColleges && colleges.length > 0 && (
+        <div className="glass-panel" style={{ padding:'1.5rem' }}>
+          <SectionHeader title="🌐 College / Institution Distribution"/>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.5rem' }}>
+            <div style={{ height:'220px' }}>
+              <Bar data={collegeBarData} options={{ maintainAspectRatio:false, indexAxis:'y',
+                plugins:{ legend:{ display:false } },
+                scales:{ x:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,0.04)' } }, y:{ grid:{ display:false } } }}}/>
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom:'2px solid rgba(0,0,0,0.06)', color:'var(--text-secondary)' }}>
+                    {['Institution','Registered','Present','Attendance %'].map(h => (
+                      <th key={h} style={{ padding:'0.6rem 0.5rem', fontWeight:700, textAlign:h==='Institution'?'left':'center' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {colleges.map((c,i) => (
+                    <tr key={i} style={{ borderBottom:'1px solid rgba(0,0,0,0.04)' }}>
+                      <td style={{ padding:'0.6rem 0.5rem', fontWeight:600 }}>{c.college}</td>
+                      <td style={{ padding:'0.6rem 0.5rem', textAlign:'center' }}>{c.registered}</td>
+                      <td style={{ padding:'0.6rem 0.5rem', textAlign:'center', color:'#10b981', fontWeight:600 }}>{c.present}</td>
+                      <td style={{ padding:'0.6rem 0.5rem', textAlign:'center' }}>
+                        <span style={{ fontWeight:700, color:parseFloat(c.rate)>=75?'#10b981':parseFloat(c.rate)>=50?'#f59e0b':'#ef4444' }}>{c.rate}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 6: MULTI-DAY ANALYTICS */}
+      {isMultiDay && (
+        <>
+          <div className="responsive-grid">
+            <div className="glass-panel" style={{ padding:'1.5rem' }}>
+              <SectionHeader title="Daily Attendance Trend (%)"><TrendBadge trend={overview.trend}/></SectionHeader>
+              {dailyAttendance.every(d => d.present === 0) ? <EmptyState message="No attendance recorded yet."/> : (
+                <div style={{ height:'260px' }}><Line data={dailyLineData} options={baseLineOpts(100)}/></div>
+              )}
+            </div>
+            <div className="glass-panel" style={{ padding:'1.5rem' }}>
+              <SectionHeader title="Day-1 Retention (%)"/>
+              {retention.length === 0 ? <EmptyState message="Not enough data for retention."/> : (
+                <div style={{ height:'260px' }}><Line data={retentionLineData} options={baseLineOpts(100)}/></div>
+              )}
+            </div>
+          </div>
+
+          {/* Day-by-day table */}
+          <div className="glass-panel" style={{ padding:'1.5rem' }}>
+            <SectionHeader title="📅 Day-by-Day Breakdown"/>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom:'2px solid rgba(0,0,0,0.06)', color:'var(--text-secondary)' }}>
+                    {['Day','Date','Registered','Present','Absent','Attendance %','Retention %'].map(h => (
+                      <th key={h} style={{ padding:'0.75rem 0.5rem', fontWeight:700, textAlign:['Day','Date'].includes(h)?'left':'center' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyAttendance.map((d,i) => {
+                    const ret = retention[i];
+                    return (
+                      <tr key={i} style={{ borderBottom:'1px solid rgba(0,0,0,0.04)' }}>
+                        <td style={{ padding:'0.7rem 0.5rem', fontWeight:700 }}>{d.dayLabel}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', color:'var(--text-secondary)' }}>{d.date}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', textAlign:'center' }}>{d.registered}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', textAlign:'center', color:'#10b981', fontWeight:600 }}>{d.present}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', textAlign:'center', color:'#ef4444' }}>{d.registered - d.present}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', textAlign:'center' }}>
+                          <span style={{ fontWeight:700, color:parseFloat(d.rate)>=75?'#10b981':parseFloat(d.rate)>=50?'#f59e0b':'#ef4444' }}>{d.rate}%</span>
+                        </td>
+                        <td style={{ padding:'0.7rem 0.5rem', textAlign:'center', color:'var(--text-secondary)', fontSize:'0.8rem' }}>
+                          {ret ? `${ret.rate}%` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Consistency Cards */}
+          {consistency.length > 0 && (
+            <div className="glass-panel" style={{ padding:'1.5rem' }}>
+              <SectionHeader title="🏆 Student Consistency"/>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:'0.75rem' }}>
+                {consistency.map((c,i) => (
+                  <div key={i} style={{ background:'rgba(0,0,0,0.025)', borderRadius:'8px', padding:'0.9rem 1rem', textAlign:'center' }}>
+                    <div style={{ fontSize:'1.4rem', fontWeight:800, color:c.daysAttended===duration?'#10b981':c.daysAttended===0?'#ef4444':'#f59e0b' }}>
+                      {c.count}
+                    </div>
+                    <div style={{ fontSize:'0.78rem', fontWeight:600, color:'var(--text-secondary)', marginTop:'0.2rem' }}>{c.label}</div>
+                    <div style={{ fontSize:'0.7rem', color:'var(--text-muted)' }}>{c.pct}% of participants</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Heatmap */}
+          {heatmap && heatmap.rows.length > 0 && (
+            <div className="glass-panel" style={{ padding:'1.5rem' }}>
+              <SectionHeader title="🗓️ Attendance Heatmap (Student × Day)"/>
+              <div style={{ overflowX:'auto', maxHeight:'400px', overflowY:'auto' }}>
+                <table style={{ borderCollapse:'collapse', fontSize:'0.78rem', minWidth:'600px' }}>
+                  <thead style={{ position:'sticky', top:0, background:'var(--surface)', zIndex:1 }}>
+                    <tr>
+                      <th style={{ padding:'0.5rem 0.75rem', textAlign:'left', fontWeight:700, color:'var(--text-secondary)', borderBottom:'2px solid rgba(0,0,0,0.06)', minWidth:'160px' }}>Student</th>
+                      <th style={{ padding:'0.5rem 0.75rem', textAlign:'left', fontWeight:700, color:'var(--text-secondary)', borderBottom:'2px solid rgba(0,0,0,0.06)' }}>Dept</th>
+                      {heatmap.days.map(d => (
+                        <th key={d.date} style={{ padding:'0.5rem 0.4rem', textAlign:'center', fontWeight:700, color:'var(--text-secondary)', borderBottom:'2px solid rgba(0,0,0,0.06)', minWidth:'56px' }}>{d.label}</th>
+                      ))}
+                      <th style={{ padding:'0.5rem 0.4rem', textAlign:'center', fontWeight:700, color:'var(--text-secondary)', borderBottom:'2px solid rgba(0,0,0,0.06)' }}>%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heatmap.rows.map((row,ri) => {
+                      const pct = duration > 0 ? Math.round((row.flags.filter(Boolean).length / duration) * 100) : 0;
+                      return (
+                        <tr key={ri} style={{ borderBottom:'1px solid rgba(0,0,0,0.03)' }}>
+                          <td style={{ padding:'0.45rem 0.75rem', fontWeight:600 }}>{row.name}</td>
+                          <td style={{ padding:'0.45rem 0.75rem', color:'var(--text-secondary)' }}>{row.dept}</td>
+                          {row.flags.map((present,fi) => (
+                            <td key={fi} style={{ padding:'0.45rem 0.4rem', textAlign:'center' }}>
+                              <span style={{ display:'inline-block', width:'20px', height:'20px', borderRadius:'4px',
+                                background:present?'#10b981':'#fecaca' }} title={present?'Present':'Absent'}/>
+                            </td>
+                          ))}
+                          <td style={{ padding:'0.45rem 0.4rem', textAlign:'center', fontWeight:700, fontSize:'0.8rem',
+                            color:pct>=75?'#10b981':pct>=50?'#f59e0b':'#ef4444' }}>{pct}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {participants.length > 60 && (
+                  <div style={{ padding:'0.75rem', textAlign:'center', color:'var(--text-muted)', fontSize:'0.8rem' }}>
+                    Showing first 60 students. Export CSV for the full list.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* SECTION 9: PARTICIPANT TABLE */}
+      <div className="glass-panel" style={{ padding:'1.5rem' }}>
+        <SectionHeader title="Participant Details">
+          <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap' }}>
+            <select className="input-field" style={{ width:'140px', fontSize:'0.82rem' }}
+              value={filterDept} onChange={e => { setFilterDept(e.target.value); setTablePage(0); }}>
+              <option value="ALL">All Depts</option>
+              {departments.map(d => <option key={d.dept} value={d.dept}>{d.dept}</option>)}
+            </select>
+            <select className="input-field" style={{ width:'130px', fontSize:'0.82rem' }}
+              value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setTablePage(0); }}>
+              <option value="ALL">All Status</option>
+              <option value="PRESENT">Present</option>
+              <option value="ABSENT">Absent</option>
+            </select>
+            <div style={{ position:'relative' }}>
+              <Search size={14} style={{ position:'absolute', left:'0.6rem', top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)' }}/>
+              <input type="text" placeholder="Search roll / name..." className="input-field"
+                style={{ paddingLeft:'2rem', width:'200px', fontSize:'0.82rem' }}
+                value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setTablePage(0); }}/>
+            </div>
+          </div>
+        </SectionHeader>
 
         <div className="responsive-table-wrapper">
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid rgba(0,0,0,0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Roll Number</th>
-                <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Name</th>
-                <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Dept</th>
-                <th style={{ padding: '1rem 0.5rem', fontWeight: 600 }}>Year</th>
-                {isMultiDay && dailyAttendance.map(d => (
-                  <th key={d.date} style={{ padding: '1rem 0.5rem', fontWeight: 600, textAlign: 'center' }}>{d.dayLabel}</th>
-                ))}
-                <th style={{ padding: '1rem 0.5rem', fontWeight: 600, textAlign: 'right' }}>{isMultiDay ? 'Attendance %' : 'Status'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredParticipants.length === 0 ? (
-                <tr>
-                  <td colSpan={isMultiDay ? 6 + dailyAttendance.length : 5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                    No participants match your filters.
-                  </td>
-                </tr>
-              ) : (
-                filteredParticipants.slice(0, 100).map(p => (
-                  <tr key={p.roll_number} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-                    <td style={{ padding: '1rem 0.5rem', fontWeight: 500 }}>{p.roll_number}</td>
-                    <td style={{ padding: '1rem 0.5rem' }}>{p.name}</td>
-                    <td style={{ padding: '1rem 0.5rem' }}>{p.department}</td>
-                    <td style={{ padding: '1rem 0.5rem' }}>{p.year}</td>
-                    
-                    {isMultiDay && p.attendance_flags.map((isPresent, idx) => (
-                      <td key={idx} style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
-                        {isPresent ? (
-                          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#198754' }}></span>
-                        ) : (
-                          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#dc3545' }}></span>
-                        )}
-                      </td>
+          {filteredParticipants.length === 0 ? (
+            <EmptyState message={participants.length === 0 ? 'No participants registered for this event.' : 'No participants match your filters.'}/>
+          ) : (
+            <>
+              <table style={{ width:'100%', borderCollapse:'collapse', textAlign:'left', fontSize:'0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom:'2px solid rgba(0,0,0,0.06)', color:'var(--text-secondary)' }}>
+                    <th style={{ padding:'0.75rem 0.5rem', fontWeight:700 }}>Roll No</th>
+                    <th style={{ padding:'0.75rem 0.5rem', fontWeight:700 }}>Name</th>
+                    <th style={{ padding:'0.75rem 0.5rem', fontWeight:700 }}>Dept</th>
+                    <th style={{ padding:'0.75rem 0.5rem', fontWeight:700 }}>Year</th>
+                    {isAllColleges && <th style={{ padding:'0.75rem 0.5rem', fontWeight:700 }}>College</th>}
+                    {isMultiDay && heatmap.days.map(d => (
+                      <th key={d.date} style={{ padding:'0.75rem 0.3rem', fontWeight:700, textAlign:'center', fontSize:'0.75rem' }}>{d.label}</th>
                     ))}
-                    
-                    <td style={{ padding: '1rem 0.5rem', textAlign: 'right' }}>
-                      {isMultiDay ? (
-                        <span style={{ fontWeight: 600, color: p.attendance_percentage >= 75 ? '#198754' : p.attendance_percentage >= 50 ? '#fd7e14' : '#dc3545' }}>
-                          {p.attendance_percentage}%
-                        </span>
-                      ) : (
-                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, background: p.attendance_percentage > 0 ? 'rgba(25, 135, 84, 0.1)' : 'rgba(220, 53, 69, 0.1)', color: p.attendance_percentage > 0 ? '#198754' : '#dc3545' }}>
-                          {p.attendance_percentage > 0 ? 'Present' : 'Absent'}
-                        </span>
-                      )}
-                    </td>
+                    <th style={{ padding:'0.75rem 0.5rem', fontWeight:700, textAlign:'right' }}>
+                      {isMultiDay ? 'Attendance %' : 'Status'}
+                    </th>
+                    {!isMultiDay && <th style={{ padding:'0.75rem 0.5rem', fontWeight:700 }}>Check-in</th>}
                   </tr>
-                ))
+                </thead>
+                <tbody>
+                  {paginatedParticipants.map((p,i) => {
+                    const isPresent = Number(p.attendance_percentage) > 0;
+                    return (
+                      <tr key={i} style={{ borderBottom:'1px solid rgba(0,0,0,0.04)' }}>
+                        <td style={{ padding:'0.7rem 0.5rem', fontWeight:600, fontFamily:'monospace' }}>{p.roll_number}</td>
+                        <td style={{ padding:'0.7rem 0.5rem' }}>{p.name}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', color:'var(--text-secondary)' }}>{p.department}</td>
+                        <td style={{ padding:'0.7rem 0.5rem', color:'var(--text-secondary)' }}>{p.year}</td>
+                        {isAllColleges && <td style={{ padding:'0.7rem 0.5rem', color:'var(--text-secondary)', fontSize:'0.8rem' }}>{p.college}</td>}
+                        {isMultiDay && p.attendance_flags.map((flag,fi) => (
+                          <td key={fi} style={{ padding:'0.7rem 0.3rem', textAlign:'center' }}>
+                            <span style={{ display:'inline-block', width:'14px', height:'14px', borderRadius:'3px',
+                              background:flag?'#10b981':'#fecaca' }} title={flag?'Present':'Absent'}/>
+                          </td>
+                        ))}
+                        <td style={{ padding:'0.7rem 0.5rem', textAlign:'right' }}>
+                          {isMultiDay ? (
+                            <span style={{ fontWeight:700, color:Number(p.attendance_percentage)>=75?'#10b981':Number(p.attendance_percentage)>=50?'#f59e0b':'#ef4444' }}>
+                              {p.attendance_percentage}%
+                            </span>
+                          ) : (
+                            <span style={{ padding:'0.2rem 0.65rem', borderRadius:'999px', fontSize:'0.75rem', fontWeight:700,
+                              background:isPresent?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.12)',
+                              color:isPresent?'#059669':'#dc2626' }}>
+                              {isPresent ? 'Present' : 'Absent'}
+                            </span>
+                          )}
+                        </td>
+                        {!isMultiDay && (
+                          <td style={{ padding:'0.7rem 0.5rem', color:'var(--text-secondary)', fontSize:'0.8rem' }}>
+                            {p.checkin_time ? new Date(p.checkin_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—'}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {totalPages > 1 && (
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.75rem 0.5rem 0', fontSize:'0.82rem', color:'var(--text-secondary)' }}>
+                  <span>Showing {tablePage*PAGE_SIZE+1}–{Math.min((tablePage+1)*PAGE_SIZE,filteredParticipants.length)} of {filteredParticipants.length}</span>
+                  <div style={{ display:'flex', gap:'0.4rem' }}>
+                    <button className="btn btn-secondary" onClick={() => setTablePage(p => Math.max(0,p-1))} disabled={tablePage===0}
+                      style={{ padding:'0.3rem 0.75rem', fontSize:'0.82rem' }}>← Prev</button>
+                    <button className="btn btn-secondary" onClick={() => setTablePage(p => Math.min(totalPages-1,p+1))} disabled={tablePage===totalPages-1}
+                      style={{ padding:'0.3rem 0.75rem', fontSize:'0.82rem' }}>Next →</button>
+                  </div>
+                </div>
               )}
-            </tbody>
-          </table>
-          {filteredParticipants.length > 100 && (
-            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              Showing first 100 records. Use filters or export to view all.
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -474,5 +555,3 @@ export default function EventAdminAnalytics() {
     </div>
   );
 }
-
-
