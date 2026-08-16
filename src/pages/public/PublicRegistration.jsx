@@ -175,8 +175,11 @@ export default function PublicRegistration() {
     setSubmitting(true);
     setError(null);
     const finalRollNumber = rollNumber.trim().toUpperCase();
-    const college = isBvcOnly ? 'BVC Engineering College' : (studentForm.college_name || 'BVC Engineering College');
-    const isBvcStudent = college.toLowerCase().includes('bvc');
+    let college = isBvcOnly ? 'BVC Engineering College' : (studentForm.college_name || 'BVC Engineering College');
+    if (college === 'Other Institution' && studentForm.other_college_name) {
+      college = studentForm.other_college_name;
+    }
+    const isBvcStudent = college.toLowerCase().includes('bvc') && college.toLowerCase().includes('engineering');
     const targetTable = isBvcStudent ? 'students' : 'other_college_students';
     
     try {
@@ -359,8 +362,20 @@ export default function PublicRegistration() {
                   <option value="Pragati Engineering College">Pragati Engineering College</option>
                   <option value="SRKR Engineering College">SRKR Engineering College</option>
                   <option value="JNTUK Kakinada">JNTUK Kakinada</option>
-                  <option value="Other College">Other Institution</option>
+                  <option value="Other Institution">Other Institution</option>
                 </select>
+                {studentForm.college_name === 'Other Institution' && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <input
+                      type="text"
+                      required
+                      className="input-field"
+                      placeholder="Please enter your institution name"
+                      value={studentForm.other_college_name || ''}
+                      onChange={e => setStudentForm({...studentForm, other_college_name: e.target.value})}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
