@@ -110,6 +110,20 @@ export default function EventAdminAnalytics() {
     } finally { setLoading(false); }
   };
 
+  const participants = analytics?.participants || [];
+  
+  const filteredParticipants = useMemo(() => {
+    return participants.filter(p => {
+      const q = searchTerm.toLowerCase();
+      const matchSearch  = !q || p.roll_number?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q);
+      const matchDept    = filterDept === 'ALL' || p.department === filterDept;
+      const matchStatus  = filterStatus === 'ALL'
+        || (filterStatus === 'PRESENT' && Number(p.attendance_percentage) > 0)
+        || (filterStatus === 'ABSENT'  && Number(p.attendance_percentage) === 0);
+      return matchSearch && matchDept && matchStatus;
+    });
+  }, [participants, searchTerm, filterDept, filterStatus]);
+
   if (loading) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:'1rem' }}>
       <Loader2 className="animate-spin" size={40} color="var(--accent-blue)"/>
@@ -133,22 +147,11 @@ export default function EventAdminAnalytics() {
 
   if (!analytics) return null;
 
-  const { event, scenario, overview, departments, years, colleges, dailyAttendance, retention, consistency, heatmap, participants } = analytics;
+  const { event, scenario, overview, departments, years, colleges, dailyAttendance, retention, consistency, heatmap } = analytics;
   const { scope, durationType, duration } = scenario;
   const isMultiDay    = durationType === 'MULTI_DAY';
   const isAllColleges = scope === 'ALL_COLLEGE_STUDENTS';
 
-  const filteredParticipants = useMemo(() => {
-    return participants.filter(p => {
-      const q = searchTerm.toLowerCase();
-      const matchSearch  = !q || p.roll_number?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q);
-      const matchDept    = filterDept === 'ALL' || p.department === filterDept;
-      const matchStatus  = filterStatus === 'ALL'
-        || (filterStatus === 'PRESENT' && Number(p.attendance_percentage) > 0)
-        || (filterStatus === 'ABSENT'  && Number(p.attendance_percentage) === 0);
-      return matchSearch && matchDept && matchStatus;
-    });
-  }, [participants, searchTerm, filterDept, filterStatus]);
 
   const paginatedParticipants = filteredParticipants.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filteredParticipants.length / PAGE_SIZE);
