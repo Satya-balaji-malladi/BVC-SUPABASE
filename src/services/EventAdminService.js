@@ -57,13 +57,8 @@ class EventAdminService {
   }
 
   async getParticipants() {
-    const token = this.getToken();
-    if (!token) throw new Error("No active session");
-    
-    const { data: authEvents, error: authErr } = await supabase.rpc('get_authorized_event_ids', { p_token: token });
-    if (authErr) throw authErr;
-    
-    const eventIds = (authEvents || []).map(e => e.get_authorized_event_ids || e.event_id || e);
+    const events = await this.getEvents();
+    const eventIds = events.map(e => e.event_id);
     if (eventIds.length === 0) return [];
 
     const { data, error } = await supabase
@@ -112,13 +107,8 @@ class EventAdminService {
   }
 
   async getAttendance() {
-    const token = this.getToken();
-    if (!token) throw new Error("No active session");
-    
-    const { data: authEvents, error: authErr } = await supabase.rpc('get_authorized_event_ids', { p_token: token });
-    if (authErr) throw authErr;
-    
-    const eventIds = (authEvents || []).map(e => e.get_authorized_event_ids || e.event_id || e);
+    const events = await this.getEvents();
+    const eventIds = events.map(e => e.event_id);
     if (eventIds.length === 0) return [];
 
     const { data, error } = await supabase
@@ -192,10 +182,8 @@ class EventAdminService {
     if (!token) throw new Error("No active session");
     
     // 1. Validate authorization
-    const { data: authEvents, error: authErr } = await supabase.rpc('get_authorized_event_ids', { p_token: token });
-    if (authErr) throw authErr;
-    
-    const authorizedIds = (authEvents || []).map(e => String(e.get_authorized_event_ids || e.event_id || e));
+    const events = await this.getEvents();
+    const authorizedIds = events.map(e => String(e.event_id));
     if (!authorizedIds.includes(String(eventId))) {
         throw new Error("You are not authorized to view analytics for this event.");
     }
